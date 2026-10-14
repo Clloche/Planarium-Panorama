@@ -538,6 +538,22 @@ public final class SkySync {
      * Obscurite noire (option Couleur dans les cavernes = sombre, biome sans brouillard special) : regle bien plus stricte que underground, pour ne jamais
      * noircir une maison ou une entree de caverne. Aucune vue vers dehors, meme par une fenetre.
      */
+    /**
+     * Couleur du brouillard du biome du Planarium. Lue cote client quand c'est possible : Dynamic Surroundings change
+     * la couleur du brouillard de certains biomes (orange dans les badlands, par exemple), seulement cote client.
+     */
+    private static int biomeFogColor() {
+        try {
+            net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> biome = OutsideAmbience.knownBiomeHolder();
+            if (biome != null) {
+                return biome.value().getFogColor() & 0xFFFFFF;
+            }
+        } catch (Exception ignored) {
+            // Couleur envoyee par le serveur.
+        }
+        return fogColor;
+    }
+
     /** Couleur de brouillard des biomes "normaux" (celle de presque tous les biomes vanilla et de worldgen). */
     private static final int NORMAL_FOG = 0xC0D8FF;
 
@@ -669,7 +685,7 @@ public final class SkySync {
 
         @Override
         public Vec3 getBrightnessDependentFogColor(Vec3 color, float brightness) {
-            return Vec3.fromRGB24(fogColor);
+            return Vec3.fromRGB24(biomeFogColor());
         }
 
         @Override
@@ -691,7 +707,7 @@ public final class SkySync {
 
         @Override
         public Vec3 getBrightnessDependentFogColor(Vec3 color, float brightness) {
-            Vec3 fog = Vec3.fromRGB24(fogColor);
+            Vec3 fog = Vec3.fromRGB24(biomeFogColor());
             return fog.multiply(brightness * 0.94F + 0.06F, brightness * 0.94F + 0.06F, brightness * 0.91F + 0.09F);
         }
 
