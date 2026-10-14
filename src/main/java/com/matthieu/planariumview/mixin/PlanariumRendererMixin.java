@@ -37,15 +37,11 @@ public abstract class PlanariumRendererMixin {
                                                   BakedModel model, BlockState state, BlockPos worldPos, PoseStack poseStack,
                                                   VertexConsumer consumer, RandomSource random, long seed, int overlay,
                                                   ModelData modelData, RenderType renderType) {
-        if (com.matthieu.planariumview.FabricModels.needsGameRenderer(model)) {
-            // Bloc couvert de neige de Snow! Real Magic, etc. : rendu du jeu, qui fabrique ses faces (voir FabricModels).
-            try {
-                renderer.tesselateBlock(level, model, state, tile.pos, poseStack, consumer, true, random, seed, overlay,
-                        modelData, renderType);
-                return;
-            } catch (Exception e) {
-                // On retombe sur le rendu d'Ars.
-            }
+        // Bloc couvert de neige de Snow! Real Magic : le vrai bloc, puis la neige (voir SnowRealMagicCompat).
+        if (com.matthieu.planariumview.SnowRealMagicCompat.render(level, state, tile.pos, renderType, poseStack,
+                (partState, partModel, pose) -> PlanariumRenderer.tesselateBlock(tile, renderer, level, partModel, partState,
+                        tile.pos, pose, consumer, random, seed, overlay, ModelData.EMPTY, renderType))) {
+            return;
         }
         PlanariumRenderer.tesselateBlock(tile, renderer, level, model, state, tile.pos, poseStack, consumer, random,
                 seed, overlay, modelData, renderType);
@@ -79,11 +75,29 @@ public abstract class PlanariumRendererMixin {
     private void planariumview$outsideLight(com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile tile, float partialTick,
                                             PoseStack poseStack, net.minecraft.client.renderer.MultiBufferSource buffers,
                                             int packedLight, int packedOverlay, CallbackInfo ci) {
+        // Faux monde de cette miniature : les blocs speciaux d'Ars sont rattaches au vrai monde, pas a lui.
+        PlanariumRenderer.StructureRenderData miniData = tile.key != null ? PlanariumRenderer.structureRenderData.get(tile.key) : null;
+        planariumview$miniWorld = miniData != null ? miniData.fakeRenderingWorld : null;
         com.matthieu.planariumview.MiniOutsideLight.check(tile);
         com.matthieu.planariumview.PlanariumFloor.render(tile, poseStack, buffers, packedLight);
         if (tile.key != null) {
             com.matthieu.planariumview.GiantSprites.markMini(PlanariumRenderer.structureRenderData.get(tile.key));
         }
+    }
+
+    @org.spongepowered.asm.mixin.Unique
+    private static boolean planariumview$beLogged;
+
+    /** Faux monde de la miniature en train d'etre dessinee (voir planariumview$outsideLight), ou null. */
+    @org.spongepowered.asm.mixin.Unique
+    private static net.minecraft.world.level.Level planariumview$miniWorld;
+
+    @Inject(method = "render(Lcom/hollingsworth/arsnouveau/common/block/tile/PlanariumTile;FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;II)V",
+            at = @At("RETURN"), require = 0)
+    private void planariumview$miniWorldEnd(com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile tile, float partialTick,
+                                            PoseStack poseStack, net.minecraft.client.renderer.MultiBufferSource buffers,
+                                            int packedLight, int packedOverlay, CallbackInfo ci) {
+        planariumview$miniWorld = null;
     }
 
     /**
@@ -101,11 +115,18 @@ public abstract class PlanariumRendererMixin {
                                                 int packedLight, int packedOverlay) {
         int light = packedLight;
         if (com.matthieu.planariumview.Config.realLighting()
-                && blockEntity.getLevel() instanceof com.matthieu.planariumview.LitRenderingWorld lit) {
+                && planariumview$miniWorld instanceof com.matthieu.planariumview.LitRenderingWorld lit) {
             try {
                 light = PlanariumRenderer.getLightColor(lit, blockEntity.getBlockState(), blockEntity.getBlockPos());
             } catch (Exception e) {
                 light = packedLight;
+            }
+            if (!planariumview$beLogged) {
+                planariumview$beLogged = true;
+                org.slf4j.LoggerFactory.getLogger("planariumview").info(
+                        "[Planarium Panorama] Miniature : lumiere des blocs speciaux ({} : ciel {}, blocs {})",
+                        net.minecraft.core.registries.BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(blockEntity.getType()),
+                        net.minecraft.client.renderer.LightTexture.sky(light), net.minecraft.client.renderer.LightTexture.block(light));
             }
         }
         renderer.render(blockEntity, partialTick, poseStack, buffers, light, packedOverlay);

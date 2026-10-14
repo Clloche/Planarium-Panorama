@@ -216,12 +216,17 @@ public final class WeatherView {
         float floor = (float) camera.y - HEIGHT;
         float captureBottom = giantY(originY);
         RandomSource random = RandomSource.create();
+        int view = ClientView.viewRadius();
 
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
                 int index = i * size + j;
                 // La colonne du Planarium, c'est l'interieur du bocal : il n'y pleut pas.
                 if (precip[index] != type || (i == radius && j == radius)) {
+                    continue;
+                }
+                // Hors du rayon de vue (limite par la distance d'affichage) : pas de decor, pas de pluie.
+                if (Math.abs(i - radius) > view || Math.abs(j - radius) > view) {
                     continue;
                 }
                 float bottom = Math.max(Math.max(giantY(tops[index]), captureBottom), floor);

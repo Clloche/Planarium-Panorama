@@ -27,6 +27,15 @@ public abstract class DimBoundaryMixin extends Block {
         builder.add(com.matthieu.planariumview.JarWalls.LIGHT);
     }
 
+    /**
+     * Comme du verre pour l'ombrage des coins (occlusion ambiante) : les blocs colles aux parois ne sont plus assombris
+     * a cote du verre, dans le bocal comme dans la miniature.
+     */
+    @Override
+    protected float getShadeBrightness(BlockState state, BlockGetter level, BlockPos pos) {
+        return 1.0F;
+    }
+
     @Override
     public boolean propagatesSkylightDown(BlockState state, BlockGetter level, BlockPos pos) {
         return true;

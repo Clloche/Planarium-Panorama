@@ -49,7 +49,12 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
     /** La miniature recoit aussi la lumiere des torches a cote du Planarium, comme l'interieur du bocal. */
     public void setOutsideLight(byte[] table) {
         this.outsideLight = table;
+        this.outsideShaded = null;
     }
+
+    /** Lumiere du dehors repartie selon les blocs de la miniature (comme dans le bocal), calculee au premier besoin. */
+    private byte[] outsideShaded;
+    private boolean shading;
 
     /** Lumiere du dehors a cette position du gabarit (le gabarit commence un bloc au-dessus du plancher du bocal). */
     private int outside(BlockPos pos) {
@@ -57,7 +62,40 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
             return 0;
         }
         int index = JarLight.tableIndex(pos.getX(), pos.getY() + 1, pos.getZ());
-        return index < 0 ? 0 : outsideLight[index];
+        if (index < 0) {
+            return 0;
+        }
+        // Comme dans le bocal (JarLight) : la lumiere du dehors entre par le haut et par les parois, puis perd un niveau
+        // par bloc. Une piece fermee de la miniature n'est donc plus eclairee comme si elle etait dehors.
+        if (outsideShaded == null && !giant && !shading) {
+            shading = true;
+            try {
+                outsideShaded = JarLight.occlude(outsideLight, passableMap());
+            } catch (Exception e) {
+                outsideShaded = outsideLight;
+            } finally {
+                shading = false;
+            }
+        }
+        byte[] values = outsideShaded != null ? outsideShaded : outsideLight;
+        return values[index];
+    }
+
+    /** Blocs de la miniature qui laissent passer la lumiere, aux indices de la table du bocal. */
+    private boolean[] passableMap() {
+        int size = JarLight.TABLE_SIZE;
+        int height = JarLight.TABLE_HEIGHT;
+        boolean[] open = new boolean[size * height * size];
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < height; y++) {
+                for (int z = 0; z < size; z++) {
+                    at.set(x, y - 1, z);
+                    open[(x * height + y) * size + z] = getBlockState(at).getLightBlock(this, at) < 15;
+                }
+            }
+        }
+        return open;
     }
     private int sizeX;
     private int sizeY;
@@ -250,25 +288,26 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
         return 0;
     }
 
-    /** Interieur du bocal, en positions du gabarit (0 a 31) : la miniature seulement, pas le decor geant. */
-    private static final int JAR_INSIDE = 32;
-
-    /**
-     * Miniature : les blocs qui touchent une paroi de verre recoivent un peu plus de ciel (la lumiere du dehors
-     * passe par le verre juste a cote), pour qu'ils ne paraissent pas plus sombres que dans le bocal.
-     */
-    private int nearGlass(BlockPos pos, int sky) {
-        if (giant || sky >= 15 || sky <= 0) {
-            return sky;
-        }
-        int x = pos.getX();
-        int z = pos.getZ();
-        boolean edge = x == 0 || z == 0 || x == JAR_INSIDE - 1 || z == JAR_INSIDE - 1;
-        return edge ? Math.min(15, sky + 2) : sky;
-    }
-
     @Override
     public int getBrightness(LightLayer layer, BlockPos pos) {
+        int value = rawBrightness(layer, pos);
+        if (giant || light == null || value > 0 || !getBlockState(pos).isSolidRender(this, pos)) {
+            return value;
+        }
+        // Miniature : la lumiere "dans" un bloc plein vaut 0, et l'ombrage des coins de Minecraft (copie par Ars) la
+        // melange a celle des blocs voisins. Dans un trou d'un bloc dans un mur, presque tous les voisins sont pleins :
+        // tout devenait tres sombre (le bocal, dessine par Sodium, ne fait pas ca). Un bloc plein prend donc la lumiere
+        // de son voisin le plus eclaire, moins un : l'ombrage reste, sans noircir les petits recoins.
+        int best = 0;
+        BlockPos.MutableBlockPos next = new BlockPos.MutableBlockPos();
+        for (net.minecraft.core.Direction direction : net.minecraft.core.Direction.values()) {
+            next.setWithOffset(pos, direction);
+            best = Math.max(best, rawBrightness(layer, next));
+        }
+        return Math.max(0, best - 1);
+    }
+
+    private int rawBrightness(LightLayer layer, BlockPos pos) {
         if (light == null) {
             int base = super.getBrightness(layer, pos);
             return layer == LightLayer.BLOCK ? Math.max(base, outside(pos)) : sky(base);
@@ -281,6 +320,6 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
             return layer == LightLayer.SKY ? sky(15) : 0;
         }
         int value = light[(x * sizeY + y) * sizeZ + z] & 0xFF;
-        return layer == LightLayer.SKY ? sky(nearGlass(pos, value >> 4)) : Math.max(value & 15, outside(pos));
+        return layer == LightLayer.SKY ? sky(value >> 4) : Math.max(value & 15, outside(pos));
     }
 }

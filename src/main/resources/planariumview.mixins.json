@@ -26,7 +26,8 @@
     "LevelDayTimeMixin",
     "HorizonMixin",
     "SkyWeatherScopeMixin",
-    "FogWeatherScopeMixin"
+    "FogWeatherScopeMixin",
+    "MiniShadeMixin"
   ],
   "injectors": {
     "defaultRequire": 1

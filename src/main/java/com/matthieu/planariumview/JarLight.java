@@ -109,6 +109,14 @@ public final class JarLight {
             lit = null;
             return;
         }
+        lit = occlude(source, open);
+    }
+
+    /**
+     * Lumiere du dehors (table) repartie en tenant compte des blocs : voir lit. {@code open} = blocs qui laissent passer
+     * la lumiere, meme indices que la table. Sert au bocal et a la miniature.
+     */
+    static byte[] occlude(byte[] source, boolean[] open) {
         int total = SIZE * HEIGHT * SIZE;
         boolean[] sees = new boolean[total];
         // Comme la lumiere du ciel de Minecraft : elle descend tout droit depuis le haut du bocal (verre) sans perdre
@@ -175,7 +183,7 @@ public final class JarLight {
                 }
             }
         }
-        lit = next;
+        return next;
     }
 
     private static void sweepY(boolean[] open, boolean[] sees, int x, int z, int start, int step) {
@@ -256,6 +264,9 @@ public final class JarLight {
     }
 
     /** Lumiere qui entre dans le bocal pour chaque bloc de l'interieur (x 0-31, y 0-32, z 0-31). */
+    static final int TABLE_SIZE = SIZE;
+    static final int TABLE_HEIGHT = HEIGHT;
+
     public static int tableIndex(int x, int y, int z) {
         return x < 0 || x >= SIZE || y < 0 || y >= HEIGHT || z < 0 || z >= SIZE ? -1 : (x * HEIGHT + y) * SIZE + z;
     }

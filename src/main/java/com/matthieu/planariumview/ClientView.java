@@ -196,6 +196,18 @@ public final class ClientView {
     }
 
     /** Reconstruit le decor geant et les miniatures avec les options actuelles (appele par le menu de config). */
+    /**
+     * Rayon de vue affiche : celui du serveur, mais pas plus grand que la distance d'affichage du joueur (en chunks).
+     * Avec une petite distance d'affichage, le decor s'arrete donc au meme chiffre.
+     */
+    public static int viewRadius() {
+        int renderDistance = Minecraft.getInstance().options.getEffectiveRenderDistance();
+        return Math.max(1, Math.min(currentRadius, renderDistance));
+    }
+
+    /** Rayon de vue avec lequel le decor actuel a ete construit. */
+    private static int builtViewRadius = -1;
+
     public static void rebuild() {
         if (lastTemplate != null && currentDim != null) {
             ResourceLocation dim = currentDim;
@@ -277,6 +289,10 @@ public final class ClientView {
         }
         SkySync.giantLight(true, partialTick);
         try {
+            // La distance d'affichage a change : on reconstruit le decor au nouveau rayon de vue.
+            if (pendingTemplate == null && renderData != null && builtViewRadius != viewRadius()) {
+                rebuild();
+            }
             if (pendingTemplate != null) {
                 StructureTemplate template = pendingTemplate;
                 pendingTemplate = null;
@@ -326,6 +342,12 @@ public final class ClientView {
         BlockPos planarium = new BlockPos(radius, radius, radius);
         BlockPos above = planarium.above();
         data.statePosCache.removeIf(p -> p.pos.equals(planarium) || p.pos.equals(above));
+        // Rayon de vue limite par la distance d'affichage : on ne garde que les blocs dans ce rayon (a l'horizontale).
+        int view = viewRadius();
+        builtViewRadius = view;
+        if (view < radius) {
+            data.statePosCache.removeIf(p -> Math.abs(p.pos.getX() - radius) > view || Math.abs(p.pos.getZ() - radius) > view);
+        }
 
         ColorCompat.begin(data.fakeRenderingWorld);
         try {
@@ -386,7 +408,6 @@ public final class ClientView {
             }
 
             BakedModel model = dispatcher.getBlockModel(renderState);
-            boolean gameRenderer = FabricModels.needsGameRenderer(model);
             // Les morceaux de modele qui depassent dans la case du Planarium entreraient dans le bocal.
             BlockPos planariumCell = new BlockPos(radius, radius, radius);
             if (JarClippedModel.touches(pos.pos, planariumCell)) {
@@ -420,16 +441,17 @@ public final class ClientView {
                 if (renderState.getRenderShape() != RenderShape.MODEL) {
                     continue;
                 }
-                if (renderState.getFluidState().isEmpty() && isModel && gameRenderer
-                        && !(model instanceof JarClippedModel)) {
-                    // Bloc couvert de neige de Snow! Real Magic, etc. : rendu du jeu (voir FabricModels).
-                    try {
-                        modelRenderer.tesselateBlock(data.fakeRenderingWorld, model, renderState, pos.pos, matrix, builder,
-                                true, random, renderState.getSeed(pos.pos), OverlayTexture.NO_OVERLAY, ModelData.EMPTY,
-                                renderType);
+                if (renderState.getFluidState().isEmpty() && isModel && !(model instanceof JarClippedModel)) {
+                    // Bloc couvert de neige de Snow! Real Magic : le vrai bloc, puis la neige (voir SnowRealMagicCompat).
+                    final CulledStatePos culled = pos;
+                    final BufferBuilder snowTarget = builder;
+                    final RenderType layer = renderType;
+                    boolean snowy = SnowRealMagicCompat.render(data.fakeRenderingWorld, renderState, pos.pos, renderType, matrix,
+                            (partState, partModel, pose) -> PlanariumRenderer.tesselateBlock(culled, modelRenderer,
+                                    data.fakeRenderingWorld, partModel, partState, culled.pos, pose, snowTarget, random,
+                                    partState.getSeed(culled.pos), OverlayTexture.NO_OVERLAY, ModelData.EMPTY, layer));
+                    if (snowy) {
                         continue;
-                    } catch (Exception e) {
-                        LOGGER.debug("[Planarium View] Bloc (rendu du jeu) ignore", e);
                     }
                 }
                 if (renderState.getFluidState().isEmpty() && isModel) {
@@ -508,7 +530,7 @@ public final class ClientView {
         if (Config.FOG.get() != Config.Fog.VIEW_RADIUS) {
             return;
         }
-        float edge = Math.max(1, currentRadius) * GIANT + GIANT / 2.0F + 2.0F;
+        float edge = viewRadius() * GIANT + GIANT / 2.0F + 2.0F;
         if (fogWall == null || edge != fogWallEdge) {
             buildFogWall(edge);
         }
@@ -546,7 +568,7 @@ public final class ClientView {
             return;
         }
         // Dans la distance d'affichage, sinon le dessus serait coupe et laisserait voir le ciel.
-        float edge = Math.min(Math.max(1, currentRadius) * GIANT + GIANT / 2.0F + 3.0F, mc.gameRenderer.getDepthFar() * 0.6F);
+        float edge = Math.min(viewRadius() * GIANT + GIANT / 2.0F + 3.0F, mc.gameRenderer.getDepthFar() * 0.6F);
         if (caveDome == null || edge != caveDomeEdge) {
             caveDome = buildDome(caveDome, edge);
             caveDomeEdge = edge;
@@ -706,7 +728,7 @@ public final class ClientView {
         }
         if (mode == Config.Fog.VIEW_RADIUS) {
             // Bord du decor geant : le rayon de vue (en blocs du monde) fois 32, plus la moitie de la case du Planarium.
-            float edge = Math.max(1, currentRadius) * GIANT + GIANT / 2.0F;
+            float edge = viewRadius() * GIANT + GIANT / 2.0F;
             RenderSystem.setShaderFogStart(edge - net.minecraft.util.Mth.clamp(edge / 4.0F, 16.0F, 160.0F));
             RenderSystem.setShaderFogEnd(edge);
             RenderSystem.setShaderFogShape(com.mojang.blaze3d.shaders.FogShape.CYLINDER);
@@ -750,6 +772,10 @@ public final class ClientView {
             for (BlockEntity blockEntity : data.fakeRenderingWorld.blockEntityMap.values()) {
                 BlockPos pos = blockEntity.getBlockPos();
                 if (pos.equals(planarium) || pos.equals(above)) {
+                    continue;
+                }
+                int view = viewRadius();
+                if (Math.abs(pos.getX() - radius) > view || Math.abs(pos.getZ() - radius) > view) {
                     continue;
                 }
                 if (blockEntity instanceof PlanariumTile planariumTile) {
