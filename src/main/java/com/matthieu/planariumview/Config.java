@@ -56,6 +56,7 @@ public final class Config {
                 .comment("Fog on the giant scenery.",
                         "OFF = no fog: every block within the view radius stays visible.",
                         "VIEW_RADIUS = the scenery fades into fog at its own edge (the end of the view radius), so it has no hard border.",
+                        "    The view radius is then never larger than your render distance (in chunks), except with Voxy or Distant Horizons.",
                         "RENDER_DISTANCE = the scenery fades into fog at your render distance, like the rest of the world.")
                 .defineEnum("fog", Fog.VIEW_RADIUS);
         CAVE_FOG = client

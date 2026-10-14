@@ -197,16 +197,24 @@ public final class ClientView {
 
     /** Reconstruit le decor geant et les miniatures avec les options actuelles (appele par le menu de config). */
     /**
-     * Rayon de vue affiche : celui du serveur, mais pas plus grand que la distance d'affichage du joueur (en chunks).
-     * Avec une petite distance d'affichage, le decor s'arrete donc au meme chiffre.
-     * Avec Voxy ou Distant Horizons, le monde se voit bien plus loin que la distance d'affichage : pas de limite.
+     * Rayon de vue affiche : celui du serveur, sauf :
+     * - brouillard "Rayon de vue" : pas plus grand que la distance d'affichage du joueur (en chunks), pour que le decor
+     *   et son brouillard s'arretent au meme chiffre (pas de limite avec Voxy ou Distant Horizons, qui voient plus loin) ;
+     * - brouillard "Distance d'affichage" : seulement ce que le brouillard laisse voir. Il finit a la distance d'affichage
+     *   en blocs normaux, et un bloc du decor en fait 32 : environ la moitie de la distance d'affichage, plus un bloc de marge.
+     *   Les blocs plus loin seraient caches par le brouillard : inutile de les construire.
      */
     public static int viewRadius() {
-        if (lodMod()) {
-            return Math.max(1, currentRadius);
-        }
         int renderDistance = Minecraft.getInstance().options.getEffectiveRenderDistance();
-        return Math.max(1, Math.min(currentRadius, renderDistance));
+        Config.Fog fog = Config.FOG.get();
+        if (fog == Config.Fog.RENDER_DISTANCE) {
+            int visible = (int) Math.ceil(renderDistance * 16.0 / GIANT) + 1;
+            return Math.max(1, Math.min(currentRadius, visible));
+        }
+        if (fog == Config.Fog.VIEW_RADIUS && !lodMod()) {
+            return Math.max(1, Math.min(currentRadius, renderDistance));
+        }
+        return Math.max(1, currentRadius);
     }
 
     private static Boolean lodMod;
