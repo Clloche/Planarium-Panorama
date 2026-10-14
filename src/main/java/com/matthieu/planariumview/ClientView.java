@@ -607,7 +607,7 @@ public final class ClientView {
         }
         net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> biome = OutsideAmbience.knownBiomeHolder();
         if (biome != null) {
-            int fog = biome.value().getFogColor();
+            int fog = SkySync.fogColorOf(biome.value());
             float r = ((fog >> 16) & 0xFF) / 255.0F;
             float g = ((fog >> 8) & 0xFF) / 255.0F;
             float b = (fog & 0xFF) / 255.0F;

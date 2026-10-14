@@ -44,10 +44,10 @@ public final class ConfigScreen {
         Minecraft mc = Minecraft.getInstance();
         // Sur un serveur multijoueur, le rayon et le rafraichissement sont decides par le serveur.
         boolean serverSide = mc.level != null && mc.getSingleplayerServer() == null;
-        boolean clPresent = present("xyz.atmerek.contraptionlights.light.color.ColorLightEngine");
-        boolean dsPresent = present("org.orecruncher.dsurround.config.DimensionInfo");
-        boolean asPresent = present("team.creative.ambientsounds.AmbientSounds");
-        boolean ecPresent = present("dev.corgitaco.enhancedcelestials2core.EnhancedCelestials");
+        boolean clPresent = Config.CONTRAPTION_LIGHTS.present();
+        boolean dsPresent = Config.DYNAMIC_SURROUNDINGS.present();
+        boolean asPresent = Config.AMBIENT_SOUNDS_MOD.present();
+        boolean ecPresent = Config.ENHANCED_CELESTIALS.present();
 
         // Options du joueur grisees quand l'interrupteur general est OFF (si elles sont possibles par ailleurs).
         List<Gated> gated = new ArrayList<>();
@@ -274,6 +274,13 @@ public final class ConfigScreen {
             description = OptionDescription.of(Component.translatable(KEY + name + ".tooltip"), Component.empty(),
                     Component.translatable(KEY + "not_installed.tooltip", modName).withStyle(ChatFormatting.RED));
         }
+        if (!present) {
+            // Mod absent : affichee OFF (et l'integration reste OFF, voir Config), sans toucher au reglage enregistre.
+            defaultValue = false;
+            getter = () -> false;
+            setter = value -> {
+            };
+        }
         return Option.<Boolean>createBuilder()
                 .name(label)
                 .description(description)
@@ -315,15 +322,5 @@ public final class ConfigScreen {
 
     private static Component onOff(boolean v) {
         return v ? CommonComponents.OPTION_ON : CommonComponents.OPTION_OFF;
-    }
-
-    /** Detecte un mod par une de ses classes, sans la charger. */
-    private static boolean present(String className) {
-        try {
-            Class.forName(className, false, ConfigScreen.class.getClassLoader());
-            return true;
-        } catch (Throwable e) {
-            return false;
-        }
     }
 }

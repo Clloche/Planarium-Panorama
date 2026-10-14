@@ -19,7 +19,7 @@
   "planariumview.pack.real_light": "Planarium Panorama - vraie lumière",
   "planariumview.config.default": "Par défaut : %s",
   "planariumview.config.ambience": "Ambiance extérieure (Dynamic Surroundings)",
-  "planariumview.config.ambience.tooltip": "Dynamic Surroundings joue les sons des alentours du Planarium.",
+  "planariumview.config.ambience.tooltip": "Dynamic Surroundings joue les sons des alentours du Planarium, et ses couleurs de brouillard des biomes s'affichent dans le bocal.",
   "planariumview.config.server_controlled": "Réglé par le serveur sur lequel tu joues.",
   "planariumview.config.section.general": "Général",
   "planariumview.config.enabled": "Planarium Panorama",

@@ -535,10 +535,6 @@ public final class SkySync {
     }
 
     /**
-     * Obscurite noire (option Couleur dans les cavernes = sombre, biome sans brouillard special) : regle bien plus stricte que underground, pour ne jamais
-     * noircir une maison ou une entree de caverne. Aucune vue vers dehors, meme par une fenetre.
-     */
-    /**
      * Couleur du brouillard du biome du Planarium. Lue cote client quand c'est possible : Dynamic Surroundings change
      * la couleur du brouillard de certains biomes (orange dans les badlands, par exemple), seulement cote client.
      */
@@ -546,12 +542,23 @@ public final class SkySync {
         try {
             net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> biome = OutsideAmbience.knownBiomeHolder();
             if (biome != null) {
-                return biome.value().getFogColor() & 0xFFFFFF;
+                return fogColorOf(biome.value());
             }
         } catch (Exception ignored) {
             // Couleur envoyee par le serveur.
         }
         return fogColor;
+    }
+
+    /**
+     * Couleur du brouillard d'un biome, avec celle de Dynamic Surroundings seulement si son integration est ON
+     * (sinon la couleur d'origine du biome, meme si Dynamic Surroundings la change dehors).
+     */
+    public static int fogColorOf(net.minecraft.world.level.biome.Biome biome) {
+        if (Config.outsideAmbience()) {
+            return biome.getFogColor() & 0xFFFFFF;
+        }
+        return biome.getModifiedSpecialEffects().getFogColor() & 0xFFFFFF;
     }
 
     /** Couleur de brouillard des biomes "normaux" (celle de presque tous les biomes vanilla et de worldgen). */
@@ -566,7 +573,7 @@ public final class SkySync {
         if (biome == null) {
             return false;
         }
-        int fog = biome.value().getFogColor() & 0xFFFFFF;
+        int fog = fogColorOf(biome.value());
         // Proche du bleu pale habituel (beaucoup de packs de worldgen le varient a peine) : brouillard normal.
         boolean custom = Math.abs(((fog >> 16) & 0xFF) - ((NORMAL_FOG >> 16) & 0xFF)) > 0x30
                 || Math.abs(((fog >> 8) & 0xFF) - ((NORMAL_FOG >> 8) & 0xFF)) > 0x30
@@ -582,6 +589,10 @@ public final class SkySync {
 
     private static int lastLoggedFog = -1;
 
+    /**
+     * Obscurite noire (option Couleur dans les cavernes = sombre, biome sans brouillard special) : regle bien plus stricte que underground, pour ne jamais
+     * noircir une maison ou une entree de caverne. Aucune vue vers dehors, meme par une fenetre.
+     */
     public static boolean blackCave(ClientLevel level) {
         boolean result = Config.darkCaves() && !customBiomeFog() && underground(level) && outsideSky < 5
                 && WeatherView.openSkyFraction() < 0.10F && ClientView.openSkyShare() <= 0.0F;

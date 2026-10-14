@@ -80,7 +80,8 @@ public final class Config {
                 .define("coloredLight", true);
         OUTSIDE_AMBIENCE = client
                 .comment("Dynamic Surroundings plays the ambience of the Planarium's surroundings inside the jar (biome sounds,",
-                        "or silence if the Planarium is sheltered, or cave sounds if it is underground). Requires Dynamic Surroundings.")
+                        "or silence if the Planarium is sheltered, or cave sounds if it is underground), and its biome fog colors show in the jar.",
+                        "Requires Dynamic Surroundings.")
                 .define("outsideAmbience", true);
         AMBIENT_SOUNDS = client
                 .comment("AmbientSounds plays the sounds of the Planarium's surroundings inside the jar (its dimension, biome,",
@@ -94,6 +95,36 @@ public final class Config {
     }
 
     private Config() {
+    }
+
+    /** Mods des integrations : une integration est toujours OFF si son mod n'est pas installe. */
+    public static final Mod CONTRAPTION_LIGHTS = new Mod("xyz.atmerek.contraptionlights.light.color.ColorLightEngine");
+    public static final Mod DYNAMIC_SURROUNDINGS = new Mod("org.orecruncher.dsurround.config.DimensionInfo");
+    public static final Mod AMBIENT_SOUNDS_MOD = new Mod("team.creative.ambientsounds.AmbientSounds");
+    public static final Mod ENHANCED_CELESTIALS = new Mod("dev.corgitaco.enhancedcelestials2core.EnhancedCelestials");
+
+    /** Mod reconnu par une de ses classes (verifie une seule fois). */
+    public static final class Mod {
+        private final String className;
+        private Boolean present;
+
+        private Mod(String className) {
+            this.className = className;
+        }
+
+        public boolean present() {
+            if (present == null) {
+                boolean found;
+                try {
+                    Class.forName(className, false, Config.class.getClassLoader());
+                    found = true;
+                } catch (Throwable e) {
+                    found = false;
+                }
+                present = found;
+            }
+            return present;
+        }
     }
 
     /** Les trois niveaux d'eclairage. */
@@ -142,11 +173,11 @@ public final class Config {
     }
 
     public static boolean coloredLight() {
-        return enabled() && COLORED_LIGHT.get();
+        return enabled() && COLORED_LIGHT.get() && CONTRAPTION_LIGHTS.present();
     }
 
     public static boolean ambientSounds() {
-        return enabled() && AMBIENT_SOUNDS.get();
+        return enabled() && AMBIENT_SOUNDS.get() && AMBIENT_SOUNDS_MOD.present();
     }
 
     /** Obscurite noire dans les cavernes fermees. */
@@ -155,10 +186,10 @@ public final class Config {
     }
 
     public static boolean lunarEvents() {
-        return enabled() && LUNAR_EVENTS.get();
+        return enabled() && LUNAR_EVENTS.get() && ENHANCED_CELESTIALS.present();
     }
 
     public static boolean outsideAmbience() {
-        return enabled() && OUTSIDE_AMBIENCE.get();
+        return enabled() && OUTSIDE_AMBIENCE.get() && DYNAMIC_SURROUNDINGS.present();
     }
 }
