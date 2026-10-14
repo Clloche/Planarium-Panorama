@@ -1,0 +1,4 @@
+Mets ici, depuis le dossier mods de ton modpack :
+- le jar d'Ars Nouveau (ex: ars_nouveau-1.21.1-5.13.3-all.jar) ;
+- le jar de YACL / Yet Another Config Lib (ex: yet_another_config_lib_v3-3.8.2+1.21.1-neoforge.jar).
+Ils servent seulement a compiler : ils ne sont pas inclus dans le jar de Planarium Panorama.

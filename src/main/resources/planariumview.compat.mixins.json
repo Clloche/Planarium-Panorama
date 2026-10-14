@@ -1,0 +1,31 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "com.matthieu.planariumview.mixin.compat",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "DsDimensionInfoMixin",
+    "DsBiomeScannerMixin",
+    "DsDimensionLibraryMixin",
+    "DsBiomeVariablesMixin",
+    "DsWeatherVariablesMixin",
+    "AsEngineMixin",
+    "AsEnvironmentMixin",
+    "AsTerrainMixin",
+    "AsBiomeMixin",
+    "DsSereneSeasonsMixin",
+    "DsVanillaSeasonsMixin",
+    "ClColorSectionMixin",
+    "FwLightDataCollectorMixin",
+    "YaclOptionListMixin",
+    "YaclGroupHeaderMixin",
+    "YaclPendingMixin",
+    "YaclButtonMixin",
+    "YaclEscapeMixin",
+    "YaclUndoButtonMixin",
+    "TravelersTitlesMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

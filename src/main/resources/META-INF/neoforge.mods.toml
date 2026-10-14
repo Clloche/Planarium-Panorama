@@ -1,0 +1,47 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="LGPL-3.0"
+
+[[mods]]
+modId="planariumview"
+version="${mod_version}"
+displayName="Planarium Panorama"
+authors="Matthieu"
+description='''
+Ars Nouveau addon: inside a Planarium's dimension, see the Planarium's surroundings as a giant world, with synced sky and real lighting.
+'''
+
+[[dependencies.planariumview]]
+modId="neoforge"
+type="required"
+versionRange="[21.1,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.planariumview]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1,1.21.2)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.planariumview]]
+modId="ars_nouveau"
+type="required"
+versionRange="[5.0,)"
+ordering="AFTER"
+side="BOTH"
+
+# Menu de configuration (onglets, descriptions, remise a zero) : client seulement.
+[[dependencies.planariumview]]
+modId="yet_another_config_lib_v3"
+type="required"
+versionRange="[3.5,)"
+ordering="NONE"
+side="CLIENT"
+
+[[mixins]]
+config="planariumview.mixins.json"
+
+[[mixins]]
+config="planariumview.compat.mixins.json"

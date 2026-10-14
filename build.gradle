@@ -1,0 +1,60 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.42-beta'
+}
+
+// Version de developpement (se termine par -dev) : on ajoute le commit au nom du jar pour savoir lequel on teste.
+def devSuffix = ''
+if (project.mod_version.endsWith('-dev')) {
+    def sha = System.getenv('GITHUB_SHA')
+    if (sha == null) {
+        try {
+            sha = 'git rev-parse HEAD'.execute([], projectDir).text.trim()
+        } catch (Exception ignored) {
+            sha = null
+        }
+    }
+    if (sha != null && sha.length() >= 7) {
+        devSuffix = '+' + sha.substring(0, 7)
+    }
+}
+version = project.mod_version + devSuffix
+group = 'com.matthieu.planariumview'
+
+base {
+    archivesName = "planariumpanorama-${project.minecraft_version}"
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+neoForge {
+    version = project.neo_version
+
+    mods {
+        planariumview {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Le jar d'Ars Nouveau (meme version que dans le modpack) va dans le dossier libs/
+    compileOnly fileTree(dir: 'libs', include: ['*.jar'])
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+// La version affichee dans la liste des mods vient de gradle.properties (mod_version).
+tasks.named('processResources', ProcessResources).configure {
+    def props = [mod_version: project.version.toString()]
+    inputs.properties props
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand props
+    }
+}

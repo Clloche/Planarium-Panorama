@@ -1,0 +1,34 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.matthieu.planariumview.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "DimBoundaryMixin",
+    "BlockStateLightMixin",
+    "DimensionTypeSkyMixin",
+    "PocketLightningMixin"
+  ],
+  "client": [
+    "ClientLevelMixin",
+    "DimensionTypeMixin",
+    "DynamicTextureMixin",
+    "EntityLightMixin",
+    "LevelWeatherMixin",
+    "LightTextureAccessor",
+    "LightTextureMixin",
+    "StructureRenderDataMixin",
+    "PlanariumRendererMixin",
+    "PlanariumRenderingWorldMixin",
+    "PlanariumProjectorRendererMixin",
+    "LevelRendererLightMixin",
+    "SourceEffectsMixin",
+    "LevelDayTimeMixin",
+    "HorizonMixin",
+    "SkyWeatherScopeMixin",
+    "FogWeatherScopeMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

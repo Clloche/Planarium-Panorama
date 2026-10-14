@@ -1,0 +1,30 @@
+name: Build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'microsoft'
+      - name: Build
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: planariumview
+          path: build/libs/*.jar
+      - name: VirusTotal Scan
+        uses: crazy-max/ghaction-virustotal@v5
+        with:
+          vt_api_key: ${{ secrets.VT_API_KEY }}
+          request_rate: 4
+          files: |
+            ./build/libs/*.jar
