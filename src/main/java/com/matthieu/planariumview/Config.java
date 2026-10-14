@@ -33,7 +33,8 @@ public final class Config {
                 "On a multiplayer server, the server's file is the one that counts.");
         RADIUS = common
                 .comment("Radius (in blocks) captured around the Planarium. Each block appears 32 times bigger.",
-                        "On each player's screen, never larger than their render distance (in chunks), except with Voxy.",
+                        "On each player's screen, never larger than their render distance (in chunks), except with NeoVoxy (JohnSnow):",
+                        "    https://github.com/NHblock-Johnsnow/neo-voxy-multiversion",
                         "Above ~24, the scenery often goes past the render distance and the capture costs more on the server.")
                 .defineInRange("radius", 12, 1, 32);
         REFRESH_SECONDS = common

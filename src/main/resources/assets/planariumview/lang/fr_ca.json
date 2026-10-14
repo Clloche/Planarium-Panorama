@@ -1,7 +1,7 @@
 {
   "planariumview.config.title": "Planarium Panorama",
   "planariumview.config.radius.value": "%s blocs",
-  "planariumview.config.radius.tooltip": "Blocs capturés autour du Planarium. Chacun apparaît 32 fois plus gros. Jamais plus grand que ta distance d'affichage (en chunks) : avec une distance d'affichage plus petite, le décor s'arrête à ce nombre de blocs. Pas de limite avec Voxy, qui fait dessiner le jeu bien plus loin.",
+  "planariumview.config.radius.tooltip": "Blocs capturés autour du Planarium. Chacun apparaît 32 fois plus gros. Jamais plus grand que ta distance d'affichage (en chunks) : avec une distance d'affichage plus petite, le décor s'arrête à ce nombre de blocs. Pas de limite avec NeoVoxy (JohnSnow), qui fait dessiner le jeu bien plus loin.",
   "planariumview.config.refresh.value": "toutes les %s s",
   "planariumview.config.refresh.off": "OFF (image figée)",
   "planariumview.config.refresh.tooltip": "Fréquence de mise à jour de la vue. OFF = photo figée.",

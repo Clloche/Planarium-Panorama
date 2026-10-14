@@ -94,7 +94,6 @@ public final class ClientView {
         LightningView.init();
         LunarClient.init();
         SeasonColors.init();
-        DistantHorizonsCompat.init();
         container.getEventBus().addListener(net.neoforged.fml.event.lifecycle.FMLClientSetupEvent.class,
                 event -> event.enqueueWork(() -> {
                     WallColors.register();

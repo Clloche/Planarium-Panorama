@@ -28,7 +28,8 @@
     "YaclEscapeMixin",
     "YaclUndoButtonMixin",
     "TravelersTitlesMixin",
-    "EcForecastMixin"
+    "EcForecastMixin",
+    "DhClientApiMixin"
   ],
   "injectors": {
     "defaultRequire": 0

@@ -21,7 +21,8 @@ Everything can be changed in game: **Mods** > **Planarium Panorama** > **Config*
 ## Optional integrations
 
 Detected automatically: Dynamic Surroundings, AmbientSounds, Contraption Lights, Serene Seasons, Enhanced Celestials 2,
-Traveler's Titles, Better Clouds and Snow! Real Magic.
+Traveler's Titles, Better Clouds, Snow! Real Magic, Alex's Caves, Distant Horizons and
+[NeoVoxy (JohnSnow)](https://github.com/NHblock-Johnsnow/neo-voxy-multiversion) (the scenery can go past the render distance).
 
 ## Requirements
 
