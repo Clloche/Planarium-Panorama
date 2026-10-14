@@ -23,7 +23,8 @@ public abstract class LevelWeatherMixin {
 
     private boolean planariumview$isJar() {
         Object self = this;
-        return self instanceof ClientLevel level && level.dimensionTypeRegistration().is(ArsNouveau.DIMENSION_TYPE_KEY);
+        return self instanceof ClientLevel level && com.matthieu.planariumview.Config.enabled()
+                && level.dimensionTypeRegistration().is(ArsNouveau.DIMENSION_TYPE_KEY);
     }
 
     @Inject(method = "getRainLevel", at = @At("HEAD"), cancellable = true)

@@ -88,11 +88,13 @@ public final class ClientView {
                 (modContainer, parent) -> ConfigScreen.create(parent));
         NeoForge.EVENT_BUS.addListener(ClientView::onRenderStage);
         NeoForge.EVENT_BUS.addListener(ClientView::onLoggingOut);
+        NeoForge.EVENT_BUS.addListener(ClientView::sendToggle);
         JarInteriorBiome.init();
         WeatherView.init();
         LightningView.init();
         LunarClient.init();
         SeasonColors.init();
+        DistantHorizonsCompat.init();
         container.getEventBus().addListener(net.neoforged.fml.event.lifecycle.FMLClientSetupEvent.class,
                 event -> event.enqueueWork(() -> {
                     WallColors.register();
@@ -197,35 +199,73 @@ public final class ClientView {
 
     /** Reconstruit le decor geant et les miniatures avec les options actuelles (appele par le menu de config). */
     /**
-     * Rayon de vue affiche : celui du serveur, sauf :
-     * - brouillard "Rayon de vue" : pas plus grand que la distance d'affichage du joueur (en chunks), pour que le decor
-     *   et son brouillard s'arretent au meme chiffre (pas de limite avec Voxy ou Distant Horizons, qui voient plus loin) ;
+     * Rayon de vue affiche : celui du serveur, mais jamais plus grand que la distance d'affichage du joueur (en chunks),
+     * sauf avec Voxy (qui fait dessiner le jeu bien plus loin). Ensuite :
      * - brouillard "Distance d'affichage" : seulement ce que le brouillard laisse voir. Il finit a la distance d'affichage
-     *   en blocs normaux, et un bloc du decor en fait 32 : environ la moitie de la distance d'affichage, plus un bloc de marge.
-     *   Les blocs plus loin seraient caches par le brouillard : inutile de les construire.
+     *   en blocs normaux, et un bloc du decor en fait 32 : environ la moitie de la distance d'affichage, plus un bloc de marge ;
+     * - sinon : le decor, son mur de brouillard et le dome des cavernes doivent rester dans la distance de dessin du jeu
+     *   (avec une marge pour les coins et le haut), sinon ils seraient coupes net.
      */
     public static int viewRadius() {
         int renderDistance = Minecraft.getInstance().options.getEffectiveRenderDistance();
-        Config.Fog fog = Config.FOG.get();
-        if (fog == Config.Fog.RENDER_DISTANCE) {
+        int radius = voxy() ? currentRadius : Math.min(currentRadius, renderDistance);
+        if (Config.FOG.get() == Config.Fog.RENDER_DISTANCE) {
             int visible = (int) Math.ceil(renderDistance * 16.0 / GIANT) + 1;
-            return Math.max(1, Math.min(currentRadius, visible));
+            radius = Math.min(radius, visible);
+        } else {
+            radius = Math.min(radius, drawableRadius());
         }
-        if (fog == Config.Fog.VIEW_RADIUS && !lodMod()) {
-            return Math.max(1, Math.min(currentRadius, renderDistance));
-        }
-        return Math.max(1, currentRadius);
+        return Math.max(1, radius);
     }
 
-    private static Boolean lodMod;
-
-    /** Vrai si Voxy ou Distant Horizons est installe (vue lointaine au-dela de la distance d'affichage). */
-    private static boolean lodMod() {
-        if (lodMod == null) {
-            net.neoforged.fml.ModList mods = net.neoforged.fml.ModList.get();
-            lodMod = mods != null && (mods.isLoaded("voxy") || mods.isLoaded("distanthorizons"));
+    /** Plus grand rayon de vue dont le bord (avec le mur de brouillard ou le dome) reste dans la distance de dessin. */
+    private static int drawableRadius() {
+        float far = drawDistance();
+        if (far <= 0.0F) {
+            return Integer.MAX_VALUE;
         }
-        return lodMod;
+        return Math.max(1, (int) Math.floor((far * 0.6F - GIANT / 2.0F - 3.0F) / GIANT));
+    }
+
+    private static Boolean voxy;
+    private static java.lang.reflect.Field voxyConfig;
+    private static java.lang.reflect.Method voxyEnabled;
+    private static java.lang.reflect.Field voxyDistance;
+
+    /** Vrai si Voxy est installe. */
+    private static boolean voxy() {
+        if (voxy == null) {
+            net.neoforged.fml.ModList mods = net.neoforged.fml.ModList.get();
+            voxy = mods != null && mods.isLoaded("voxy");
+        }
+        return voxy;
+    }
+
+    /**
+     * Distance (en blocs) jusqu'ou le jeu dessine : 4 fois la distance d'affichage, ou bien plus avec Voxy
+     * (il l'allonge pendant le dessin du monde, comme dans son GameRenderer : sa distance en sections x 32 x 4).
+     */
+    static float drawDistance() {
+        float far = Minecraft.getInstance().gameRenderer.getDepthFar();
+        if (!voxy()) {
+            return far;
+        }
+        try {
+            if (voxyConfig == null) {
+                Class<?> config = Class.forName("me.cortex.voxy.client.config.VoxyConfig");
+                voxyConfig = config.getField("CONFIG");
+                voxyEnabled = config.getMethod("isRenderingEnabled");
+                voxyDistance = config.getField("sectionRenderDistance");
+            }
+            Object config = voxyConfig.get(null);
+            if (config != null && (Boolean) voxyEnabled.invoke(config)) {
+                return Math.max(far, ((Number) voxyDistance.get(config)).floatValue() * 32.0F * 4.0F);
+            }
+        } catch (Throwable e) {
+            // Autre version de Voxy : pas de limite.
+            return Float.MAX_VALUE;
+        }
+        return far;
     }
 
     /** Rayon de vue avec lequel le decor actuel a ete construit. */
@@ -243,7 +283,31 @@ public final class ClientView {
         MiniLight.rebuildAll();
     }
 
+    /** Dernier etat de l'interrupteur general envoye au serveur (null : rien d'envoye sur cette connexion). */
+    private static Boolean sentEnabled;
+
+    /** Previent le serveur quand l'interrupteur general change (et a la connexion) : OFF, il ne capture plus rien pour nous. */
+    private static void sendToggle(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
+        net.minecraft.client.multiplayer.ClientPacketListener connection = Minecraft.getInstance().getConnection();
+        if (connection == null || Minecraft.getInstance().player == null) {
+            return;
+        }
+        boolean enabled = Config.enabled();
+        if (sentEnabled != null && sentEnabled == enabled) {
+            return;
+        }
+        sentEnabled = enabled;
+        try {
+            if (connection.hasChannel(ViewTogglePayload.TYPE)) {
+                net.neoforged.neoforge.network.PacketDistributor.sendToServer(new ViewTogglePayload(enabled));
+            }
+        } catch (Exception e) {
+            LOGGER.debug("[Planarium Panorama] Interrupteur general non envoye au serveur", e);
+        }
+    }
+
     private static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        sentEnabled = null;
         dispose();
         MiniLight.clear();
         LunarClient.clear();
@@ -591,7 +655,7 @@ public final class ClientView {
             return;
         }
         // Dans la distance d'affichage, sinon le dessus serait coupe et laisserait voir le ciel.
-        float edge = Math.min(viewRadius() * GIANT + GIANT / 2.0F + 3.0F, mc.gameRenderer.getDepthFar() * 0.6F);
+        float edge = Math.min(viewRadius() * GIANT + GIANT / 2.0F + 3.0F, drawDistance() * 0.6F);
         if (caveDome == null || edge != caveDomeEdge) {
             caveDome = buildDome(caveDome, edge);
             caveDomeEdge = edge;

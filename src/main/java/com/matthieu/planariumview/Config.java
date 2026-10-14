@@ -33,6 +33,7 @@ public final class Config {
                 "On a multiplayer server, the server's file is the one that counts.");
         RADIUS = common
                 .comment("Radius (in blocks) captured around the Planarium. Each block appears 32 times bigger.",
+                        "On each player's screen, never larger than their render distance (in chunks), except with Voxy.",
                         "Above ~24, the scenery often goes past the render distance and the capture costs more on the server.")
                 .defineInRange("radius", 12, 1, 32);
         REFRESH_SECONDS = common
@@ -56,7 +57,6 @@ public final class Config {
                 .comment("Fog on the giant scenery.",
                         "OFF = no fog: every block within the view radius stays visible.",
                         "VIEW_RADIUS = the scenery fades into fog at its own edge (the end of the view radius), so it has no hard border.",
-                        "    The view radius is then never larger than your render distance (in chunks), except with Voxy or Distant Horizons.",
                         "RENDER_DISTANCE = the scenery fades into fog at your render distance, like the rest of the world.")
                 .defineEnum("fog", Fog.VIEW_RADIUS);
         CAVE_FOG = client

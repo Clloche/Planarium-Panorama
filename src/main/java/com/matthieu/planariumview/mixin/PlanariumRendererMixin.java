@@ -38,7 +38,8 @@ public abstract class PlanariumRendererMixin {
                                                   VertexConsumer consumer, RandomSource random, long seed, int overlay,
                                                   ModelData modelData, RenderType renderType) {
         // Bloc couvert de neige de Snow! Real Magic : le vrai bloc, puis la neige (voir SnowRealMagicCompat).
-        if (com.matthieu.planariumview.SnowRealMagicCompat.render(level, state, tile.pos, renderType, poseStack,
+        if (com.matthieu.planariumview.Config.enabled()
+                && com.matthieu.planariumview.SnowRealMagicCompat.render(level, state, tile.pos, renderType, poseStack,
                 (partState, partModel, pose) -> PlanariumRenderer.tesselateBlock(tile, renderer, level, partModel, partState,
                         tile.pos, pose, consumer, random, seed, overlay, ModelData.EMPTY, renderType))) {
             return;
@@ -80,7 +81,7 @@ public abstract class PlanariumRendererMixin {
         planariumview$miniWorld = miniData != null ? miniData.fakeRenderingWorld : null;
         com.matthieu.planariumview.MiniOutsideLight.check(tile);
         com.matthieu.planariumview.PlanariumFloor.render(tile, poseStack, buffers, packedLight);
-        if (tile.key != null) {
+        if (tile.key != null && com.matthieu.planariumview.Config.enabled()) {
             com.matthieu.planariumview.GiantSprites.markMini(PlanariumRenderer.structureRenderData.get(tile.key));
         }
     }
@@ -113,7 +114,8 @@ public abstract class PlanariumRendererMixin {
                                                 net.minecraft.world.level.block.entity.BlockEntity blockEntity, float partialTick,
                                                 PoseStack poseStack, net.minecraft.client.renderer.MultiBufferSource buffers,
                                                 int packedLight, int packedOverlay) {
-        if (com.matthieu.planariumview.AmbersolCompat.render(blockEntity, partialTick, poseStack, buffers)) {
+        if (com.matthieu.planariumview.Config.enabled()
+                && com.matthieu.planariumview.AmbersolCompat.render(blockEntity, partialTick, poseStack, buffers)) {
             return;
         }
         int light = packedLight;

@@ -20,7 +20,7 @@ public abstract class TravelersTitlesMixin {
 
     @ModifyVariable(method = "displayTitle", at = @At("HEAD"), argsOnly = true, ordinal = 0, require = 0)
     private Component planariumview$jarTitle(Component title) {
-        if (title == null || !"???".equals(title.getString())) {
+        if (title == null || !com.matthieu.planariumview.Config.enabled() || !"???".equals(title.getString())) {
             return title;
         }
         ClientLevel level = Minecraft.getInstance().level;

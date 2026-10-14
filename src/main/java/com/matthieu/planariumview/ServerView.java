@@ -94,6 +94,17 @@ public final class ServerView {
         }
     }
 
+    /** Joueurs qui ont mis Planarium Panorama sur OFF : rien n'est capture ni envoye pour eux. */
+    private static final java.util.Set<UUID> DISABLED = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    static void setEnabled(ServerPlayer player, boolean enabled) {
+        boolean changed = enabled ? DISABLED.remove(player.getUUID()) : DISABLED.add(player.getUUID());
+        if (changed) {
+            LOGGER.info("[Planarium Panorama] {} : vue {}", player.getGameProfile().getName(), enabled ? "ON" : "OFF");
+            update(player, true);
+        }
+    }
+
     @SubscribeEvent
     public static void onChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
@@ -116,6 +127,7 @@ public final class ServerView {
     public static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             removeTrack(player.server, player.getUUID());
+            DISABLED.remove(player.getUUID());
         }
     }
 
@@ -184,7 +196,7 @@ public final class ServerView {
         UUID id = player.getUUID();
         Track track = TRACKS.get(id);
 
-        if (!isPocket(level)) {
+        if (!isPocket(level) || DISABLED.contains(id)) {
             if (track != null) {
                 removeTrack(player.server, id);
                 PacketDistributor.sendToPlayer(player, OutsideViewPayload.clear(track.pocket.location()));

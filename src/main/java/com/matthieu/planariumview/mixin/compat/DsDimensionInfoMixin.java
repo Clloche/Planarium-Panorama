@@ -29,19 +29,24 @@ public abstract class DsDimensionInfoMixin {
     @Unique
     private boolean planariumview$jar;
 
+    @Unique
+    private int planariumview$bottom;
+
     @Inject(method = "<init>(Lnet/minecraft/world/level/Level;)V", at = @At("TAIL"), require = 0)
     private void planariumview$jarSeaLevel(Level world, CallbackInfo ci) {
         if (world.dimensionTypeRegistration().is(ArsNouveau.DIMENSION_TYPE_KEY)) {
             this.planariumview$jar = true;
-            this.seaLevel = world.getMinBuildHeight();
+            this.planariumview$bottom = world.getMinBuildHeight();
         }
     }
 
+    /** Integration OFF (ou Planarium Panorama OFF) : le niveau de la mer normal de Dynamic Surroundings. */
     @Inject(method = "getSeaLevel", at = @At("HEAD"), cancellable = true, require = 0)
     private void planariumview$seaLevel(CallbackInfoReturnable<Integer> cir) {
-        if (this.planariumview$jar && OutsideAmbience.active() && OutsideAmbience.underground()) {
-            cir.setReturnValue(1_000_000);
+        if (!this.planariumview$jar || !OutsideAmbience.active()) {
+            return;
         }
+        cir.setReturnValue(OutsideAmbience.underground() ? 1_000_000 : this.planariumview$bottom);
     }
 
     @Inject(method = "alwaysOutside", at = @At("HEAD"), cancellable = true, require = 0)

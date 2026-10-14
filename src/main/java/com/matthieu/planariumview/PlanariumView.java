@@ -56,6 +56,15 @@ public class PlanariumView {
                 LunarPayload.TYPE,
                 LunarPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> LunarClient.receive(payload)));
+        // Facultatif : un serveur sans cette version du mod ne bloque pas la connexion.
+        event.registrar("4").optional().playToServer(
+                ViewTogglePayload.TYPE,
+                ViewTogglePayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> {
+                    if (context.player() instanceof net.minecraft.server.level.ServerPlayer player) {
+                        ServerView.setEnabled(player, payload.enabled());
+                    }
+                }));
         event.registrar("4").playToClient(
                 LightningPayload.TYPE,
                 LightningPayload.STREAM_CODEC,

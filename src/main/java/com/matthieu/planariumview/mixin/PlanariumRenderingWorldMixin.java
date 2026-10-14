@@ -22,7 +22,7 @@ public abstract class PlanariumRenderingWorldMixin {
 
     @Inject(method = "getBlockState", at = @At("RETURN"), cancellable = true, require = 0)
     private void planariumview$jarGlass(BlockPos pos, CallbackInfoReturnable<BlockState> cir) {
-        if (!cir.getReturnValue().isAir() || LitRenderingWorld.isGiant(this)) {
+        if (!com.matthieu.planariumview.Config.enabled() || !cir.getReturnValue().isAir() || LitRenderingWorld.isGiant(this)) {
             return;
         }
         // Positions du gabarit : x et z de 0 a 31, y de 0 a 30 (le plancher du bocal est en y = -1, le plafond en y = 31).
