@@ -1,7 +1,7 @@
 {
   "planariumview.config.title": "Planarium Panorama",
   "planariumview.config.radius.value": "%s blocks",
-  "planariumview.config.radius.tooltip": "Blocks captured around the Planarium. Each one appears 32 times bigger. Never larger than your render distance (in chunks): with a smaller render distance, the scenery stops at that number of blocks.",
+  "planariumview.config.radius.tooltip": "Blocks captured around the Planarium. Each one appears 32 times bigger. Never larger than your render distance (in chunks): with a smaller render distance, the scenery stops at that number of blocks. No limit with Voxy or Distant Horizons.",
   "planariumview.config.refresh.value": "every %s s",
   "planariumview.config.refresh.off": "OFF (frozen snapshot)",
   "planariumview.config.refresh.tooltip": "How often the view updates. OFF = frozen snapshot.",

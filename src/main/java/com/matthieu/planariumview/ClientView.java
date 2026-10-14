@@ -199,10 +199,25 @@ public final class ClientView {
     /**
      * Rayon de vue affiche : celui du serveur, mais pas plus grand que la distance d'affichage du joueur (en chunks).
      * Avec une petite distance d'affichage, le decor s'arrete donc au meme chiffre.
+     * Avec Voxy ou Distant Horizons, le monde se voit bien plus loin que la distance d'affichage : pas de limite.
      */
     public static int viewRadius() {
+        if (lodMod()) {
+            return Math.max(1, currentRadius);
+        }
         int renderDistance = Minecraft.getInstance().options.getEffectiveRenderDistance();
         return Math.max(1, Math.min(currentRadius, renderDistance));
+    }
+
+    private static Boolean lodMod;
+
+    /** Vrai si Voxy ou Distant Horizons est installe (vue lointaine au-dela de la distance d'affichage). */
+    private static boolean lodMod() {
+        if (lodMod == null) {
+            net.neoforged.fml.ModList mods = net.neoforged.fml.ModList.get();
+            lodMod = mods != null && (mods.isLoaded("voxy") || mods.isLoaded("distanthorizons"));
+        }
+        return lodMod;
     }
 
     /** Rayon de vue avec lequel le decor actuel a ete construit. */
