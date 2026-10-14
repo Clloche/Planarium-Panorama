@@ -314,7 +314,13 @@ public final class WeatherView {
         return false;
     }
 
-    /** Bruit de pluie quand il pleut juste a cote du Planarium, comme vanilla (plus sourd s'il est a l'abri). */
+    /**
+     * Bruit de pluie dans le bocal, fait comme celui de Minecraft (LevelRenderer.tickRain) : le son part d'un endroit ou
+     * la pluie tombe autour du joueur (a 10 blocs au plus, en hauteur aussi), et il est assourdi si cet endroit est au-dessus
+     * de lui alors qu'un toit le couvre. Loin sous un toit, plus rien. Comme le son vient d'un vrai endroit, Dynamic
+     * Surroundings (echo, sons etouffes derriere les murs) le traite comme la pluie du dehors.
+     * Si le Planarium lui-meme est a l'abri dehors, le plafond du bocal joue le role du toit.
+     */
     private static void onClientTick(ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
         ClientLevel level = mc.level;
@@ -325,11 +331,7 @@ public final class WeatherView {
         if (rain <= 0.0F) {
             return;
         }
-        RandomSource random = level.getRandom();
-        if (random.nextInt(3) >= rainSoundTime++) {
-            return;
-        }
-        rainSoundTime = 0;
+        // Il doit pleuvoir (pas neiger) juste a cote du Planarium, dehors.
         boolean nearby = false;
         for (int i = Math.max(0, radius - 2); i <= Math.min(size - 1, radius + 2) && !nearby; i++) {
             for (int j = Math.max(0, radius - 2); j <= Math.min(size - 1, radius + 2); j++) {
@@ -343,15 +345,45 @@ public final class WeatherView {
         if (!nearby) {
             return;
         }
-        boolean openAbove = tops[radius * size + radius] <= planarium.getY() + 1;
-        Vec3 pos = mc.player.position();
-        // Sous un toit construit dans le bocal, la pluie s'entend assourdie, comme sous un toit dehors.
-        if (openAbove && !roofedInJar(level, mc.player.blockPosition())) {
-            level.playLocalSound(pos.x, pos.y, pos.z, SoundEvents.WEATHER_RAIN, SoundSource.WEATHER,
-                    0.2F * rain, 1.0F, false);
-        } else {
-            level.playLocalSound(pos.x, pos.y, pos.z, SoundEvents.WEATHER_RAIN_ABOVE, SoundSource.WEATHER,
-                    0.1F * rain, 0.5F, false);
+        boolean planariumSheltered = tops[radius * size + radius] > planarium.getY() + 1;
+        net.minecraft.core.BlockPos player = mc.player.blockPosition();
+        RandomSource random = level.getRandom();
+        net.minecraft.core.BlockPos landing = null;
+        for (int attempt = 0; attempt < 20 && landing == null; attempt++) {
+            int x = player.getX() + random.nextInt(21) - 10;
+            int z = player.getZ() + random.nextInt(21) - 10;
+            if (x < 0 || z < 0 || x > JarWalls.MAX_Y - 1 || z > JarWalls.MAX_Y - 1) {
+                continue;
+            }
+            int top = planariumSheltered ? JarWalls.MAX_Y : rainTop(level, x, z);
+            if (top >= player.getY() - 10 && top <= player.getY() + 10) {
+                landing = new net.minecraft.core.BlockPos(x, top, z);
+            }
         }
+        if (landing == null || random.nextInt(3) >= rainSoundTime++) {
+            return;
+        }
+        rainSoundTime = 0;
+        boolean covered = planariumSheltered || roofedInJar(level, player);
+        if (landing.getY() > player.getY() + 1 && covered) {
+            level.playLocalSound(landing, SoundEvents.WEATHER_RAIN_ABOVE, SoundSource.WEATHER, 0.1F, 0.5F, false);
+        } else {
+            level.playLocalSound(landing, SoundEvents.WEATHER_RAIN, SoundSource.WEATHER, 0.2F, 1.0F, false);
+        }
+    }
+
+    /** Bloc ou la pluie tombe dans cette colonne du bocal : le premier bloc qui l'arrete sous le plafond (pas le plafond). */
+    private static int rainTop(ClientLevel level, int x, int z) {
+        net.minecraft.world.level.block.Block boundary = net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(
+                ResourceLocation.fromNamespaceAndPath("ars_nouveau", "dim_boundary"));
+        net.minecraft.core.BlockPos.MutableBlockPos pos = new net.minecraft.core.BlockPos.MutableBlockPos(x, JarWalls.MAX_Y - 1, z);
+        for (int y = JarWalls.MAX_Y - 1; y >= 0; y--) {
+            pos.setY(y);
+            net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
+            if (state.is(boundary) || state.blocksMotion() || !state.getFluidState().isEmpty()) {
+                return y;
+            }
+        }
+        return 0;
     }
 }
