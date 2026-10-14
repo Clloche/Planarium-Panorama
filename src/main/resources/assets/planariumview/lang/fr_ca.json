@@ -45,5 +45,7 @@
   "planariumview.config.cave_fog.tooltip": "Couleur du brouillard autour du décor quand le Planarium est dans une caverne fermée.\n\nVanilla : la couleur de brouillard du biome du Planarium, plus sombre la nuit et sous la pluie, comme les cavernes vanilla.\n\nSombre : noir, seulement au fond d'une caverne sans aucune vue vers dehors. Ailleurs dans une caverne, c'est la couleur Vanilla.\n\nUn biome avec sa propre couleur de brouillard (comme ceux d'Alex's Caves) garde toujours cette couleur.",
   "planariumview.config.cave_fog.vanilla": "Vanilla",
   "planariumview.config.cave_fog.dark": "Sombre",
-  "planariumview.config.reset.tooltip": "Remet toutes les options à leur valeur par défaut. C'est sauvegardé tout de suite : on ne peut pas revenir en arrière."
+  "planariumview.config.reset.tooltip": "Remet toutes les options à leur valeur par défaut. C'est sauvegardé tout de suite : on ne peut pas revenir en arrière.",
+  "planariumview.config.lunar_events": "Événements lunaires (Enhanced Celestials 2)",
+  "planariumview.config.lunar_events.tooltip": "La lune du bocal suit l'événement lunaire du monde du Planarium : lune de sang, lune bleue, lune des moissons... (couleur, taille et texture de la lune, et teinte de la lumière). Demande le ciel synchronisé (Éclairage pas à OFF)."
 }

@@ -37,9 +37,10 @@ public final class WeatherView {
     private static final int CELLS = 2;
     /**
      * Taille des gouttes et des flocons. A 1, ils ont la taille normale du jeu et paraissent minuscules
-     * a cote du decor geant ; a 32, ils seraient a l'echelle du decor. 8 est un compromis.
+     * a cote du decor geant ; a 32, ils seraient a l'echelle du decor. 16 : nettement plus gros, sans devenir
+     * des traits enormes.
      */
-    private static final float DROP_SCALE = 8.0F;
+    private static final float DROP_SCALE = 16.0F;
     /** Hauteur de pluie dessinee au-dessus et au-dessous de la camera. */
     private static final float HEIGHT = 192.0F;
     private static final int SKY_LIGHT = LightTexture.pack(0, 15);
@@ -287,6 +288,27 @@ public final class WeatherView {
 
     // ------------------------------------------------------------------ son
 
+    /**
+     * Vrai si un toit construit dans le bocal couvre cette position : un bloc qui arrete la pluie entre la tete du joueur
+     * et le plafond du bocal (le plafond lui-meme ne compte pas).
+     */
+    static boolean roofedInJar(ClientLevel level, net.minecraft.core.BlockPos feet) {
+        net.minecraft.world.level.block.Block boundary = net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(
+                ResourceLocation.fromNamespaceAndPath("ars_nouveau", "dim_boundary"));
+        net.minecraft.core.BlockPos.MutableBlockPos pos = feet.mutable();
+        for (int y = feet.getY() + 2; y < level.getMaxBuildHeight(); y++) {
+            pos.setY(y);
+            net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
+            if (state.is(boundary)) {
+                return false;
+            }
+            if (state.blocksMotion() || !state.getFluidState().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Bruit de pluie quand il pleut juste a cote du Planarium, comme vanilla (plus sourd s'il est a l'abri). */
     private static void onClientTick(ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
@@ -318,7 +340,8 @@ public final class WeatherView {
         }
         boolean openAbove = tops[radius * size + radius] <= planarium.getY() + 1;
         Vec3 pos = mc.player.position();
-        if (openAbove) {
+        // Sous un toit construit dans le bocal, la pluie s'entend assourdie, comme sous un toit dehors.
+        if (openAbove && !roofedInJar(level, mc.player.blockPosition())) {
             level.playLocalSound(pos.x, pos.y, pos.z, SoundEvents.WEATHER_RAIN, SoundSource.WEATHER,
                     0.2F * rain, 1.0F, false);
         } else {

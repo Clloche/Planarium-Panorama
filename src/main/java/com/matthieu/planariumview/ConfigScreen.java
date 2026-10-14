@@ -47,6 +47,7 @@ public final class ConfigScreen {
         boolean clPresent = present("xyz.atmerek.contraptionlights.light.color.ColorLightEngine");
         boolean dsPresent = present("org.orecruncher.dsurround.config.DimensionInfo");
         boolean asPresent = present("team.creative.ambientsounds.AmbientSounds");
+        boolean ecPresent = present("dev.corgitaco.enhancedcelestials2core.EnhancedCelestials");
 
         // Options du joueur grisees quand l'interrupteur general est OFF (si elles sont possibles par ailleurs).
         List<Gated> gated = new ArrayList<>();
@@ -106,6 +107,8 @@ public final class ConfigScreen {
                 Config.OUTSIDE_AMBIENCE.getDefault(), Config.OUTSIDE_AMBIENCE::get, Config.OUTSIDE_AMBIENCE::set);
         Option<Boolean> ambientSounds = integration("ambient_sounds", "AmbientSounds", asPresent,
                 Config.AMBIENT_SOUNDS.getDefault(), Config.AMBIENT_SOUNDS::get, Config.AMBIENT_SOUNDS::set);
+        Option<Boolean> lunar = integration("lunar_events", "Enhanced Celestials 2", ecPresent,
+                Config.LUNAR_EVENTS.getDefault(), Config.LUNAR_EVENTS::get, Config.LUNAR_EVENTS::set);
 
         gated.add(new Gated(lighting, () -> true));
         gated.add(new Gated(biome, () -> true));
@@ -116,6 +119,7 @@ public final class ConfigScreen {
         gated.add(new Gated(color, () -> clPresent));
         gated.add(new Gated(ambience, () -> dsPresent));
         gated.add(new Gated(ambientSounds, () -> asPresent));
+        gated.add(new Gated(lunar, () -> ecPresent));
         boolean enabled = Config.ENABLED.get();
         for (Gated g : gated) {
             g.option().setAvailable(enabled && g.possible().getAsBoolean());
@@ -142,7 +146,7 @@ public final class ConfigScreen {
                 .build();
 
         dirty = false;
-        for (Option<?> option : List.of(master, lighting, radius, biome, weather, clouds, fog, refresh, color, ambience, ambientSounds, caveFog)) {
+        for (Option<?> option : List.of(master, lighting, radius, biome, weather, clouds, fog, refresh, color, ambience, ambientSounds, lunar, caveFog)) {
             autoSave(option);
         }
 
@@ -176,6 +180,7 @@ public final class ConfigScreen {
                         .option(color)
                         .option(ambience)
                         .option(ambientSounds)
+                        .option(lunar)
                         .build())
                 .save(ConfigScreen::saveToDisk)
                 .build();

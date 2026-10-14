@@ -16,8 +16,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  *
  * - Niveau de la mer : tout en bas, sauf si le Planarium est sous terre dehors (alors on fait croire
  *   a Dynamic Surroundings qu'on est sous terre, pour jouer l'ambiance de caverne comme a cote du Planarium).
- * - "Toujours dehors" : vrai si le Planarium est a l'air libre (sons du biome), faux s'il est abrite
- *   (le plafond du bocal fait alors croire a Dynamic Surroundings qu'on est a l'interieur : pas de sons de biome).
+ * - "Toujours dehors" : toujours faux. Planarium a l'air libre : le plafond du bocal ne compte pas comme toit
+ *   (DsCeilingScannerMixin), mais un toit construit dans le bocal oui. Planarium abrite : le plafond compte
+ *   (on est a l'interieur : pas de sons de biome).
  */
 @Mixin(targets = "org.orecruncher.dsurround.config.DimensionInfo", remap = false)
 public abstract class DsDimensionInfoMixin {
@@ -45,8 +46,10 @@ public abstract class DsDimensionInfoMixin {
 
     @Inject(method = "alwaysOutside", at = @At("HEAD"), cancellable = true, require = 0)
     private void planariumview$alwaysOutside(CallbackInfoReturnable<Boolean> cir) {
+        // Jamais "toujours dehors" : le plafond du bocal est ignore quand le Planarium est a l'air libre
+        // (DsCeilingScannerMixin), et les toits construits dans le bocal comptent.
         if (this.planariumview$jar && OutsideAmbience.active()) {
-            cir.setReturnValue(!OutsideAmbience.sheltered());
+            cir.setReturnValue(false);
         }
     }
 }

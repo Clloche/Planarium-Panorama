@@ -219,6 +219,11 @@ public final class ServerView {
         } catch (Exception e) {
             logOnce("ciel", e);
         }
+        // Evenement lunaire d'Enhanced Celestials du monde d'origine (envoye seulement s'il change).
+        ServerLevel lunarSource = player.server.getLevel(track.source.dimension());
+        if (lunarSource != null) {
+            LunarServer.send(player, track.pocket.location(), lunarSource);
+        }
         try {
             sendAmbience(player, track);
         } catch (Exception e) {
@@ -572,6 +577,7 @@ public final class ServerView {
     }
 
     private static void removeTrack(MinecraftServer server, UUID id) {
+        LunarServer.forget(id);
         Track track = TRACKS.remove(id);
         if (track == null || track.ticketChunks < 0) {
             return;

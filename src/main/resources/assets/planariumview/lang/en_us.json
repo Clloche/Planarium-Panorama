@@ -45,5 +45,7 @@
   "planariumview.config.cave_fog.tooltip": "Fog color around the scenery when the Planarium is in a closed cave.\n\nVanilla: the fog color of the Planarium's biome, darker at night and in the rain, like vanilla caves.\n\nDark: black, only deep in a cave with no view of the outside at all. Elsewhere in a cave, the Vanilla color is used.\n\nA biome with its own fog color (like Alex's Caves biomes) always keeps that color.",
   "planariumview.config.cave_fog.vanilla": "Vanilla",
   "planariumview.config.cave_fog.dark": "Dark",
-  "planariumview.config.reset.tooltip": "Puts every option back to its default value. It is saved right away: it can't be undone."
+  "planariumview.config.reset.tooltip": "Puts every option back to its default value. It is saved right away: it can't be undone.",
+  "planariumview.config.lunar_events": "Lunar events (Enhanced Celestials 2)",
+  "planariumview.config.lunar_events.tooltip": "The jar's moon follows the lunar event of the Planarium's world: blood moon, blue moon, harvest moon... (moon color, size and texture, and the tint of the light). Needs the synced sky (Lighting not OFF)."
 }

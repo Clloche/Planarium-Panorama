@@ -91,6 +91,7 @@ public final class ClientView {
         JarInteriorBiome.init();
         WeatherView.init();
         LightningView.init();
+        LunarClient.init();
         SeasonColors.init();
         container.getEventBus().addListener(net.neoforged.fml.event.lifecycle.FMLClientSetupEvent.class,
                 event -> event.enqueueWork(() -> {
@@ -210,6 +211,7 @@ public final class ClientView {
     private static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         dispose();
         MiniLight.clear();
+        LunarClient.clear();
     }
 
     private static void dispose() {
@@ -384,6 +386,7 @@ public final class ClientView {
             }
 
             BakedModel model = dispatcher.getBlockModel(renderState);
+            boolean gameRenderer = FabricModels.needsGameRenderer(model);
             // Les morceaux de modele qui depassent dans la case du Planarium entreraient dans le bocal.
             BlockPos planariumCell = new BlockPos(radius, radius, radius);
             if (JarClippedModel.touches(pos.pos, planariumCell)) {
@@ -416,6 +419,18 @@ public final class ClientView {
                         rt -> new BufferBuilder(data.getByteBuffer(rt), rt.mode(), rt.format()));
                 if (renderState.getRenderShape() != RenderShape.MODEL) {
                     continue;
+                }
+                if (renderState.getFluidState().isEmpty() && isModel && gameRenderer
+                        && !(model instanceof JarClippedModel)) {
+                    // Bloc couvert de neige de Snow! Real Magic, etc. : rendu du jeu (voir FabricModels).
+                    try {
+                        modelRenderer.tesselateBlock(data.fakeRenderingWorld, model, renderState, pos.pos, matrix, builder,
+                                true, random, renderState.getSeed(pos.pos), OverlayTexture.NO_OVERLAY, ModelData.EMPTY,
+                                renderType);
+                        continue;
+                    } catch (Exception e) {
+                        LOGGER.debug("[Planarium View] Bloc (rendu du jeu) ignore", e);
+                    }
                 }
                 if (renderState.getFluidState().isEmpty() && isModel) {
                     try {

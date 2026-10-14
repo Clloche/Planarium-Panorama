@@ -24,6 +24,7 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue COLORED_LIGHT;
     public static final ModConfigSpec.BooleanValue OUTSIDE_AMBIENCE;
     public static final ModConfigSpec.BooleanValue AMBIENT_SOUNDS;
+    public static final ModConfigSpec.BooleanValue LUNAR_EVENTS;
     public static final ModConfigSpec.EnumValue<CaveFog> CAVE_FOG;
 
     static {
@@ -85,6 +86,10 @@ public final class Config {
                 .comment("AmbientSounds plays the sounds of the Planarium's surroundings inside the jar (its dimension, biome,",
                         "weather, height and nearby blocks). Requires AmbientSounds.")
                 .define("ambientSounds", true);
+        LUNAR_EVENTS = client
+                .comment("Enhanced Celestials 2: the jar's moon follows the lunar event of the Planarium's world",
+                        "(blood moon, blue moon, harvest moon...). Requires Enhanced Celestials 2 and the synced sky.")
+                .define("lunarEvents", true);
         CLIENT_SPEC = client.build();
     }
 
@@ -147,6 +152,10 @@ public final class Config {
     /** Obscurite noire dans les cavernes fermees. */
     public static boolean darkCaves() {
         return enabled() && CAVE_FOG.get() == CaveFog.DARK;
+    }
+
+    public static boolean lunarEvents() {
+        return enabled() && LUNAR_EVENTS.get();
     }
 
     public static boolean outsideAmbience() {

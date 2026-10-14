@@ -21,4 +21,12 @@ public abstract class LevelDayTimeMixin {
             cir.setReturnValue(SkySync.dayTime(level));
         }
     }
+
+    /** Meme heure par l'autre methode (Enhanced Celestials lit celle-ci). */
+    @Inject(method = "dayTime", at = @At("HEAD"), cancellable = true, require = 0)
+    private void planariumview$dayTimeShort(CallbackInfoReturnable<Long> cir) {
+        if ((Object) this instanceof ClientLevel level && SkySync.skyActive(level)) {
+            cir.setReturnValue(SkySync.dayTime(level));
+        }
+    }
 }

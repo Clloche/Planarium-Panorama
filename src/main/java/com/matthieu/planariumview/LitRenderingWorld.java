@@ -37,7 +37,8 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
     static int combineSky(int a, int b) {
         float h = curve(a) * curve(b);
         float ratio = 4.0F * h / (1.0F + 3.0F * h);
-        return Math.round(Math.min(15.0F, ratio * 15.0F));
+        // Arrondi vers le haut (un peu) : la lumiere de la miniature baissait plus vite que dans le bocal.
+        return (int) Math.min(15.0F, (float) Math.ceil(ratio * 15.0F - 0.25F));
     }
 
     private static float curve(int level) {
@@ -249,6 +250,23 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
         return 0;
     }
 
+    /** Interieur du bocal, en positions du gabarit (0 a 31) : la miniature seulement, pas le decor geant. */
+    private static final int JAR_INSIDE = 32;
+
+    /**
+     * Miniature : les blocs qui touchent une paroi de verre recoivent un peu plus de ciel (la lumiere du dehors
+     * passe par le verre juste a cote), pour qu'ils ne paraissent pas plus sombres que dans le bocal.
+     */
+    private int nearGlass(BlockPos pos, int sky) {
+        if (giant || sky >= 15 || sky <= 0) {
+            return sky;
+        }
+        int x = pos.getX();
+        int z = pos.getZ();
+        boolean edge = x == 0 || z == 0 || x == JAR_INSIDE - 1 || z == JAR_INSIDE - 1;
+        return edge ? Math.min(15, sky + 2) : sky;
+    }
+
     @Override
     public int getBrightness(LightLayer layer, BlockPos pos) {
         if (light == null) {
@@ -263,6 +281,6 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
             return layer == LightLayer.SKY ? sky(15) : 0;
         }
         int value = light[(x * sizeY + y) * sizeZ + z] & 0xFF;
-        return layer == LightLayer.SKY ? sky(value >> 4) : Math.max(value & 15, outside(pos));
+        return layer == LightLayer.SKY ? sky(nearGlass(pos, value >> 4)) : Math.max(value & 15, outside(pos));
     }
 }

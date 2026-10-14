@@ -6,6 +6,7 @@
   "client": [
     "DsDimensionInfoMixin",
     "DsBiomeScannerMixin",
+    "DsCeilingScannerMixin",
     "DsDimensionLibraryMixin",
     "DsBiomeVariablesMixin",
     "DsWeatherVariablesMixin",
@@ -23,7 +24,8 @@
     "YaclButtonMixin",
     "YaclEscapeMixin",
     "YaclUndoButtonMixin",
-    "TravelersTitlesMixin"
+    "TravelersTitlesMixin",
+    "EcForecastMixin"
   ],
   "injectors": {
     "defaultRequire": 0

@@ -51,6 +51,11 @@ public class PlanariumView {
                 AmbiencePayload.TYPE,
                 AmbiencePayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> OutsideAmbience.receive(payload)));
+        // Facultatif : un serveur sans cette version du mod ne bloque pas la connexion.
+        event.registrar("4").optional().playToClient(
+                LunarPayload.TYPE,
+                LunarPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> LunarClient.receive(payload)));
         event.registrar("4").playToClient(
                 LightningPayload.TYPE,
                 LightningPayload.STREAM_CODEC,

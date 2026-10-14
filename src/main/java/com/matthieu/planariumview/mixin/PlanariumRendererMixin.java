@@ -37,6 +37,16 @@ public abstract class PlanariumRendererMixin {
                                                   BakedModel model, BlockState state, BlockPos worldPos, PoseStack poseStack,
                                                   VertexConsumer consumer, RandomSource random, long seed, int overlay,
                                                   ModelData modelData, RenderType renderType) {
+        if (com.matthieu.planariumview.FabricModels.needsGameRenderer(model)) {
+            // Bloc couvert de neige de Snow! Real Magic, etc. : rendu du jeu, qui fabrique ses faces (voir FabricModels).
+            try {
+                renderer.tesselateBlock(level, model, state, tile.pos, poseStack, consumer, true, random, seed, overlay,
+                        modelData, renderType);
+                return;
+            } catch (Exception e) {
+                // On retombe sur le rendu d'Ars.
+            }
+        }
         PlanariumRenderer.tesselateBlock(tile, renderer, level, model, state, tile.pos, poseStack, consumer, random,
                 seed, overlay, modelData, renderType);
     }
@@ -74,6 +84,31 @@ public abstract class PlanariumRendererMixin {
         if (tile.key != null) {
             com.matthieu.planariumview.GiantSprites.markMini(PlanariumRenderer.structureRenderData.get(tile.key));
         }
+    }
+
+    /**
+     * Ars dessine les blocs speciaux de la miniature (coffres, bannieres...) en pleine lumiere : avec la vraie lumiere,
+     * ils sont eclaires comme les blocs autour d'eux (meme lumiere que le reste de la miniature).
+     */
+    @Redirect(method = "render(Lcom/hollingsworth/arsnouveau/common/block/tile/PlanariumTile;FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;II)V",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/client/renderer/blockentity/BlockEntityRenderer;render(Lnet/minecraft/world/level/block/entity/BlockEntity;FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;II)V"),
+            require = 0)
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void planariumview$blockEntityLight(net.minecraft.client.renderer.blockentity.BlockEntityRenderer renderer,
+                                                net.minecraft.world.level.block.entity.BlockEntity blockEntity, float partialTick,
+                                                PoseStack poseStack, net.minecraft.client.renderer.MultiBufferSource buffers,
+                                                int packedLight, int packedOverlay) {
+        int light = packedLight;
+        if (com.matthieu.planariumview.Config.realLighting()
+                && blockEntity.getLevel() instanceof com.matthieu.planariumview.LitRenderingWorld lit) {
+            try {
+                light = PlanariumRenderer.getLightColor(lit, blockEntity.getBlockState(), blockEntity.getBlockPos());
+            } catch (Exception e) {
+                light = packedLight;
+            }
+        }
+        renderer.render(blockEntity, partialTick, poseStack, buffers, light, packedOverlay);
     }
 
     @Inject(method = "generateRender", at = @At("RETURN"), require = 0)
