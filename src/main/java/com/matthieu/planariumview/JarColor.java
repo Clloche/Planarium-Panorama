@@ -103,6 +103,11 @@ public final class JarColor {
         return result;
     }
 
+    /** Vrai si de la lumiere coloree du dehors entre dans le bocal. */
+    public static boolean hasColor() {
+        return !failed && Config.coloredLight() && cells() != null;
+    }
+
     private static short[] cells() {
         short[] current = cells;
         if (current != null) {

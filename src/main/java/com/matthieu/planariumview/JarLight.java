@@ -69,11 +69,25 @@ public final class JarLight {
         }
         passable = next;
         relight();
-        if (table != null && level == tableLevel) {
+        // Un bloc pose ou casse dans le bocal. On ne redessine tout le bocal que si de la lumiere du dehors y entre
+        // (sinon rien ne change), et on ne fait recolorer Contraption Lights que si cette lumiere a une couleur :
+        // le recoloriage de tout le bocal faisait clignoter en blanc les lumieres colorees placees dans le bocal.
+        if (table != null && level == tableLevel && hasLight(table)) {
             Minecraft.getInstance().levelRenderer.setBlocksDirty(-1, 0, -1, 32, 32, 32);
-            WallColors.notifyChanged();
+            if (JarColor.hasColor()) {
+                WallColors.notifyChanged();
+            }
             FlywheelCompat.refresh(level);
         }
+    }
+
+    private static boolean hasLight(byte[] values) {
+        for (byte value : values) {
+            if (value > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean[] readPassable(ClientLevel level) {

@@ -356,9 +356,13 @@ public final class WeatherView {
                 continue;
             }
             int top = planariumSheltered ? JarWalls.MAX_Y : rainTop(level, x, z);
-            if (top >= player.getY() - 10 && top <= player.getY() + 10) {
-                landing = new net.minecraft.core.BlockPos(x, top, z);
+            if (top > player.getY() + 10) {
+                continue; // toit trop haut au-dessus : loin sous un abri, on n'entend rien
             }
+            // La pluie tombe dans tout le bocal a ciel ouvert (le bocal entier tient dans un seul bloc dehors) :
+            // en hauteur, on l'entend passer a cote de soi plutot que sur le sol tout en bas.
+            int soundY = Math.max(top, player.getY() - 4);
+            landing = new net.minecraft.core.BlockPos(x, soundY, z);
         }
         if (landing == null || random.nextInt(3) >= rainSoundTime++) {
             return;
