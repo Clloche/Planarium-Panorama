@@ -113,6 +113,9 @@ public abstract class PlanariumRendererMixin {
                                                 net.minecraft.world.level.block.entity.BlockEntity blockEntity, float partialTick,
                                                 PoseStack poseStack, net.minecraft.client.renderer.MultiBufferSource buffers,
                                                 int packedLight, int packedOverlay) {
+        if (com.matthieu.planariumview.AmbersolCompat.render(blockEntity, partialTick, poseStack, buffers)) {
+            return;
+        }
         int light = packedLight;
         if (com.matthieu.planariumview.Config.realLighting()
                 && planariumview$miniWorld instanceof com.matthieu.planariumview.LitRenderingWorld lit) {

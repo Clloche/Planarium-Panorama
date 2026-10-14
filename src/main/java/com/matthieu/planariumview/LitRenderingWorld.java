@@ -221,6 +221,9 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
     private net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> tintBiome;
 
     public void setTintBiome(net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> biome) {
+        if (this.tintBiome != biome) {
+            tintCache.clear();
+        }
         this.tintBiome = biome;
     }
 
@@ -228,7 +231,32 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
     public int getBlockTint(BlockPos pos, net.minecraft.world.level.ColorResolver resolver) {
         if (biomes == null) {
             if (tintBiome != null) {
-                return resolver.getColor(tintBiome.value(), pos.getX(), pos.getZ());
+                // Melange comme Minecraft (reglage "Melange des biomes") : sans lui, les mods qui varient la couleur
+                // d'un bloc a l'autre (Ambient Environment) donnaient une miniature tachetee.
+                long key = BlockPos.asLong(pos.getX(), 0, pos.getZ());
+                java.util.Map<Long, Integer> cache = tintCache.computeIfAbsent(resolver, k -> new java.util.HashMap<>());
+                Integer cached = cache.get(key);
+                if (cached != null) {
+                    return cached;
+                }
+                int radius = net.minecraft.client.Minecraft.getInstance().options.biomeBlendRadius().get();
+                net.minecraft.world.level.biome.Biome biome = tintBiome.value();
+                int r = 0;
+                int g = 0;
+                int b = 0;
+                int count = 0;
+                for (int dx = -radius; dx <= radius; dx++) {
+                    for (int dz = -radius; dz <= radius; dz++) {
+                        int color = resolver.getColor(biome, pos.getX() + dx, pos.getZ() + dz);
+                        r += (color >> 16) & 255;
+                        g += (color >> 8) & 255;
+                        b += color & 255;
+                        count++;
+                    }
+                }
+                int result = ((r / count) & 255) << 16 | ((g / count) & 255) << 8 | ((b / count) & 255);
+                cache.put(key, result);
+                return result;
             }
             return super.getBlockTint(pos, resolver);
         }

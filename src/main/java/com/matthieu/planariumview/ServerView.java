@@ -210,6 +210,7 @@ public final class ServerView {
         }
         // On attend que les chunks du bocal soient charges : sinon le recalcul serait saute.
         if (!track.relit) {
+            removeLightsBelowFloor(level);
             track.relit = relightPocket(level);
         }
 
@@ -476,6 +477,52 @@ public final class ServerView {
         if (!text.equals(track.lastSkyDiag)) {
             track.lastSkyDiag = text;
             LOGGER.info("[Planarium Panorama] Diagnostic du bocal : {}", text);
+        }
+    }
+
+    private static final java.util.Set<net.minecraft.resources.ResourceKey<Level>> FLOOR_CLEANED = new java.util.HashSet<>();
+    private static final net.minecraft.resources.ResourceLocation AMBERSOL_LIGHT =
+            net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("alexscaves", "ambersol_light");
+
+    /**
+     * Alex's Caves : avant le correctif (voir AcAmbersolLightMixin), un ambersol posait des lumieres invisibles a travers
+     * le plancher du bocal, qui restaient apres l'avoir casse et eclairaient le plancher. On les retire une fois.
+     */
+    private static void removeLightsBelowFloor(ServerLevel pocket) {
+        if (FLOOR_CLEANED.contains(pocket.dimension())
+                || !net.minecraft.core.registries.BuiltInRegistries.BLOCK.containsKey(AMBERSOL_LIGHT)) {
+            return;
+        }
+        net.minecraft.world.level.block.Block light = net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(AMBERSOL_LIGHT);
+        java.util.List<BlockPos> found = new java.util.ArrayList<>();
+        for (int cx = -1; cx <= 2; cx++) {
+            for (int cz = -1; cz <= 2; cz++) {
+                LevelChunk chunk = pocket.getChunkSource().getChunkNow(cx, cz);
+                if (chunk == null) {
+                    return;
+                }
+                for (int y = pocket.getMinBuildHeight(); y < JarWalls.MIN_Y; y++) {
+                    if (chunk.getSection(chunk.getSectionIndex(y)).hasOnlyAir()) {
+                        continue;
+                    }
+                    for (int x = 0; x < 16; x++) {
+                        for (int z = 0; z < 16; z++) {
+                            BlockPos pos = new BlockPos(cx * 16 + x, y, cz * 16 + z);
+                            if (chunk.getBlockState(pos).is(light)) {
+                                found.add(pos);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        FLOOR_CLEANED.add(pocket.dimension());
+        for (BlockPos pos : found) {
+            pocket.setBlock(pos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 2);
+        }
+        if (!found.isEmpty()) {
+            LOGGER.info("[Planarium Panorama] {} lumieres d'ambersol retirees sous le bocal ({})", found.size(),
+                    pocket.dimension().location());
         }
     }
 

@@ -794,7 +794,9 @@ public final class ClientView {
                 Integer stored = blockEntityLight.get(pos);
                 int light = stored != null ? stored : LevelRenderer.getLightColor(data.fakeRenderingWorld, pos);
                 try {
-                    renderer.render(blockEntity, partialTick, poseStack, blockEntityBuffers, light, OverlayTexture.NO_OVERLAY);
+                    if (!AmbersolCompat.render(blockEntity, partialTick, poseStack, blockEntityBuffers)) {
+                        renderer.render(blockEntity, partialTick, poseStack, blockEntityBuffers, light, OverlayTexture.NO_OVERLAY);
+                    }
                 } catch (Exception e) {
                     LOGGER.debug("[Planarium View] Bloc special ignore", e);
                 }
