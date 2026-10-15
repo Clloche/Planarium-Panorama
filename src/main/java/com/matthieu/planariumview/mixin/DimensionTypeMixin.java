@@ -43,4 +43,19 @@ public abstract class DimensionTypeMixin {
             cir.setReturnValue(SkySync.moonPhase(level));
         }
     }
+
+    /**
+     * Citadel (la bibliotheque d'Alex's Caves) remplace le calcul de l'heure du ciel par le sien, qui lit l'heure fixe
+     * de la dimension avant tout : celle d'un bocal d'Ars est minuit, d'ou un ciel immobile et la lune juste au-dessus.
+     * Pendant le dessin du ciel du bocal seulement, l'heure "fixe" devient l'heure synchronisee du dehors, qui avance
+     * normalement, convertie en jours de 24000 ticks comme Citadel les compte (l'Aether aux jours plus longs reste juste).
+     * Ailleurs, rien ne change : d'autres mods s'en servent pour savoir s'il fait jour.
+     */
+    @Inject(method = "fixedTime", at = @At("HEAD"), cancellable = true, require = 0)
+    private void planariumview$fixedTime(CallbackInfoReturnable<java.util.OptionalLong> cir) {
+        ClientLevel level = planariumview$level(this);
+        if (level != null && SkySync.inWeatherScope(level)) {
+            cir.setReturnValue(java.util.OptionalLong.of(SkySync.vanillaTicks(level)));
+        }
+    }
 }

@@ -632,6 +632,29 @@ public final class SkySync {
         return (float) (d * 2.0 + e) / 3.0F;
     }
 
+    /**
+     * Heure "a la vanilla" (jours de 24000 ticks) qui donne la meme position du soleil que timeOfDay : pour les mods
+     * qui recalculent eux-memes la position du soleil a partir des ticks (Citadel), meme dans l'Aether aux jours plus longs.
+     */
+    public static long vanillaTicks(ClientLevel level) {
+        double target = timeOfDay(level);
+        // La courbe de Minecraft (avance plus vite le jour que la nuit) monte de 0 a 1 : on la remonte par dichotomie.
+        double low = 0.0;
+        double high = 1.0;
+        for (int i = 0; i < 40; i++) {
+            double d = (low + high) / 2.0;
+            double value = (d * 2.0 + 0.5 - Math.cos(d * Math.PI) / 2.0) / 3.0;
+            if (value < target) {
+                low = d;
+            } else {
+                high = d;
+            }
+        }
+        long ticks = Math.round(((low + high) / 2.0 + 0.25) * 24000.0) % 24000L;
+        // Garde le meme numero de jour que l'heure synchronisee (la phase de la lune reste calculee a part).
+        return Math.floorDiv(dayTime(level), 24000L) * 24000L + ticks;
+    }
+
     public static int moonPhase(ClientLevel level) {
         net.minecraft.world.level.dimension.DimensionType source = sourceType(level);
         if (source != null) {

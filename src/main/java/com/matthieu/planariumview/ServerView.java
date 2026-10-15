@@ -77,6 +77,8 @@ public final class ServerView {
         String lastSkyDiag;
         /** Une modification de bloc dans la zone rend la prochaine capture necessaire. */
         boolean sceneryDirty = true;
+        /** Tick de la derniere capture (pour garder un ecart minimum entre deux captures). */
+        long lastCapture = Long.MIN_VALUE / 2;
 
         Track(ResourceKey<Level> pocket, GlobalPos source) {
             this.pocket = pocket;
@@ -99,6 +101,11 @@ public final class ServerView {
     /** Joueurs qui ont mis Planarium Panorama sur OFF : rien n'est capture ni envoye pour eux. */
     private static final java.util.Set<UUID> DISABLED = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
+    /** Marge autour de la zone captee : une lumiere placee jusqu'a 15 blocs plus loin peut l'eclairer. */
+    private static final long LIGHT_MARGIN = 15L;
+    /** Ecart minimum entre deux captures declenchees par des changements de blocs (5 secondes). */
+    private static final int MIN_CAPTURE_GAP = 5 * 20;
+
     /** Appele apres un changement de bloc, pour eviter les captures completes quand le decor est stable. */
     public static void markSceneryDirty(Level level, BlockPos pos) {
         if (!(level instanceof ServerLevel serverLevel) || !serverLevel.getServer().isSameThread()) {
@@ -110,9 +117,9 @@ public final class ServerView {
             }
             int radius = Math.max(track.lastRadius, Config.RADIUS.get());
             BlockPos center = track.source.pos();
-            // Une modification juste a l'exterieur peut changer la lumiere ou la hauteur de pluie au bord.
-            if (Math.abs((long) pos.getX() - center.getX()) <= radius + 1L
-                    && Math.abs((long) pos.getZ() - center.getZ()) <= radius + 1L) {
+            // Une modification a l'exterieur peut changer la lumiere a l'interieur (une torche eclaire jusqu'a 15 blocs).
+            if (Math.abs((long) pos.getX() - center.getX()) <= radius + LIGHT_MARGIN
+                    && Math.abs((long) pos.getZ() - center.getZ()) <= radius + LIGHT_MARGIN) {
                 track.sceneryDirty = true;
             }
         }
@@ -284,11 +291,14 @@ public final class ServerView {
 
         long now = player.server.getTickCount();
         int refresh = Config.REFRESH_SECONDS.get() * 20;
-        // Les changements de blocs declenchent une capture au prochain tick de suivi. La minuterie reste
-        // un filet de securite pour les donnees moddees qui changent sans appeler LevelChunk.setBlockState.
-        if (!force && (refresh <= 0 || (!track.sceneryDirty && now < track.nextRefresh))) {
+        // Les changements de blocs declenchent une capture au prochain tick de suivi, mais au plus toutes les 5 secondes
+        // (une ferme, un four ou de la redstone changent des blocs sans arret). La minuterie reste un filet de securite
+        // pour les donnees moddees qui changent sans appeler LevelChunk.setBlockState.
+        boolean dirtyReady = track.sceneryDirty && now >= track.lastCapture + MIN_CAPTURE_GAP;
+        if (!force && (refresh <= 0 || (!dirtyReady && now < track.nextRefresh))) {
             return;
         }
+        track.lastCapture = now;
         // Les entites ou donnees de biome moddees peuvent changer sans changement de bloc ; garde une capture de securite,
         // mais au plus une fois par minute par defaut, meme si une ancienne config contient encore la valeur 5.
         track.nextRefresh = now + Math.max(refresh, 20 * 60);
