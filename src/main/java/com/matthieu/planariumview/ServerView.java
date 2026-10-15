@@ -323,18 +323,23 @@ public final class ServerView {
         // mais au plus une fois par minute par defaut, meme si une ancienne config contient encore la valeur 5.
         track.nextRefresh = refresh > 0 ? now + Math.max(refresh, 20 * 60) : Long.MAX_VALUE;
 
+        long captureStart = System.nanoTime();
         Snapshot snap = capture(player.server, track, radius, force);
         if (snap == null) {
             return;
         }
         track.sceneryDirty = false;
+        long compareStart = System.nanoTime();
         boolean changed = !snap.tag().equals(track.lastSent) || !Arrays.equals(snap.light(), track.lastLight)
                 || !snap.biomePalette().equals(track.lastBiomePalette) || !Arrays.equals(snap.biomes(), track.lastBiomes)
                 || !Arrays.equals(snap.rainTops(), track.lastRainTops) || !Arrays.equals(snap.precip(), track.lastPrecip);
+        long compareNanos = System.nanoTime() - compareStart;
         if (!changed) {
             return;
         }
-        LOGGER.info("[Planarium Panorama] Envoi du decor : {}", describeSnapshotChanges(track, snap));
+        // Temps passe sur le fil du serveur (en solo, il partage le processeur avec le jeu).
+        LOGGER.info("[Planarium Panorama] Envoi du decor (capture={} ms, comparaison={} ms) : {}",
+                (compareStart - captureStart) / 1_000_000L, compareNanos / 1_000_000L, describeSnapshotChanges(track, snap));
         track.lastSent = snap.tag();
         track.lastLight = snap.light();
         track.lastBiomePalette = snap.biomePalette();

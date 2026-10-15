@@ -65,6 +65,24 @@ public final class GiantSprites {
         animated = spritesOf(data);
     }
 
+    /**
+     * Ajoute les textures animees de quelques blocs qui viennent d'apparaitre dans le decor geant,
+     * sans reparcourir tout le decor. (Celles des blocs disparus restent : sans effet visible.)
+     */
+    public static void add(java.util.Collection<BlockState> states) {
+        if (states.isEmpty() || !sodium()) {
+            return;
+        }
+        List<TextureAtlasSprite> extra = spritesOfStates(states);
+        if (extra.isEmpty()) {
+            return;
+        }
+        Set<TextureAtlasSprite> merged = new java.util.LinkedHashSet<>(animated);
+        if (merged.addAll(extra)) {
+            animated = new ArrayList<>(merged);
+        }
+    }
+
     /** Textures animees de chaque miniature (dessinee par Ars dans le Planarium). */
     private static final java.util.Map<StructureRenderData, List<TextureAtlasSprite>> MINI =
             java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
@@ -93,13 +111,20 @@ public final class GiantSprites {
         if (data == null || data.statePosCache == null || !sodium()) {
             return List.of();
         }
+        Set<BlockState> states = new HashSet<>();
+        for (CulledStatePos pos : data.statePosCache) {
+            states.add(pos.state);
+        }
+        return spritesOfStates(states);
+    }
+
+    private static List<TextureAtlasSprite> spritesOfStates(java.util.Collection<BlockState> states) {
         Set<TextureAtlasSprite> sprites = new HashSet<>();
         Set<BlockState> seen = new HashSet<>();
         RandomSource random = RandomSource.create(42L);
         Function<ResourceLocation, TextureAtlasSprite> atlas = Minecraft.getInstance().getTextureAtlas(InventoryMenu.BLOCK_ATLAS);
-        for (CulledStatePos pos : data.statePosCache) {
-            BlockState state = pos.state;
-            if (!seen.add(state)) {
+        for (BlockState state : states) {
+            if (state == null || !seen.add(state)) {
                 continue;
             }
             try {
