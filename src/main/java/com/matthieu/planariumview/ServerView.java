@@ -330,7 +330,10 @@ public final class ServerView {
         }
         track.sceneryDirty = false;
         long compareStart = System.nanoTime();
-        boolean changed = !snap.tag().equals(track.lastSent) || !Arrays.equals(snap.light(), track.lastLight)
+        // Capture declenchee par un changement de bloc : on sait deja que le decor a change, inutile de comparer
+        // toute la photo (10 a 15 ms). Si le bloc est revenu a son etat d'avant, le client ne trouvera rien a corriger.
+        boolean changed = (dirtyReady && track.lastSent != null)
+                || !snap.tag().equals(track.lastSent) || !Arrays.equals(snap.light(), track.lastLight)
                 || !snap.biomePalette().equals(track.lastBiomePalette) || !Arrays.equals(snap.biomes(), track.lastBiomes)
                 || !Arrays.equals(snap.rainTops(), track.lastRainTops) || !Arrays.equals(snap.precip(), track.lastPrecip);
         long compareNanos = System.nanoTime() - compareStart;
@@ -338,12 +341,13 @@ public final class ServerView {
             return;
         }
         // Temps passe sur le fil du serveur (en solo, il partage le processeur avec le jeu).
-        // La description des changements (diagnostic) parcourt aussi les blocs : elle est chronometree a part.
-        long describeStart = System.nanoTime();
-        String changes = describeSnapshotChanges(track, snap);
-        long describeNanos = System.nanoTime() - describeStart;
-        LOGGER.info("[Planarium Panorama] Envoi du decor (capture={} ms, comparaison={} ms, description={} ms) : {}",
-                (compareStart - captureStart) / 1_000_000L, compareNanos / 1_000_000L, describeNanos / 1_000_000L, changes);
+        LOGGER.info("[Planarium Panorama] Envoi du decor (capture={} ms, comparaison={} ms{})",
+                (compareStart - captureStart) / 1_000_000L, compareNanos / 1_000_000L,
+                dirtyReady ? ", apres changement de bloc" : "");
+        // Description detaillee des changements : elle parcourt aussi les blocs (10 a 50 ms), donc seulement en DEBUG.
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("[Planarium Panorama] Changements du decor : {}", describeSnapshotChanges(track, snap));
+        }
         track.lastSent = snap.tag();
         track.lastLight = snap.light();
         track.lastBiomePalette = snap.biomePalette();
