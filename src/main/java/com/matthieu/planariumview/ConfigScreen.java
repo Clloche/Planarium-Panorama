@@ -209,11 +209,11 @@ public final class ConfigScreen {
         return config.generateScreen(parent);
     }
 
-    /** Le menu ouvert en dernier : ses options sont moins larges (voir YaclOptionListMixin). */
+    /** Le menu ouvert en dernier : ses options sont assez larges pour afficher les valeurs des curseurs (voir YaclOptionListMixin). */
     private static YetAnotherConfigLib current;
 
     /** Largeur maximale des options de notre menu. */
-    public static final int ROW_WIDTH = 280;
+    public static final int ROW_WIDTH = 320;
 
     public static boolean isOurs(YetAnotherConfigLib config) {
         return config != null && config == current;

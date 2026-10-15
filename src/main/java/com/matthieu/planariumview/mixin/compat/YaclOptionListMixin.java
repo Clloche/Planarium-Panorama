@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Menu de configuration (YACL) : des options moins larges que la liste, centrees, pour notre menu seulement.
+ * Menu de configuration (YACL) : des options de largeur lisible, centrees, pour notre menu seulement.
  * La liste centre deja ses lignes selon leur largeur.
  */
 @Mixin(value = OptionListWidget.class, remap = false)
