@@ -108,8 +108,6 @@ public final class ServerView {
 
     /** Marge autour de la zone captee : une lumiere placee jusqu'a 15 blocs plus loin peut l'eclairer. */
     private static final long LIGHT_MARGIN = 15L;
-    /** Ecart minimum entre deux captures declenchees par des changements de blocs (5 secondes). */
-    private static final int MIN_CAPTURE_GAP = 5 * 20;
 
     /** Appele apres un changement de bloc, pour eviter les captures completes quand le decor est stable. */
     public static void markSceneryDirty(Level level, BlockPos pos) {
@@ -299,17 +297,21 @@ public final class ServerView {
         // Les changements de blocs declenchent une capture au prochain tick de suivi, mais au plus toutes les 5 secondes
         // (une ferme, un four ou de la redstone changent des blocs sans arret). La minuterie reste un filet de securite
         // pour les donnees moddees qui changent sans appeler LevelChunk.setBlockState.
-        boolean dirtyReady = track.sceneryDirty && now >= track.lastCapture + MIN_CAPTURE_GAP;
+        // Ecart minimum entre deux captures declenchees par des changements de blocs (option, 0 = OFF).
+        int blockGap = Config.BLOCK_UPDATE_SECONDS.get() * 20;
+        boolean dirtyReady = blockGap > 0 && track.sceneryDirty && now >= track.lastCapture + blockGap;
         boolean followUpReady = track.followUpAt != 0 && now >= track.followUpAt;
-        if (!force && (refresh <= 0 || (!dirtyReady && !followUpReady && now < track.nextRefresh))) {
+        // Secours OFF (0) : seulement les captures declenchees par les changements de blocs.
+        boolean backupReady = refresh > 0 && now >= track.nextRefresh;
+        if (!force && !dirtyReady && !followUpReady && !backupReady) {
             return;
         }
         track.lastCapture = now;
-        // Apres un changement de bloc : une capture de plus 5 secondes plus tard, avec la lumiere a jour.
-        track.followUpAt = dirtyReady ? now + MIN_CAPTURE_GAP : 0;
+        // Apres un changement de bloc : une capture de plus un peu plus tard (au moins 5 s), avec la lumiere a jour.
+        track.followUpAt = dirtyReady ? now + Math.max(blockGap, 5 * 20) : 0;
         // Les entites ou donnees de biome moddees peuvent changer sans changement de bloc ; garde une capture de securite,
         // mais au plus une fois par minute par defaut, meme si une ancienne config contient encore la valeur 5.
-        track.nextRefresh = now + Math.max(refresh, 20 * 60);
+        track.nextRefresh = refresh > 0 ? now + Math.max(refresh, 20 * 60) : Long.MAX_VALUE;
 
         Snapshot snap = capture(player.server, track, radius, force);
         if (snap == null) {

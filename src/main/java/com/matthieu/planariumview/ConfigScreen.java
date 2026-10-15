@@ -135,6 +135,16 @@ public final class ConfigScreen {
                         .formatValue(v -> Component.translatable(KEY + "radius.value", v)))
                 .available(!serverSide)
                 .build();
+        Option<Integer> blockUpdates = Option.<Integer>createBuilder()
+                .name(Component.translatable(KEY + "block_updates"))
+                .description(describeServer("block_updates", blockUpdatesLabel(Config.BLOCK_UPDATE_SECONDS.getDefault()), serverSide))
+                .binding(Config.BLOCK_UPDATE_SECONDS.getDefault(),
+                        () -> Math.max(0, Math.min(60, Config.BLOCK_UPDATE_SECONDS.get())),
+                        Config.BLOCK_UPDATE_SECONDS::set)
+                .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(0, 60).step(1)
+                        .formatValue(ConfigScreen::blockUpdatesLabel))
+                .available(!serverSide)
+                .build();
         Option<Integer> refresh = Option.<Integer>createBuilder()
                 .name(Component.translatable(KEY + "refresh"))
                 .description(describeServer("refresh", refreshLabel(toMinutes(Config.REFRESH_SECONDS.getDefault())), serverSide))
@@ -147,7 +157,7 @@ public final class ConfigScreen {
                 .build();
 
         dirty = false;
-        for (Option<?> option : List.of(master, lighting, radius, biome, weather, clouds, fog, refresh, color, ambience, ambientSounds, lunar, caveFog)) {
+        for (Option<?> option : List.of(master, lighting, radius, biome, weather, clouds, fog, blockUpdates, refresh, color, ambience, ambientSounds, lunar, caveFog)) {
             autoSave(option);
         }
 
@@ -167,8 +177,13 @@ public final class ConfigScreen {
                         .option(biome)
                         .option(weather)
                         .option(clouds)
-                        .option(refresh)
-                        // Groupe repliable, comme ceux de Better Clouds.
+                        // Groupes repliables, comme ceux de Better Clouds.
+                        .group(OptionGroup.createBuilder()
+                                .name(Component.translatable(KEY + "group.updates"))
+                                .collapsed(false)
+                                .option(blockUpdates)
+                                .option(refresh)
+                                .build())
                         .group(OptionGroup.createBuilder()
                                 .name(Component.translatable(KEY + "group.fog"))
                                 .collapsed(false)
@@ -315,6 +330,10 @@ public final class ConfigScreen {
 
     private static Component lightingLabel(Config.Lighting value) {
         return Component.translatable(KEY + "lighting." + value.name().toLowerCase(Locale.ROOT));
+    }
+
+    private static Component blockUpdatesLabel(Integer seconds) {
+        return seconds == 0 ? Component.translatable(KEY + "refresh.off") : Component.translatable(KEY + "block_updates.value", seconds);
     }
 
     private static Component refreshLabel(Integer minutes) {

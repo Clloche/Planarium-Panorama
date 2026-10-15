@@ -12,6 +12,7 @@ public final class Config {
     public static final ModConfigSpec COMMON_SPEC;
     public static final ModConfigSpec.IntValue RADIUS;
     public static final ModConfigSpec.IntValue REFRESH_SECONDS;
+    public static final ModConfigSpec.IntValue BLOCK_UPDATE_SECONDS;
 
     // --- Client ---
     public static final ModConfigSpec CLIENT_SPEC;
@@ -37,11 +38,15 @@ public final class Config {
                         "    https://github.com/NHblock-Johnsnow/neo-voxy-multiversion",
                         "Above ~24, the scenery often goes past the render distance and the capture costs more on the server.")
                 .defineInRange("radius", 12, 1, 32);
+        BLOCK_UPDATE_SECONDS = common
+                .comment("Block updates: a block change in the scenery triggers a new capture, at most this often (in seconds).",
+                        "Lower values show changes faster, but cost more on busy servers (farms, redstone...).",
+                        "0 = OFF (block changes only show with the backup refresh).")
+                .defineInRange("blockUpdateSeconds", 5, 0, 60);
         REFRESH_SECONDS = common
-                .comment("Backup refresh, in seconds (60 minimum; lower values count as 60).",
-                        "Block changes in the scenery already trigger a capture on their own, at most every 5 seconds.",
-                        "This backup refresh also catches what isn't a block (paintings, item frames, armor stands...).",
-                        "0 = OFF (frozen snapshot taken when entering the jar; block changes don't show either).")
+                .comment("Backup refresh, in seconds (60 minimum; lower values count as 60): a full new capture of the scenery.",
+                        "It catches what isn't a block (paintings, item frames, armor stands...), and block changes too if block updates are OFF.",
+                        "0 = OFF. With both OFF, the scenery is a frozen snapshot taken when entering the jar.")
                 .defineInRange("refreshSeconds", 60, 0, 3600);
         COMMON_SPEC = common.build();
 
