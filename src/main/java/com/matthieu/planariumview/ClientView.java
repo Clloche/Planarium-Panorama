@@ -439,6 +439,7 @@ public final class ClientView {
         }
         if (lastTemplate != null && currentDim != null) {
             pendingPatch = null;
+            pendingDiffNanos = 0L;
             diffGeneration++;
             pendingTemplate = lastTemplate;
             pendingLight = lastLight;

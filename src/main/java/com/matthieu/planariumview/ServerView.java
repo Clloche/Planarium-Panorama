@@ -338,8 +338,12 @@ public final class ServerView {
             return;
         }
         // Temps passe sur le fil du serveur (en solo, il partage le processeur avec le jeu).
-        LOGGER.info("[Planarium Panorama] Envoi du decor (capture={} ms, comparaison={} ms) : {}",
-                (compareStart - captureStart) / 1_000_000L, compareNanos / 1_000_000L, describeSnapshotChanges(track, snap));
+        // La description des changements (diagnostic) parcourt aussi les blocs : elle est chronometree a part.
+        long describeStart = System.nanoTime();
+        String changes = describeSnapshotChanges(track, snap);
+        long describeNanos = System.nanoTime() - describeStart;
+        LOGGER.info("[Planarium Panorama] Envoi du decor (capture={} ms, comparaison={} ms, description={} ms) : {}",
+                (compareStart - captureStart) / 1_000_000L, compareNanos / 1_000_000L, describeNanos / 1_000_000L, changes);
         track.lastSent = snap.tag();
         track.lastLight = snap.light();
         track.lastBiomePalette = snap.biomePalette();
