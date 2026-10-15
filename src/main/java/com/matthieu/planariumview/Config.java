@@ -39,16 +39,15 @@ public final class Config {
                         "Above ~24, the scenery often goes past the render distance and the capture costs more on the server.")
                 .defineInRange("radius", 12, 1, 32);
         BLOCK_UPDATE_SECONDS = common
-                .comment("Block updates: a block change in the scenery triggers a new capture, with at most this much delay (in seconds).",
-                        "A follow-up capture also runs after a block-triggered capture so lighting can settle; continuous changes can therefore cause captures at this interval.",
+                .comment("Block updates: a block change in the scenery triggers a new capture, at most this often (in seconds).",
                         "Lower values show changes faster, but cost more on busy servers (farms, redstone...).",
-                        "0 = OFF (block changes only show with the backup refresh).")
-                .defineInRange("blockUpdateSeconds", 5, 0, 60);
+                        "5 minimum (lower values count as 5). 0 = OFF (block changes only show with the backup refresh).")
+                .defineInRange("blockUpdateSeconds", 10, 0, 60);
         REFRESH_SECONDS = common
-                .comment("Backup refresh, in seconds (60 minimum; lower values count as 60): a full new capture of the scenery.",
+                .comment("Backup refresh, in seconds (60 to 1200, default 300; lower values count as 60): a full new capture of the scenery.",
                         "It catches what isn't a block (paintings, item frames, armor stands...), and block changes too if block updates are OFF.",
                         "0 = OFF. With both OFF, the scenery is a frozen snapshot taken when entering the jar.")
-                .defineInRange("refreshSeconds", 60, 0, 3600);
+                .defineInRange("refreshSeconds", 300, 0, 1200);
         COMMON_SPEC = common.build();
 
         ModConfigSpec.Builder client = new ModConfigSpec.Builder();

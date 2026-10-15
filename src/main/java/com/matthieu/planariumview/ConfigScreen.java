@@ -36,7 +36,7 @@ import java.util.function.Supplier;
 public final class ConfigScreen {
     private static final String KEY = "planariumview.config.";
     /** Rafraichissement de secours : curseur en minutes (0 = OFF, puis 1 a 30 min). */
-    private static final int MAX_REFRESH_MINUTES = 30;
+    private static final int MAX_REFRESH_MINUTES = 20;
 
     private ConfigScreen() {
     }
@@ -139,10 +139,11 @@ public final class ConfigScreen {
                 .name(Component.translatable(KEY + "block_updates"))
                 .description(describeServer("block_updates", blockUpdatesLabel(Config.BLOCK_UPDATE_SECONDS.getDefault()), serverSide))
                 .binding(Config.BLOCK_UPDATE_SECONDS.getDefault(),
-                        () -> Math.max(0, Math.min(60, Config.BLOCK_UPDATE_SECONDS.get())),
-                        Config.BLOCK_UPDATE_SECONDS::set)
-                .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(0, 60).step(1)
-                        .formatValue(ConfigScreen::blockUpdatesLabel))
+                        () -> blockUpdatesShown(Config.BLOCK_UPDATE_SECONDS.get()),
+                        v -> Config.BLOCK_UPDATE_SECONDS.set(v < MIN_BLOCK_UPDATE_SECONDS ? 0 : v))
+                // Glissiere : OFF, puis 5 a 60 s (la premiere position apres OFF est 5 s, le minimum).
+                .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(MIN_BLOCK_UPDATE_SECONDS - 1, 60).step(1)
+                        .formatValue(v -> blockUpdatesLabel(v < MIN_BLOCK_UPDATE_SECONDS ? 0 : v)))
                 .available(!serverSide)
                 .build();
         Option<Integer> refresh = Option.<Integer>createBuilder()
@@ -209,11 +210,11 @@ public final class ConfigScreen {
         return config.generateScreen(parent);
     }
 
-    /** Le menu ouvert en dernier : ses options sont assez larges pour afficher les valeurs des curseurs (voir YaclOptionListMixin). */
+    /** Le menu ouvert en dernier : ses options sont moins larges (voir YaclOptionListMixin). */
     private static YetAnotherConfigLib current;
 
     /** Largeur maximale des options de notre menu. */
-    public static final int ROW_WIDTH = 320;
+    public static final int ROW_WIDTH = 280;
 
     public static boolean isOurs(YetAnotherConfigLib config) {
         return config != null && config == current;
@@ -337,8 +338,19 @@ public final class ConfigScreen {
         return Component.translatable(KEY + "lighting." + value.name().toLowerCase(Locale.ROOT));
     }
 
+    /** Mises a jour des blocs : 5 s minimum ; sous ce minimum (mais pas OFF), la valeur compte comme 5 s. */
+    private static final int MIN_BLOCK_UPDATE_SECONDS = 5;
+
+    /** Position de la glissiere pour une valeur de la config (la position juste sous 5 s affiche OFF). */
+    private static int blockUpdatesShown(int seconds) {
+        if (seconds <= 0) {
+            return MIN_BLOCK_UPDATE_SECONDS - 1;
+        }
+        return Math.max(MIN_BLOCK_UPDATE_SECONDS, Math.min(60, seconds));
+    }
+
     private static Component blockUpdatesLabel(Integer seconds) {
-        return seconds == 0 ? Component.translatable(KEY + "block_updates.off") : Component.translatable(KEY + "block_updates.value", seconds);
+        return seconds == 0 ? Component.translatable(KEY + "refresh.off") : Component.translatable(KEY + "block_updates.value", seconds);
     }
 
     private static Component refreshLabel(Integer minutes) {

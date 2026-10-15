@@ -87,6 +87,10 @@ public final class ServerView {
         final Set<BlockPos> changedBlocks = new HashSet<>();
         /** Un changement demande une photo complete (lumiere, meteo, trop de blocs, bord de la zone). */
         boolean fullCaptureNeeded = true;
+        /** Pourquoi la photo complete est demandee (pour le log). */
+        String fullCaptureReason = "premiere capture";
+        /** Un changement peut modifier la lumiere : une capture de suivi viendra chercher la lumiere a jour. */
+        boolean lightChangePending = true;
         /** Le client a recu au moins une photo complete de cette zone (les envois partiels s'y appliquent). */
         boolean hasFull;
         /** Tick de la derniere capture (pour garder un ecart minimum entre deux captures). */
@@ -146,11 +150,19 @@ public final class ServerView {
                 // Dans la photo et sans effet sur la lumiere ni la meteo : envoi partiel possible.
                 long dy = Math.abs((long) pos.getY() - center.getY());
                 boolean inCube = dx <= track.lastRadius && dy <= track.lastRadius && dz <= track.lastRadius;
-                if (inCube && neutralChange(level, pos, previous, next)
-                        && track.changedBlocks.size() < MAX_DELTA_BLOCKS) {
+                boolean lightNeutral = lightNeutral(level, pos, previous, next);
+                boolean weatherNeutral = weatherNeutral(previous, next);
+                if (!lightNeutral) {
+                    track.lightChangePending = true;
+                }
+                if (inCube && lightNeutral && weatherNeutral && track.changedBlocks.size() < MAX_DELTA_BLOCKS) {
                     track.changedBlocks.add(pos.immutable());
-                } else {
+                } else if (!track.fullCaptureNeeded) {
                     track.fullCaptureNeeded = true;
+                    track.fullCaptureReason = !inCube ? "bloc en bordure de la zone"
+                            : !lightNeutral ? "changement de lumiere"
+                            : !weatherNeutral ? "changement pour la pluie"
+                            : "plus de " + MAX_DELTA_BLOCKS + " blocs changes";
                 }
             }
         }
@@ -163,12 +175,20 @@ public final class ServerView {
      * Vrai si le changement de bloc ne peut pas modifier la lumiere (ni emission, ni opacite, ni forme qui bloque
      * la lumiere) ni la hauteur de la pluie (bloc solide pour la pluie, fluide).
      */
-    private static boolean neutralChange(Level level, BlockPos pos, BlockState previous, BlockState next) {
+    private static boolean lightNeutral(Level level, BlockPos pos, BlockState previous, BlockState next) {
         try {
             return previous.getLightEmission(level, pos) == next.getLightEmission(level, pos)
                     && previous.getLightBlock(level, pos) == next.getLightBlock(level, pos)
-                    && !previous.useShapeForLightOcclusion() && !next.useShapeForLightOcclusion()
-                    && previous.blocksMotion() == next.blocksMotion()
+                    && !previous.useShapeForLightOcclusion() && !next.useShapeForLightOcclusion();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Vrai si le changement ne peut pas modifier la hauteur ou s'arrete la pluie. */
+    private static boolean weatherNeutral(BlockState previous, BlockState next) {
+        try {
+            return previous.blocksMotion() == next.blocksMotion()
                     && previous.getFluidState().isEmpty() == next.getFluidState().isEmpty();
         } catch (Exception e) {
             return false;
@@ -345,7 +365,9 @@ public final class ServerView {
         // (une ferme, un four ou de la redstone changent des blocs sans arret). La minuterie reste un filet de securite
         // pour les donnees moddees qui changent sans appeler LevelChunk.setBlockState.
         // Ecart minimum entre deux captures declenchees par des changements de blocs (option, 0 = OFF).
-        int blockGap = Config.BLOCK_UPDATE_SECONDS.get() * 20;
+        // 5 s minimum (une ancienne config peut contenir une valeur plus basse) ; 0 = OFF.
+        int blockSeconds = Config.BLOCK_UPDATE_SECONDS.get();
+        int blockGap = blockSeconds > 0 ? Math.max(blockSeconds, 5) * 20 : 0;
         boolean dirtyReady = blockGap > 0 && track.sceneryDirty && now >= track.lastCapture + blockGap;
         boolean followUpReady = track.followUpAt != 0 && now >= track.followUpAt;
         // Secours OFF (0) : seulement les captures declenchees par les changements de blocs.
@@ -366,9 +388,12 @@ public final class ServerView {
         // Apres un changement de bloc qui peut toucher la lumiere : une capture de plus un peu plus tard (au moins 5 s),
         // avec la lumiere a jour. Pas pour les blocs sans effet sur la lumiere (sinon une horloge de redstone
         // relancerait une capture complete toutes les 5 s).
-        track.followUpAt = dirtyReady && track.fullCaptureNeeded ? now + Math.max(blockGap, 5 * 20) : 0;
+        track.followUpAt = dirtyReady && track.lightChangePending ? now + Math.max(blockGap, 5 * 20) : 0;
+        String reason = force ? "rayon, dimension ou interrupteur" : followUpReady ? "suivi (lumiere a jour)"
+                : dirtyReady ? (track.fullCaptureReason.isEmpty() ? "changement de bloc" : track.fullCaptureReason)
+                : "capture de secours";
         // Les entites ou donnees de biome moddees peuvent changer sans changement de bloc ; garde une capture de securite,
-        // mais au plus une fois par minute par defaut, meme si une ancienne config contient encore la valeur 5.
+        // toutes les 5 minutes par defaut, et jamais plus d'une fois par minute (meme si une ancienne config dit 5 s).
         track.nextRefresh = refresh > 0 ? now + Math.max(refresh, 20 * 60) : Long.MAX_VALUE;
 
         long captureStart = System.nanoTime();
@@ -380,6 +405,8 @@ public final class ServerView {
         // La photo complete contient tous les changements en attente.
         track.changedBlocks.clear();
         track.fullCaptureNeeded = false;
+        track.fullCaptureReason = "";
+        track.lightChangePending = false;
         long compareStart = System.nanoTime();
         // Capture declenchee par un changement de bloc : on sait deja que le decor a change, inutile de comparer
         // toute la photo (10 a 15 ms). Si le bloc est revenu a son etat d'avant, le client ne trouvera rien a corriger.
@@ -392,9 +419,8 @@ public final class ServerView {
             return;
         }
         // Temps passe sur le fil du serveur (en solo, il partage le processeur avec le jeu).
-        LOGGER.info("[Planarium Panorama] Envoi du decor (capture={} ms, comparaison={} ms{})",
-                (compareStart - captureStart) / 1_000_000L, compareNanos / 1_000_000L,
-                dirtyReady ? ", apres changement de bloc" : "");
+        LOGGER.info("[Planarium Panorama] Envoi du decor complet (cause : {}, capture={} ms, comparaison={} ms)",
+                reason, (compareStart - captureStart) / 1_000_000L, compareNanos / 1_000_000L);
         // Description detaillee des changements : elle parcourt aussi les blocs (10 a 50 ms), donc seulement en DEBUG.
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("[Planarium Panorama] Changements du decor : {}", describeSnapshotChanges(track, snap));
