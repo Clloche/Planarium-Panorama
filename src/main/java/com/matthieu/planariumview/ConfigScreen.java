@@ -338,7 +338,7 @@ public final class ConfigScreen {
     }
 
     private static Component blockUpdatesLabel(Integer seconds) {
-        return seconds == 0 ? Component.translatable(KEY + "refresh.off") : Component.translatable(KEY + "block_updates.value", seconds);
+        return seconds == 0 ? Component.translatable(KEY + "block_updates.off") : Component.translatable(KEY + "block_updates.value", seconds);
     }
 
     private static Component refreshLabel(Integer minutes) {
