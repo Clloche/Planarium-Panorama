@@ -75,6 +75,8 @@ public final class ServerView {
         boolean wallsCleared;
         /** Dernier diagnostic de la lumiere du ciel ecrit dans le log. */
         String lastSkyDiag;
+        /** Une modification de bloc dans la zone rend la prochaine capture necessaire. */
+        boolean sceneryDirty = true;
 
         Track(ResourceKey<Level> pocket, GlobalPos source) {
             this.pocket = pocket;
@@ -96,6 +98,25 @@ public final class ServerView {
 
     /** Joueurs qui ont mis Planarium Panorama sur OFF : rien n'est capture ni envoye pour eux. */
     private static final java.util.Set<UUID> DISABLED = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** Appele apres un changement de bloc, pour eviter les captures completes quand le decor est stable. */
+    public static void markSceneryDirty(Level level, BlockPos pos) {
+        if (!(level instanceof ServerLevel serverLevel) || !serverLevel.getServer().isSameThread()) {
+            return;
+        }
+        for (Track track : TRACKS.values()) {
+            if (!track.source.dimension().equals(level.dimension())) {
+                continue;
+            }
+            int radius = Math.max(track.lastRadius, Config.RADIUS.get());
+            BlockPos center = track.source.pos();
+            // Une modification juste a l'exterieur peut changer la lumiere ou la hauteur de pluie au bord.
+            if (Math.abs((long) pos.getX() - center.getX()) <= radius + 1L
+                    && Math.abs((long) pos.getZ() - center.getZ()) <= radius + 1L) {
+                track.sceneryDirty = true;
+            }
+        }
+    }
 
     static void setEnabled(ServerPlayer player, boolean enabled) {
         boolean changed = enabled ? DISABLED.remove(player.getUUID()) : DISABLED.add(player.getUUID());
@@ -263,14 +284,22 @@ public final class ServerView {
 
         long now = player.server.getTickCount();
         int refresh = Config.REFRESH_SECONDS.get() * 20;
-        if (!force && (refresh <= 0 || now < track.nextRefresh)) {
+        // Les changements de blocs declenchent une capture au prochain tick de suivi. La minuterie reste
+        // un filet de securite pour les donnees moddees qui changent sans appeler LevelChunk.setBlockState.
+        if (!force && (refresh <= 0 || (!track.sceneryDirty && now < track.nextRefresh))) {
             return;
         }
-        track.nextRefresh = now + Math.max(refresh, 20);
+        // Les entites ou donnees de biome moddees peuvent changer sans changement de bloc ; garde une capture de securite,
+        // mais au plus une fois par minute par defaut, meme si une ancienne config contient encore la valeur 5.
+        track.nextRefresh = now + Math.max(refresh, 20 * 60);
 
         Snapshot snap = capture(player.server, track, radius, force);
-        if (snap == null || (snap.tag().equals(track.lastSent) && Arrays.equals(snap.light(), track.lastLight)
-                && Arrays.equals(snap.rainTops(), track.lastRainTops) && Arrays.equals(snap.precip(), track.lastPrecip))) {
+        if (snap == null) {
+            return;
+        }
+        track.sceneryDirty = false;
+        if (snap.tag().equals(track.lastSent) && Arrays.equals(snap.light(), track.lastLight)
+                && Arrays.equals(snap.rainTops(), track.lastRainTops) && Arrays.equals(snap.precip(), track.lastPrecip)) {
             return;
         }
         track.lastSent = snap.tag();
