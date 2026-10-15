@@ -43,6 +43,12 @@ import org.slf4j.Logger;
 
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Cote client : dessine la "photo" des alentours du Planarium, agrandie 32 fois,
@@ -66,8 +72,7 @@ public final class ClientView {
     private static final List<RenderType> DRAW_ORDER = List.of(
             RenderType.solid(), RenderType.cutout(), RenderType.cutoutMipped(),
             RenderType.translucent(), RenderType.tripwire());
-    /** Coalesce frequent server snapshots instead of rebuilding the entire panorama for every packet. */
-    private static final long MIN_REBUILD_INTERVAL_NANOS = 30_000_000_000L;
+    private static final int SECTION_SIZE = 16;
 
     private static ResourceLocation currentDim;
     private static int currentRadius;
@@ -80,10 +85,70 @@ public final class ClientView {
     private static StructureTemplate lastTemplate;
     private static byte[] lastLight;
     private static StructureRenderData renderData;
-    private static long lastBuildNanos;
+    private static final Map<SectionPos, SectionMesh> sectionMeshes = new HashMap<>();
+    private static Map<SectionPos, List<CulledStatePos>> pendingSectionStates = Map.of();
+    private static final ArrayDeque<SectionPos> pendingSections = new ArrayDeque<>();
+    private static final Set<SectionPos> pendingSectionSet = new HashSet<>();
+    private static StructureRenderData pendingSectionData;
+    private static boolean forceAllSections;
+    private static byte[] renderedLight;
+    private static byte[] renderedBiomes;
+    /** Coin du gabarit dans le monde au dernier rendu : s'il bouge, les biomes et leurs couleurs changent partout. */
+    private static BlockPos renderedOrigin;
+    private static List<ResourceLocation> renderedBiomePalette;
     private static boolean forcePendingBuild;
     private static int sortCounter;
     private static final Map<BlockPos, Integer> blockEntityLight = new java.util.HashMap<>();
+
+    private record SectionPos(int x, int y, int z) {
+        static SectionPos of(BlockPos pos) {
+            return new SectionPos(Math.floorDiv(pos.getX(), SECTION_SIZE),
+                    Math.floorDiv(pos.getY(), SECTION_SIZE), Math.floorDiv(pos.getZ(), SECTION_SIZE));
+        }
+
+        Vec3 center(int radius) {
+            return new Vec3((x * SECTION_SIZE + SECTION_SIZE / 2.0 - radius - ARS_OFFSET) * GIANT,
+                    (y * SECTION_SIZE + SECTION_SIZE / 2.0 - radius - ARS_OFFSET) * GIANT - Y_SHIFT,
+                    (z * SECTION_SIZE + SECTION_SIZE / 2.0 - radius - ARS_OFFSET) * GIANT);
+        }
+
+        double distanceFromPlanariumSqr(int radius) {
+            double xCenter = x * SECTION_SIZE + SECTION_SIZE / 2.0 - radius;
+            double yCenter = y * SECTION_SIZE + SECTION_SIZE / 2.0 - radius;
+            double zCenter = z * SECTION_SIZE + SECTION_SIZE / 2.0 - radius;
+            return xCenter * xCenter + yCenter * yCenter + zCenter * zCenter;
+        }
+    }
+
+    private static final class SectionMesh {
+        final Map<RenderType, VertexBuffer> buffers = new HashMap<>();
+        final Map<RenderType, MeshData.SortState> sortStates = new HashMap<>();
+        final Map<RenderType, com.mojang.blaze3d.vertex.ByteBufferBuilder> sortBuffers = new HashMap<>();
+
+        void sort(Vec3 camera) {
+            for (Map.Entry<RenderType, MeshData.SortState> entry : sortStates.entrySet()) {
+                RenderType type = entry.getKey();
+                com.mojang.blaze3d.vertex.ByteBufferBuilder builder = sortBuffers.computeIfAbsent(type,
+                        ignored -> new com.mojang.blaze3d.vertex.ByteBufferBuilder(4096));
+                VertexBuffer buffer = buffers.get(type);
+                if (buffer == null) continue;
+                builder.clear();
+                var sorted = entry.getValue().buildSortedIndexBuffer(builder,
+                        VertexSorting.byDistance(v -> -v.distanceSquared((float) camera.x, (float) camera.y, (float) camera.z)));
+                buffer.bind();
+                buffer.uploadIndexBuffer(sorted);
+                VertexBuffer.unbind();
+            }
+        }
+
+        void close() {
+            for (VertexBuffer buffer : buffers.values()) buffer.close();
+            for (var builder : sortBuffers.values()) builder.close();
+            buffers.clear();
+            sortBuffers.clear();
+            sortStates.clear();
+        }
+    }
 
     private ClientView() {
     }
@@ -285,6 +350,7 @@ public final class ClientView {
             pendingLight = lastLight;
             pendingInfo = latestInfo;
             forcePendingBuild = true;
+            forceAllSections = true;
         }
         MiniLight.rebuildAll();
     }
@@ -335,9 +401,21 @@ public final class ClientView {
     private static void disposeRender() {
         GiantEntities.clear();
         releaseRenderData(renderData);
+        for (SectionMesh mesh : sectionMeshes.values()) mesh.close();
+        sectionMeshes.clear();
+        pendingSections.clear();
+        pendingSectionSet.clear();
+        pendingSectionStates = Map.of();
+        pendingSectionData = null;
+        renderedLight = null;
+        renderedBiomes = null;
+        renderedOrigin = null;
+        renderedBiomePalette = null;
         renderData = null;
+        builtViewRadius = -1;
         pendingTemplate = null;
         forcePendingBuild = false;
+        forceAllSections = false;
         currentDim = null;
     }
 
@@ -394,9 +472,7 @@ public final class ClientView {
             if (renderData != null && builtViewRadius != viewRadius()) {
                 rebuild();
             }
-            boolean mustBuildForDimension = renderData == null || !mc.level.dimension().location().equals(currentDim);
-            boolean buildCooldownElapsed = System.nanoTime() - lastBuildNanos >= MIN_REBUILD_INTERVAL_NANOS;
-            if (pendingTemplate != null && (mustBuildForDimension || forcePendingBuild || buildCooldownElapsed)) {
+            if (pendingTemplate != null) {
                 StructureTemplate template = pendingTemplate;
                 byte[] light = pendingLight;
                 OutsideViewPayload info = pendingInfo;
@@ -408,7 +484,6 @@ public final class ClientView {
                     StructureRenderData newRender = build(template, light, info, radius, event.getCamera().getPosition());
                     renderData = newRender;
                     lastInfo = info;
-                    lastBuildNanos = System.nanoTime();
                     if (oldRender != newRender) {
                         releaseRenderData(oldRender);
                     }
@@ -421,6 +496,7 @@ public final class ClientView {
                     }
                 }
             }
+            buildPendingSections(event.getCamera().getPosition());
             if (renderData != null) {
                 GiantSprites.markActive();
                 draw(renderData, event);
@@ -435,10 +511,13 @@ public final class ClientView {
 
     private static StructureRenderData build(StructureTemplate template, byte[] light, OutsideViewPayload info,
                                              int radius, Vec3 camera) {
+        long buildStart = System.nanoTime();
         StructureRenderData data = LitRenderingWorld.asGiant(() -> new StructureRenderData(template, 0L));
-        if (data.statePosCache == null || data.statePosCache.isEmpty()) {
-            return data;
+        long templateNanos = System.nanoTime() - buildStart;
+        if (data.statePosCache == null) {
+            data.statePosCache = new ArrayList<>();
         }
+        long stageStart = System.nanoTime();
         // Remplace le faux monde d'Ars (lumiere 15 partout) par le notre, avec la vraie lumiere.
         // (et avec les couleurs du vrai biome pour l'herbe, les feuilles et l'eau).
         LitRenderingWorld lit = LitRenderingWorld.giant(Minecraft.getInstance().level, data.statePosCache);
@@ -461,6 +540,7 @@ public final class ClientView {
         }
         data.fakeRenderingWorld = lit;
         openSkyShare = computeOpenSkyShare(lit, radius);
+        long sceneryDataNanos = System.nanoTime() - stageStart;
         // On n'affiche pas le Planarium lui-meme ni le bloc juste au-dessus : ils occuperaient la poche.
         BlockPos planarium = new BlockPos(radius, radius, radius);
         BlockPos above = planarium.above();
@@ -472,9 +552,10 @@ public final class ClientView {
             data.statePosCache.removeIf(p -> Math.abs(p.pos.getX() - radius) > view || Math.abs(p.pos.getZ() - radius) > view);
         }
 
+        long specialLightNanos;
         ColorCompat.begin(data.fakeRenderingWorld);
         try {
-            tesselate(data, radius);
+            stageStart = System.nanoTime();
             // Lumiere des blocs speciaux, calculee ici pendant que Contraption Lights lit notre faux monde.
             blockEntityLight.clear();
             for (BlockPos pos : data.fakeRenderingWorld.blockEntityMap.keySet()) {
@@ -484,38 +565,258 @@ public final class ClientView {
                     LOGGER.debug("[Planarium View] Lumiere de bloc special ignoree", e);
                 }
             }
+            specialLightNanos = System.nanoTime() - stageStart;
         } finally {
             ColorCompat.end();
         }
 
-        Vector3f sortPos = new Vector3f((float) camera.x, (float) camera.y, (float) camera.z);
-        for (Map.Entry<RenderType, BufferBuilder> entry : data.bufferBuilders.entrySet()) {
-            RenderType renderType = entry.getKey();
-            MeshData mesh = entry.getValue().build();
-            if (mesh == null) {
-                continue;
+        Map<SectionPos, List<CulledStatePos>> sectionStates = groupSections(data.statePosCache);
+        Set<SectionPos> carriedSections = new HashSet<>(pendingSectionSet);
+        Set<SectionPos> dirtySections = changedSections(renderData, data, sectionStates, light, info, radius);
+        dirtySections.addAll(carriedSections);
+        for (SectionPos existing : new HashSet<>(sectionMeshes.keySet())) {
+            if (!sectionStates.containsKey(existing)) {
+                SectionMesh removed = sectionMeshes.remove(existing);
+                if (removed != null) removed.close();
             }
-            if (renderType == RenderType.translucent()) {
-                data.sortStates.put(renderType, mesh.sortQuads(data.getByteBuffer(renderType),
-                        VertexSorting.byDistance(v -> -sortPos.distanceSquared(v))));
-            }
-            VertexBuffer vertexBuffer = data.vertexBuffers.get(renderType);
-            vertexBuffer.bind();
-            vertexBuffer.upload(mesh);
-            VertexBuffer.unbind();
         }
-        data.bufferBuilders.clear();
+        pendingSections.clear();
+        pendingSectionSet.clear();
+        pendingSectionData = data;
+        pendingSectionStates = sectionStates;
+        dirtySections.removeIf(key -> !sectionStates.containsKey(key));
+        List<SectionPos> orderedSections = new ArrayList<>(dirtySections);
+        orderedSections.sort(Comparator.comparingDouble(section -> section.distanceFromPlanariumSqr(radius)));
+        for (SectionPos section : orderedSections) {
+            pendingSections.addLast(section);
+            pendingSectionSet.add(section);
+        }
+        if (pendingSections.isEmpty()) pendingSectionData = null;
+        renderedLight = light == null ? null : light.clone();
+        renderedBiomePalette = info == null ? null : info.biomePalette();
+        renderedBiomes = info == null || info.biomes() == null ? null : info.biomes().clone();
+        renderedOrigin = info == null ? null : info.origin();
+        forceAllSections = false;
+        stageStart = System.nanoTime();
         GiantSprites.collect(data);
+        long spritesNanos = System.nanoTime() - stageStart;
+        LOGGER.info("[Planarium Panorama] Preparation de {} blocs : total={} ms, gabarit={} ms, donnees={} ms, " +
+                        "lumiere speciale={} ms, sections a retesseler={}, sprites={} ms",
+                data.statePosCache.size(), (System.nanoTime() - buildStart) / 1_000_000L,
+                templateNanos / 1_000_000L, sceneryDataNanos / 1_000_000L,
+                specialLightNanos / 1_000_000L, pendingSections.size(), spritesNanos / 1_000_000L);
         return data;
     }
 
-    private static void tesselate(StructureRenderData data, int radius) {
+    private static Map<SectionPos, List<CulledStatePos>> groupSections(List<CulledStatePos> states) {
+        Map<SectionPos, List<CulledStatePos>> sections = new HashMap<>();
+        for (CulledStatePos state : states) {
+            sections.computeIfAbsent(SectionPos.of(state.pos), ignored -> new ArrayList<>()).add(state);
+        }
+        return sections;
+    }
+
+    private static Set<SectionPos> changedSections(StructureRenderData previous, StructureRenderData current,
+                                                    Map<SectionPos, List<CulledStatePos>> sections,
+                                                    byte[] light, OutsideViewPayload info, int radius) {
+        Set<SectionPos> changed = new HashSet<>();
+        BlockPos origin = info == null ? null : info.origin();
+        if (forceAllSections || previous == null
+                || !java.util.Objects.equals(origin, renderedOrigin)
+                || !markLightChanges(changed, light, renderedLight, radius * 2 + 3)
+                || !markBiomeChanges(changed, info, renderedBiomePalette, renderedBiomes, radius)) {
+            changed.clear();
+            changed.addAll(sections.keySet());
+            return changed;
+        }
+
+        Map<BlockPos, BlockState> oldStates = new HashMap<>();
+        for (CulledStatePos state : previous.statePosCache) oldStates.put(state.pos, state.state);
+        for (CulledStatePos state : current.statePosCache) {
+            BlockState old = oldStates.remove(state.pos);
+            if (old == null || !old.equals(state.state)) markAffectedSections(changed, state.pos);
+        }
+        for (BlockPos removed : oldStates.keySet()) markAffectedSections(changed, removed);
+        changed.retainAll(sections.keySet());
+        return changed;
+    }
+
+    /** Les faces cachees et l'AO lisent les voisins; aux aretes, on invalide aussi les sections adjacentes. */
+    private static void markAffectedSections(Set<SectionPos> changed, BlockPos pos) {
+        int sx = Math.floorDiv(pos.getX(), SECTION_SIZE);
+        int sy = Math.floorDiv(pos.getY(), SECTION_SIZE);
+        int sz = Math.floorDiv(pos.getZ(), SECTION_SIZE);
+        int[] dx = sectionOffsets(pos.getX());
+        int[] dy = sectionOffsets(pos.getY());
+        int[] dz = sectionOffsets(pos.getZ());
+        for (int x : dx) for (int y : dy) for (int z : dz) changed.add(new SectionPos(sx + x, sy + y, sz + z));
+    }
+
+    /**
+     * Lumiere : seules les sections proches d'une case dont la lumiere a change sont refaites.
+     * Le lissage (AO) et notre getBrightness lisent les cases voisines, d'ou la marge de 3 blocs.
+     * Faux si les tableaux ne sont pas comparables (taille differente, lumiere activee ou coupee) : tout refaire.
+     */
+    private static boolean markLightChanges(Set<SectionPos> changed, byte[] light, byte[] previous, int size) {
+        if (java.util.Arrays.equals(light, previous)) return true;
+        if (light == null || previous == null || light.length != previous.length
+                || light.length != size * size * size) return false;
+        final int margin = 3;
+        for (int i = 0; i < light.length; i++) {
+            if (light[i] == previous[i]) continue;
+            int z = i % size;
+            int y = (i / size) % size;
+            int x = i / (size * size);
+            // Le tableau a une marge d'un bloc : la case 0 correspond a la position -1 du gabarit.
+            markBox(changed, x - 1 - margin, y - 1 - margin, z - 1 - margin,
+                    x - 1 + margin, y - 1 + margin, z - 1 + margin);
+        }
+        return true;
+    }
+
+    /**
+     * Biomes : seules les sections proches d'un cube de biome (4 x 4 x 4) qui a change sont refaites.
+     * Le melange des couleurs lit 2 blocs autour, d'ou la marge. Les biomes sont compares par nom,
+     * pour qu'une palette simplement reordonnee ne fasse pas tout refaire.
+     * Faux si les grilles ne sont pas comparables : tout refaire.
+     */
+    private static boolean markBiomeChanges(Set<SectionPos> changed, OutsideViewPayload info,
+                                            List<ResourceLocation> previousPalette, byte[] previous, int radius) {
+        List<ResourceLocation> palette = info == null ? null : info.biomePalette();
+        byte[] biomes = info == null ? null : info.biomes();
+        if (java.util.Objects.equals(palette, previousPalette) && java.util.Arrays.equals(biomes, previous)) return true;
+        if (palette == null || biomes == null || previousPalette == null || previous == null
+                || biomes.length != previous.length) return false;
+        BiomeGrid grid = BiomeGrid.of(info.origin(), radius * 2 + 1);
+        if (biomes.length != grid.volume()) return false;
+        BlockPos origin = info.origin();
+        final int margin = BiomeGrid.MARGIN + 1;
+        for (int i = 0; i < biomes.length; i++) {
+            ResourceLocation now = paletteEntry(palette, biomes[i]);
+            ResourceLocation before = paletteEntry(previousPalette, previous[i]);
+            if (java.util.Objects.equals(now, before)) continue;
+            int qz = i % grid.sizeZ();
+            int qy = (i / grid.sizeZ()) % grid.sizeY();
+            int qx = i / (grid.sizeZ() * grid.sizeY());
+            // Coin du cube de biome dans le monde, ramene aux positions du gabarit.
+            int minX = (grid.minQx() + qx) * 4 - origin.getX();
+            int minY = (grid.minQy() + qy) * 4 - origin.getY();
+            int minZ = (grid.minQz() + qz) * 4 - origin.getZ();
+            markBox(changed, minX - margin, minY - margin, minZ - margin,
+                    minX + 3 + margin, minY + 3 + margin, minZ + 3 + margin);
+        }
+        return true;
+    }
+
+    private static ResourceLocation paletteEntry(List<ResourceLocation> palette, byte index) {
+        int i = index & 0xFF;
+        return i < palette.size() ? palette.get(i) : null;
+    }
+
+    /** Marque toutes les sections qui touchent la boite (positions du gabarit, bornes incluses). */
+    private static void markBox(Set<SectionPos> changed, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        int sx0 = Math.floorDiv(minX, SECTION_SIZE), sx1 = Math.floorDiv(maxX, SECTION_SIZE);
+        int sy0 = Math.floorDiv(minY, SECTION_SIZE), sy1 = Math.floorDiv(maxY, SECTION_SIZE);
+        int sz0 = Math.floorDiv(minZ, SECTION_SIZE), sz1 = Math.floorDiv(maxZ, SECTION_SIZE);
+        for (int x = sx0; x <= sx1; x++) {
+            for (int y = sy0; y <= sy1; y++) {
+                for (int z = sz0; z <= sz1; z++) {
+                    changed.add(new SectionPos(x, y, z));
+                }
+            }
+        }
+    }
+
+    private static int[] sectionOffsets(int coordinate) {
+        int edge = Math.floorMod(coordinate, SECTION_SIZE);
+        if (edge == 0) return new int[]{-1, 0};
+        if (edge == SECTION_SIZE - 1) return new int[]{0, 1};
+        return new int[]{0};
+    }
+
+    private static SectionMesh buildSection(StructureRenderData data, int radius,
+                                            List<CulledStatePos> states, Vec3 camera) {
+        data.bufferBuilders.clear();
+        SectionMesh section = new SectionMesh();
+        try {
+            ColorCompat.begin(data.fakeRenderingWorld);
+            try {
+                tesselate(data, radius, states);
+            } finally {
+                ColorCompat.end();
+            }
+            Vector3f sortPos = new Vector3f((float) camera.x, (float) camera.y, (float) camera.z);
+            for (Map.Entry<RenderType, BufferBuilder> entry : data.bufferBuilders.entrySet()) {
+                RenderType type = entry.getKey();
+                MeshData mesh = entry.getValue().build();
+                if (mesh == null) continue;
+                if (type == RenderType.translucent()) {
+                    section.sortStates.put(type, mesh.sortQuads(data.getByteBuffer(type),
+                            VertexSorting.byDistance(v -> -sortPos.distanceSquared(v))));
+                }
+                VertexBuffer buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+                buffer.bind();
+                buffer.upload(mesh);
+                VertexBuffer.unbind();
+                section.buffers.put(type, buffer);
+            }
+            return section;
+        } catch (RuntimeException e) {
+            section.close();
+            throw e;
+        } finally {
+            VertexBuffer.unbind();
+            data.bufferBuilders.clear();
+            for (var builder : data.builders.values()) builder.clear();
+        }
+    }
+
+    /**
+     * Temps maximal par image pour retesseler des sections (3 ms). Une section commencee va toujours jusqu'au bout,
+     * donc une section tres chargee peut depasser ce temps a elle seule ; on en construit toujours au moins une.
+     */
+    private static final long SECTION_BUDGET_NANOS = 3_000_000L;
+
+    /** Construit des sections tant que le budget de l'image le permet; les meshes precedents restent visibles jusque-la. */
+    private static void buildPendingSections(Vec3 camera) {
+        long start = System.nanoTime();
+        do {
+            buildNextSection(camera);
+        } while (pendingSectionData != null && !pendingSections.isEmpty()
+                && System.nanoTime() - start < SECTION_BUDGET_NANOS);
+    }
+
+    private static void buildNextSection(Vec3 camera) {
+        if (pendingSectionData == null || pendingSections.isEmpty()) return;
+        SectionPos key = pendingSections.removeFirst();
+        pendingSectionSet.remove(key);
+        List<CulledStatePos> states = pendingSectionStates.get(key);
+        SectionMesh old = sectionMeshes.remove(key);
+        if (states == null || states.isEmpty()) {
+            if (old != null) old.close();
+        } else {
+            try {
+                SectionMesh replacement = buildSection(pendingSectionData, currentRadius, states, camera);
+                sectionMeshes.put(key, replacement);
+                if (old != null) old.close();
+            } catch (Exception e) {
+                if (old != null) sectionMeshes.put(key, old);
+                LOGGER.warn("[Planarium View] Echec du retesselage de la section {}; ancienne vue conservee", key, e);
+            }
+        }
+        if (pendingSections.isEmpty()) {
+            pendingSectionData = null;
+            pendingSectionStates = Map.of();
+        }
+    }
+
+    private static void tesselate(StructureRenderData data, int radius, List<CulledStatePos> statePositions) {
         PoseStack matrix = new PoseStack();
         BlockRenderDispatcher dispatcher = Minecraft.getInstance().getBlockRenderer();
         ModelBlockRenderer modelRenderer = dispatcher.getModelRenderer();
         RandomSource random = RandomSource.create();
 
-        for (CulledStatePos pos : data.statePosCache) {
+        for (CulledStatePos pos : statePositions) {
             BlockState renderState = data.fakeRenderingWorld.getBlockState(pos.pos);
             FluidState fluidState = pos.state.getFluidState();
             boolean isModel = PlanariumRenderer.isModelRender(pos.state);
@@ -594,7 +895,8 @@ public final class ClientView {
     private static void draw(StructureRenderData data, RenderLevelStageEvent event) {
         if (++sortCounter > 20) {
             sortCounter = 0;
-            PlanariumRenderer.sortAll(data, BlockPos.ZERO);
+            Vec3 camera = event.getCamera().getPosition();
+            for (SectionMesh section : sectionMeshes.values()) section.sort(camera);
         }
 
         Vec3 camera = event.getCamera().getPosition();
@@ -615,15 +917,26 @@ public final class ClientView {
         }
         try {
             for (RenderType renderType : DRAW_ORDER) {
-                VertexBuffer vertexBuffer = data.vertexBuffers.get(renderType);
-                if (vertexBuffer == null || vertexBuffer.getFormat() == null) {
-                    continue;
+                List<Map.Entry<SectionPos, SectionMesh>> sections = new ArrayList<>(sectionMeshes.entrySet());
+                if (renderType == RenderType.translucent()) {
+                    sections.sort(Comparator.comparingDouble(entry ->
+                            entry.getKey().center(currentRadius).distanceToSqr(event.getCamera().getPosition())));
+                    java.util.Collections.reverse(sections);
                 }
                 renderType.setupRenderState();
-                vertexBuffer.bind();
-                vertexBuffer.drawWithShader(poseStack.last().pose(), new Matrix4f(event.getProjectionMatrix()), RenderSystem.getShader());
-                VertexBuffer.unbind();
-                renderType.clearRenderState();
+                try {
+                    for (Map.Entry<SectionPos, SectionMesh> entry : sections) {
+                        VertexBuffer vertexBuffer = entry.getValue().buffers.get(renderType);
+                        if (vertexBuffer == null || vertexBuffer.getFormat() == null) continue;
+                        vertexBuffer.bind();
+                        vertexBuffer.drawWithShader(poseStack.last().pose(),
+                                new Matrix4f(event.getProjectionMatrix()), RenderSystem.getShader());
+                        VertexBuffer.unbind();
+                    }
+                } finally {
+                    VertexBuffer.unbind();
+                    renderType.clearRenderState();
+                }
             }
             drawFogWall(poseStack, new Matrix4f(event.getProjectionMatrix()), camera);
             drawCaveDome(poseStack, new Matrix4f(event.getProjectionMatrix()));
