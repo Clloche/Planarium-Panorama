@@ -66,6 +66,8 @@ public final class ClientView {
     private static final List<RenderType> DRAW_ORDER = List.of(
             RenderType.solid(), RenderType.cutout(), RenderType.cutoutMipped(),
             RenderType.translucent(), RenderType.tripwire());
+    /** Coalesce frequent server snapshots instead of rebuilding the entire panorama for every packet. */
+    private static final long MIN_REBUILD_INTERVAL_NANOS = 30_000_000_000L;
 
     private static ResourceLocation currentDim;
     private static int currentRadius;
@@ -73,10 +75,13 @@ public final class ClientView {
     private static byte[] pendingLight;
     private static OutsideViewPayload pendingInfo;
     private static OutsideViewPayload lastInfo;
+    private static OutsideViewPayload latestInfo;
     /** Derniere photo recue, gardee pour reconstruire le rendu quand une option change. */
     private static StructureTemplate lastTemplate;
     private static byte[] lastLight;
     private static StructureRenderData renderData;
+    private static long lastBuildNanos;
+    private static boolean forcePendingBuild;
     private static int sortCounter;
     private static final Map<BlockPos, Integer> blockEntityLight = new java.util.HashMap<>();
 
@@ -108,13 +113,17 @@ public final class ClientView {
         }
         StructureTemplate template = new StructureTemplate();
         template.load(BuiltInRegistries.BLOCK.asLookup(), payload.template());
-        disposeRender();
+        boolean changedDimension = currentDim != null && !currentDim.equals(payload.pocketDim());
+        boolean changedRadius = currentDim != null && currentRadius != payload.radius();
+        if (changedDimension || changedRadius || (currentDim == null && renderData != null)) {
+            disposeRender();
+        }
         currentDim = payload.pocketDim();
         currentRadius = payload.radius();
         pendingTemplate = template;
         pendingLight = payload.light();
         pendingInfo = payload;
-        lastInfo = payload;
+        latestInfo = payload;
         WeatherView.set(payload);
         lastTemplate = template;
         lastLight = payload.light();
@@ -272,12 +281,10 @@ public final class ClientView {
 
     public static void rebuild() {
         if (lastTemplate != null && currentDim != null) {
-            ResourceLocation dim = currentDim;
-            disposeRender();
-            currentDim = dim;
             pendingTemplate = lastTemplate;
             pendingLight = lastLight;
-            pendingInfo = lastInfo;
+            pendingInfo = latestInfo;
+            forcePendingBuild = true;
         }
         MiniLight.rebuildAll();
     }
@@ -317,6 +324,7 @@ public final class ClientView {
         lastTemplate = null;
         lastLight = null;
         lastInfo = null;
+        latestInfo = null;
         OutsideAmbience.clear();
         SkySync.clear();
         WeatherView.clear();
@@ -326,19 +334,25 @@ public final class ClientView {
 
     private static void disposeRender() {
         GiantEntities.clear();
-        if (renderData != null) {
-            try {
-                PlanariumRenderer.clearByteBuffers(renderData);
-                for (VertexBuffer buffer : renderData.vertexBuffers.values()) {
-                    buffer.close();
-                }
-            } catch (Exception e) {
-                LOGGER.warn("[Planarium View] Erreur en liberant le rendu", e);
-            }
-        }
+        releaseRenderData(renderData);
         renderData = null;
         pendingTemplate = null;
+        forcePendingBuild = false;
         currentDim = null;
+    }
+
+    private static void releaseRenderData(StructureRenderData data) {
+        if (data == null) {
+            return;
+        }
+        try {
+            PlanariumRenderer.clearByteBuffers(data);
+            for (VertexBuffer buffer : data.vertexBuffers.values()) {
+                buffer.close();
+            }
+        } catch (Exception e) {
+            LOGGER.warn("[Planarium View] Erreur en liberant le rendu", e);
+        }
     }
 
     private static void onRenderStage(RenderLevelStageEvent event) {
@@ -377,13 +391,35 @@ public final class ClientView {
         SkySync.giantLight(true, partialTick);
         try {
             // La distance d'affichage a change : on reconstruit le decor au nouveau rayon de vue.
-            if (pendingTemplate == null && renderData != null && builtViewRadius != viewRadius()) {
+            if (renderData != null && builtViewRadius != viewRadius()) {
                 rebuild();
             }
-            if (pendingTemplate != null) {
+            boolean mustBuildForDimension = renderData == null || !mc.level.dimension().location().equals(currentDim);
+            boolean buildCooldownElapsed = System.nanoTime() - lastBuildNanos >= MIN_REBUILD_INTERVAL_NANOS;
+            if (pendingTemplate != null && (mustBuildForDimension || forcePendingBuild || buildCooldownElapsed)) {
                 StructureTemplate template = pendingTemplate;
+                byte[] light = pendingLight;
+                OutsideViewPayload info = pendingInfo;
+                int radius = currentRadius;
                 pendingTemplate = null;
-                renderData = build(template, pendingLight, pendingInfo, currentRadius, event.getCamera().getPosition());
+                forcePendingBuild = false;
+                StructureRenderData oldRender = renderData;
+                try {
+                    StructureRenderData newRender = build(template, light, info, radius, event.getCamera().getPosition());
+                    renderData = newRender;
+                    lastInfo = info;
+                    lastBuildNanos = System.nanoTime();
+                    if (oldRender != newRender) {
+                        releaseRenderData(oldRender);
+                    }
+                } catch (Exception e) {
+                    LOGGER.error("[Planarium View] Echec de reconstruction; conservation de la vue precedente", e);
+                    if (pendingTemplate == null) {
+                        pendingTemplate = template;
+                        pendingLight = light;
+                        pendingInfo = info;
+                    }
+                }
             }
             if (renderData != null) {
                 GiantSprites.markActive();

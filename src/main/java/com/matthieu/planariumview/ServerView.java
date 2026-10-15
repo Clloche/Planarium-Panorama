@@ -23,6 +23,7 @@ import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -106,23 +107,30 @@ public final class ServerView {
     /** Joueurs qui ont mis Planarium Panorama sur OFF : rien n'est capture ni envoye pour eux. */
     private static final java.util.Set<UUID> DISABLED = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
-    /** Marge autour de la zone captee : une lumiere placee jusqu'a 15 blocs plus loin peut l'eclairer. */
+    /** Une source lumineuse placee jusqu'a 15 blocs de la zone peut modifier sa lumiere. */
     private static final long LIGHT_MARGIN = 15L;
 
     /** Appele apres un changement de bloc, pour eviter les captures completes quand le decor est stable. */
-    public static void markSceneryDirty(Level level, BlockPos pos) {
+    public static void markSceneryDirty(Level level, BlockPos pos, BlockState previous, BlockState next) {
         if (!(level instanceof ServerLevel serverLevel) || !serverLevel.getServer().isSameThread()) {
             return;
         }
+        boolean lightSourceChanged = previous.getLightEmission(level, pos) != next.getLightEmission(level, pos)
+                && (previous.getLightEmission(level, pos) > 0 || next.getLightEmission(level, pos) > 0);
         for (Track track : TRACKS.values()) {
             if (!track.source.dimension().equals(level.dimension())) {
                 continue;
             }
             int radius = Math.max(track.lastRadius, Config.RADIUS.get());
             BlockPos center = track.source.pos();
-            // Une modification a l'exterieur peut changer la lumiere a l'interieur (une torche eclaire jusqu'a 15 blocs).
-            if (Math.abs((long) pos.getX() - center.getX()) <= radius + LIGHT_MARGIN
-                    && Math.abs((long) pos.getZ() - center.getZ()) <= radius + LIGHT_MARGIN) {
+            long dx = Math.abs((long) pos.getX() - center.getX());
+            long dz = Math.abs((long) pos.getZ() - center.getZ());
+            // Changements visibles : zone capturee plus une case pour les dependances immediates des modeles.
+            boolean inScenery = dx <= radius + 1L && dz <= radius + 1L;
+            // Hors de cette zone, seuls l'ajout/retrait/modification d'une source lumineuse justifient une capture.
+            boolean nearbyLightSource = lightSourceChanged && dx <= radius + LIGHT_MARGIN
+                    && dz <= radius + LIGHT_MARGIN;
+            if (inScenery || nearbyLightSource) {
                 track.sceneryDirty = true;
             }
         }

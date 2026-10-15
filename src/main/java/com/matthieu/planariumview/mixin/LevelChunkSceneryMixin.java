@@ -22,7 +22,7 @@ public abstract class LevelChunkSceneryMixin {
                                                  CallbackInfoReturnable<BlockState> cir) {
         BlockState previous = cir.getReturnValue();
         if (previous != null && !previous.equals(state)) {
-            ServerView.markSceneryDirty(level, pos);
+            ServerView.markSceneryDirty(level, pos, previous, state);
         }
     }
 }
