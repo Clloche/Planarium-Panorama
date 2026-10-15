@@ -104,6 +104,11 @@ public final class ClientView {
                 return thread;
             });
     private static int diffGeneration;
+    /**
+     * Blocs recus par envoi partiel depuis la derniere photo complete : la photo gardee ne les contient pas.
+     * Ils sont reappliques apres une reconstruction complete, et reverifies contre la photo complete suivante.
+     */
+    private static final Map<BlockPos, BlockChange> deltaOverlay = new HashMap<>();
     /** Au-dela de ce nombre de blocs changes, on reconstruit tout le decor plutot que de le corriger. */
     private static final int MAX_PATCH_BLOCKS = 4096;
     /** Blocs du decor par position et par section, gardes pour corriger le decor sans le reconstruire. */
@@ -219,6 +224,10 @@ public final class ClientView {
         currentDim = payload.pocketDim();
         currentRadius = payload.radius();
         net.minecraft.nbt.CompoundTag base = lastTemplateTag;
+        // La nouvelle photo complete remplace les envois partiels recus avant elle ; leurs positions sont
+        // reverifiees contre cette photo (un bloc a pu revenir a son etat d'avant).
+        Set<BlockPos> overlayPositions = new HashSet<>(deltaOverlay.keySet());
+        deltaOverlay.clear();
         lastTemplateTag = payload.template();
         latestInfo = payload;
         WeatherView.set(payload);
@@ -232,13 +241,13 @@ public final class ClientView {
                     long start = System.nanoTime();
                     Map<BlockPos, BlockChange> changes = null;
                     try {
-                        changes = diffTemplates(base, next);
+                        changes = diffTemplates(base, next, overlayPositions);
                     } catch (Exception e) {
                         LOGGER.debug("[Planarium View] Comparaison des photos impossible; reconstruction complete", e);
                     }
                     Map<BlockPos, BlockChange> result = changes;
                     long nanos = System.nanoTime() - start;
-                    Minecraft.getInstance().execute(() -> onDiffReady(generation, payload, result, nanos));
+                    Minecraft.getInstance().execute(() -> onDiffReady(generation, payload.pocketDim(), payload, result, nanos));
                 });
                 return;
             } catch (java.util.concurrent.RejectedExecutionException e) {
@@ -259,6 +268,7 @@ public final class ClientView {
         pendingPatchLight = null;
         pendingPatchInfo = null;
         pendingDiffNanos = 0L;
+        reapplyOverlay();
         pendingTemplate = template;
         pendingLight = lastLight;
         pendingInfo = latestInfo;
@@ -266,21 +276,78 @@ public final class ClientView {
     }
 
     /** Resultat d'une comparaison (fil principal, dans l'ordre de reception des photos). */
-    private static void onDiffReady(int generation, OutsideViewPayload payload, Map<BlockPos, BlockChange> changes,
-                                    long nanos) {
-        if (generation != diffGeneration || renderData == null || currentDim == null
-                || !currentDim.equals(payload.pocketDim())) {
+    private static void onDiffReady(int generation, ResourceLocation dim, OutsideViewPayload payload,
+                                    Map<BlockPos, BlockChange> changes, long nanos) {
+        if (generation != diffGeneration || currentDim == null || !currentDim.equals(dim)) {
             return;
         }
         if (changes == null || (pendingPatch != null && pendingPatch.size() + changes.size() > MAX_PATCH_BLOCKS)) {
             scheduleFullBuild();
             return;
         }
-        if (pendingPatch == null) pendingPatch = new java.util.LinkedHashMap<>();
+        if (pendingPatch == null) {
+            pendingPatch = new java.util.LinkedHashMap<>();
+            // Envoi partiel (sans photo) : la lumiere et les infos restent celles de la derniere photo complete.
+            pendingPatchLight = lastLight;
+            pendingPatchInfo = latestInfo;
+        }
         pendingPatch.putAll(changes);
-        pendingPatchLight = payload.light();
-        pendingPatchInfo = payload;
+        if (payload != null) {
+            pendingPatchLight = payload.light();
+            pendingPatchInfo = payload;
+        }
         pendingDiffNanos += nanos;
+    }
+
+    /** Apres une reconstruction complete depuis la photo gardee : reappliquer les blocs recus depuis par envoi partiel. */
+    private static void reapplyOverlay() {
+        if (deltaOverlay.isEmpty()) {
+            return;
+        }
+        pendingPatch = new java.util.LinkedHashMap<>(deltaOverlay);
+        pendingPatchLight = lastLight;
+        pendingPatchInfo = latestInfo;
+    }
+
+    /** Blocs changes envoyes seuls par le serveur (voir {@link OutsideViewDeltaPayload}). */
+    public static void receiveDelta(OutsideViewDeltaPayload payload) {
+        if (currentDim == null || !currentDim.equals(payload.pocketDim()) || currentRadius != payload.radius()
+                || latestInfo == null || !java.util.Objects.equals(latestInfo.origin(), payload.origin())
+                || lastTemplateTag == null) {
+            // Pas de photo complete correspondante ici : la prochaine photo complete remettra tout a jour.
+            return;
+        }
+        Map<BlockPos, BlockChange> changes = new java.util.LinkedHashMap<>();
+        try {
+            net.minecraft.nbt.ListTag blocks = payload.changes().getList("blocks", net.minecraft.nbt.Tag.TAG_COMPOUND);
+            for (int i = 0; i < blocks.size(); i++) {
+                net.minecraft.nbt.CompoundTag entry = blocks.getCompound(i);
+                BlockPos pos = readPos(entry);
+                if (pos == null) continue;
+                BlockState state = entry.contains("state", net.minecraft.nbt.Tag.TAG_COMPOUND)
+                        ? net.minecraft.nbt.NbtUtils.readBlockState(BuiltInRegistries.BLOCK.asLookup(), entry.getCompound("state"))
+                        : null;
+                net.minecraft.nbt.CompoundTag nbt = entry.contains("nbt", net.minecraft.nbt.Tag.TAG_COMPOUND)
+                        ? entry.getCompound("nbt") : null;
+                changes.put(pos, new BlockChange(state, nbt));
+            }
+        } catch (Exception e) {
+            LOGGER.debug("[Planarium View] Blocs changes illisibles; ignores jusqu'a la prochaine photo", e);
+            return;
+        }
+        if (changes.isEmpty()) {
+            return;
+        }
+        deltaOverlay.putAll(changes);
+        // Passe par le meme fil que les comparaisons, pour rester dans l'ordre avec les photos deja en cours.
+        int generation = diffGeneration;
+        ResourceLocation dim = payload.pocketDim();
+        try {
+            DIFF_THREAD.execute(() -> Minecraft.getInstance().execute(
+                    () -> onDiffReady(generation, dim, null, changes, 0L)));
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            onDiffReady(generation, dim, null, changes, 0L);
+        }
     }
 
     /**
@@ -441,6 +508,7 @@ public final class ClientView {
             pendingPatch = null;
             pendingDiffNanos = 0L;
             diffGeneration++;
+            reapplyOverlay();
             pendingTemplate = lastTemplate;
             pendingLight = lastLight;
             pendingInfo = latestInfo;
@@ -513,6 +581,7 @@ public final class ClientView {
         pendingPatchInfo = null;
         pendingDiffNanos = 0L;
         diffGeneration++;
+        deltaOverlay.clear();
         statePosByPos = new HashMap<>();
         currentSectionStates = new HashMap<>();
         builtViewRadius = -1;
@@ -748,7 +817,8 @@ public final class ClientView {
      * Les palettes sont comparees par contenu, car leur ordre change des qu'un nouvel etat de bloc apparait.
      */
     private static Map<BlockPos, BlockChange> diffTemplates(net.minecraft.nbt.CompoundTag oldTag,
-                                                           net.minecraft.nbt.CompoundTag newTag) {
+                                                           net.minecraft.nbt.CompoundTag newTag,
+                                                           Set<BlockPos> overlayPositions) {
         int compound = net.minecraft.nbt.Tag.TAG_COMPOUND;
         int list = net.minecraft.nbt.Tag.TAG_LIST;
         if (!oldTag.contains("palette", list) || !newTag.contains("palette", list)
@@ -813,6 +883,22 @@ public final class ClientView {
                 changes.put(removed, new BlockChange(null, null));
                 if (changes.size() > MAX_PATCH_BLOCKS) return null;
             }
+        }
+        // Blocs recus par envoi partiel apres l'ancienne photo : on prend leur etat dans la nouvelle photo,
+        // meme s'il est identique a l'ancienne (le decor affiche, lui, a l'etat de l'envoi partiel).
+        if (!overlayPositions.isEmpty()) {
+            Set<BlockPos> missing = new HashSet<>(overlayPositions);
+            for (int i = 0; i < newBlocks.size() && !missing.isEmpty(); i++) {
+                net.minecraft.nbt.CompoundTag now = newBlocks.getCompound(i);
+                BlockPos pos = readPos(now);
+                if (pos != null && missing.remove(pos)) {
+                    changes.put(pos, changeOf(now, newPalette, decoded));
+                }
+            }
+            for (BlockPos removed : missing) {
+                changes.put(removed, new BlockChange(null, null));
+            }
+            if (changes.size() > MAX_PATCH_BLOCKS) return null;
         }
         return changes;
     }

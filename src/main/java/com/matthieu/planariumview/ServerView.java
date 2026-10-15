@@ -80,6 +80,15 @@ public final class ServerView {
         String lastSkyDiag;
         /** Une modification de bloc dans la zone rend la prochaine capture necessaire. */
         boolean sceneryDirty = true;
+        /**
+         * Blocs changes depuis la derniere photo complete, quand ces changements ne touchent ni la lumiere ni la meteo
+         * (fil de redstone, repeteur...) : on peut alors n'envoyer que ces blocs au lieu de tout recapturer.
+         */
+        final Set<BlockPos> changedBlocks = new HashSet<>();
+        /** Un changement demande une photo complete (lumiere, meteo, trop de blocs, bord de la zone). */
+        boolean fullCaptureNeeded = true;
+        /** Le client a recu au moins une photo complete de cette zone (les envois partiels s'y appliquent). */
+        boolean hasFull;
         /** Tick de la derniere capture (pour garder un ecart minimum entre deux captures). */
         long lastCapture = Long.MIN_VALUE / 2;
         /**
@@ -134,7 +143,35 @@ public final class ServerView {
                     && dz <= radius + LIGHT_MARGIN;
             if (inScenery || nearbyLightSource) {
                 track.sceneryDirty = true;
+                // Dans la photo et sans effet sur la lumiere ni la meteo : envoi partiel possible.
+                long dy = Math.abs((long) pos.getY() - center.getY());
+                boolean inCube = dx <= track.lastRadius && dy <= track.lastRadius && dz <= track.lastRadius;
+                if (inCube && neutralChange(level, pos, previous, next)
+                        && track.changedBlocks.size() < MAX_DELTA_BLOCKS) {
+                    track.changedBlocks.add(pos.immutable());
+                } else {
+                    track.fullCaptureNeeded = true;
+                }
             }
+        }
+    }
+
+    /** Au-dela, une photo complete coute moins cher qu'un envoi partiel. */
+    private static final int MAX_DELTA_BLOCKS = 4096;
+
+    /**
+     * Vrai si le changement de bloc ne peut pas modifier la lumiere (ni emission, ni opacite, ni forme qui bloque
+     * la lumiere) ni la hauteur de la pluie (bloc solide pour la pluie, fluide).
+     */
+    private static boolean neutralChange(Level level, BlockPos pos, BlockState previous, BlockState next) {
+        try {
+            return previous.getLightEmission(level, pos) == next.getLightEmission(level, pos)
+                    && previous.getLightBlock(level, pos) == next.getLightBlock(level, pos)
+                    && !previous.useShapeForLightOcclusion() && !next.useShapeForLightOcclusion()
+                    && previous.blocksMotion() == next.blocksMotion()
+                    && previous.getFluidState().isEmpty() == next.getFluidState().isEmpty();
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -316,9 +353,20 @@ public final class ServerView {
         if (!force && !dirtyReady && !followUpReady && !backupReady) {
             return;
         }
+        // Seulement des blocs sans effet sur la lumiere ont change : on n'envoie que ces blocs (quelques ms)
+        // au lieu de recapturer toute la zone (60 a 90 ms a rayon 32).
+        if (dirtyReady && !force && !followUpReady && !backupReady && track.hasFull && !track.fullCaptureNeeded
+                && radius == track.lastRadius && player.connection.hasChannel(OutsideViewDeltaPayload.TYPE)) {
+            track.lastCapture = now;
+            track.sceneryDirty = false;
+            sendDelta(player, track, radius);
+            return;
+        }
         track.lastCapture = now;
-        // Apres un changement de bloc : une capture de plus un peu plus tard (au moins 5 s), avec la lumiere a jour.
-        track.followUpAt = dirtyReady ? now + Math.max(blockGap, 5 * 20) : 0;
+        // Apres un changement de bloc qui peut toucher la lumiere : une capture de plus un peu plus tard (au moins 5 s),
+        // avec la lumiere a jour. Pas pour les blocs sans effet sur la lumiere (sinon une horloge de redstone
+        // relancerait une capture complete toutes les 5 s).
+        track.followUpAt = dirtyReady && track.fullCaptureNeeded ? now + Math.max(blockGap, 5 * 20) : 0;
         // Les entites ou donnees de biome moddees peuvent changer sans changement de bloc ; garde une capture de securite,
         // mais au plus une fois par minute par defaut, meme si une ancienne config contient encore la valeur 5.
         track.nextRefresh = refresh > 0 ? now + Math.max(refresh, 20 * 60) : Long.MAX_VALUE;
@@ -329,6 +377,9 @@ public final class ServerView {
             return;
         }
         track.sceneryDirty = false;
+        // La photo complete contient tous les changements en attente.
+        track.changedBlocks.clear();
+        track.fullCaptureNeeded = false;
         long compareStart = System.nanoTime();
         // Capture declenchee par un changement de bloc : on sait deja que le decor a change, inutile de comparer
         // toute la photo (10 a 15 ms). Si le bloc est revenu a son etat d'avant, le client ne trouvera rien a corriger.
@@ -355,9 +406,55 @@ public final class ServerView {
         track.lastRainTops = snap.rainTops();
         track.lastPrecip = snap.precip();
         track.lastRadius = radius;
+        track.hasFull = true;
         PacketDistributor.sendToPlayer(player,
                 new OutsideViewPayload(true, track.pocket.location(), radius, snap.tag(), snap.light(),
                         snap.origin(), snap.biomePalette(), snap.biomes(), snap.rainTops(), snap.precip()));
+    }
+
+    /** Envoie seulement les blocs changes (positions relatives a la photo, etat, donnees du bloc special). */
+    private static void sendDelta(ServerPlayer player, Track track, int radius) {
+        long start = System.nanoTime();
+        ServerLevel level = player.server.getLevel(track.source.dimension());
+        if (level == null) {
+            track.changedBlocks.clear();
+            return;
+        }
+        BlockPos min = track.source.pos().offset(-radius, -radius, -radius);
+        int size = radius * 2 + 1;
+        net.minecraft.nbt.ListTag list = new net.minecraft.nbt.ListTag();
+        for (BlockPos pos : track.changedBlocks) {
+            int x = pos.getX() - min.getX();
+            int y = pos.getY() - min.getY();
+            int z = pos.getZ() - min.getZ();
+            if (x < 0 || y < 0 || z < 0 || x >= size || y >= size || z >= size || !level.isLoaded(pos)) {
+                continue;
+            }
+            BlockState state = level.getBlockState(pos);
+            CompoundTag entry = new CompoundTag();
+            entry.put("pos", new net.minecraft.nbt.IntArrayTag(new int[]{x, y, z}));
+            // Comme la photo complete : l'air n'y figure pas (absence d'etat = bloc retire).
+            if (!state.is(Blocks.AIR)) {
+                entry.put("state", net.minecraft.nbt.NbtUtils.writeBlockState(state));
+                BlockEntity blockEntity = level.getBlockEntity(pos);
+                if (blockEntity != null) {
+                    entry.put("nbt", blockEntity.saveWithId(level.registryAccess()));
+                }
+            }
+            list.add(entry);
+        }
+        track.changedBlocks.clear();
+        if (list.isEmpty()) {
+            return;
+        }
+        // La photo complete gardee ne correspond plus au client : la prochaine sera envoyee meme si elle lui ressemble.
+        track.lastSent = null;
+        CompoundTag changes = new CompoundTag();
+        changes.put("blocks", list);
+        PacketDistributor.sendToPlayer(player,
+                new OutsideViewDeltaPayload(track.pocket.location(), radius, min, changes));
+        LOGGER.info("[Planarium Panorama] Envoi des blocs changes : {} blocs, {} ms", list.size(),
+                String.format(java.util.Locale.ROOT, "%.1f", (System.nanoTime() - start) / 1e6));
     }
 
     /** Envoie l'heure, la meteo et les couleurs du ciel du monde d'origine (si ce monde a un ciel). */

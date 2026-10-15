@@ -35,6 +35,11 @@ public class PlanariumView {
                 OutsideViewPayload.TYPE,
                 OutsideViewPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> ClientView.receive(payload)));
+        // Facultatif : le serveur n'envoie ces blocs changes qu'a un client qui les connait (sinon photo complete).
+        event.registrar("4").optional().playToClient(
+                OutsideViewDeltaPayload.TYPE,
+                OutsideViewDeltaPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> ClientView.receiveDelta(payload)));
         event.registrar("4").playToClient(
                 SkyPayload.TYPE,
                 SkyPayload.STREAM_CODEC,
