@@ -174,10 +174,8 @@ public final class ConfigScreen {
                         .build())
                 .category(ConfigCategory.createBuilder()
                         .name(Component.translatable(KEY + "section.display"))
-                        .option(biome)
-                        .option(weather)
-                        .option(clouds)
-                        // Groupes repliables, comme ceux de Better Clouds.
+                        // Groupes repliables, comme ceux de Better Clouds. YACL montre toujours les options hors groupe
+                        // en premier : l'environnement a donc son propre groupe, pour venir apres les autres.
                         .group(OptionGroup.createBuilder()
                                 .name(Component.translatable(KEY + "group.updates"))
                                 .collapsed(false)
@@ -189,6 +187,13 @@ public final class ConfigScreen {
                                 .collapsed(false)
                                 .option(fog)
                                 .option(caveFog)
+                                .build())
+                        .group(OptionGroup.createBuilder()
+                                .name(Component.translatable(KEY + "group.effects"))
+                                .collapsed(false)
+                                .option(biome)
+                                .option(weather)
+                                .option(clouds)
                                 .build())
                         .build())
                 .category(ConfigCategory.createBuilder()
