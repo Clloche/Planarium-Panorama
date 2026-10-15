@@ -35,7 +35,8 @@ import java.util.function.Supplier;
  */
 public final class ConfigScreen {
     private static final String KEY = "planariumview.config.";
-    private static final int MAX_REFRESH_SECONDS = 60;
+    /** Rafraichissement de secours : curseur en minutes (0 = OFF, puis 1 a 30 min). */
+    private static final int MAX_REFRESH_MINUTES = 30;
 
     private ConfigScreen() {
     }
@@ -136,11 +137,11 @@ public final class ConfigScreen {
                 .build();
         Option<Integer> refresh = Option.<Integer>createBuilder()
                 .name(Component.translatable(KEY + "refresh"))
-                .description(describeServer("refresh", refreshLabel(Config.REFRESH_SECONDS.getDefault()), serverSide))
-                .binding(Config.REFRESH_SECONDS.getDefault(),
-                        () -> Math.max(0, Math.min(MAX_REFRESH_SECONDS, Config.REFRESH_SECONDS.get())),
-                        Config.REFRESH_SECONDS::set)
-                .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(0, MAX_REFRESH_SECONDS).step(1)
+                .description(describeServer("refresh", refreshLabel(toMinutes(Config.REFRESH_SECONDS.getDefault())), serverSide))
+                .binding(toMinutes(Config.REFRESH_SECONDS.getDefault()),
+                        () -> toMinutes(Config.REFRESH_SECONDS.get()),
+                        minutes -> Config.REFRESH_SECONDS.set(minutes * 60))
+                .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(0, MAX_REFRESH_MINUTES).step(1)
                         .formatValue(ConfigScreen::refreshLabel))
                 .available(!serverSide)
                 .build();
@@ -316,8 +317,16 @@ public final class ConfigScreen {
         return Component.translatable(KEY + "lighting." + value.name().toLowerCase(Locale.ROOT));
     }
 
-    private static Component refreshLabel(Integer seconds) {
-        return seconds == 0 ? Component.translatable(KEY + "refresh.off") : Component.translatable(KEY + "refresh.value", seconds);
+    private static Component refreshLabel(Integer minutes) {
+        return minutes == 0 ? Component.translatable(KEY + "refresh.off") : Component.translatable(KEY + "refresh.value", minutes);
+    }
+
+    /** Secondes de la config en minutes du curseur (le serveur ne descend jamais sous 1 minute). */
+    private static int toMinutes(int seconds) {
+        if (seconds <= 0) {
+            return 0;
+        }
+        return Math.max(1, Math.min(MAX_REFRESH_MINUTES, Math.round(seconds / 60.0F)));
     }
 
     private static Component onOff(boolean v) {

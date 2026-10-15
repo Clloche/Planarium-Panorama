@@ -38,9 +38,10 @@ public final class Config {
                         "Above ~24, the scenery often goes past the render distance and the capture costs more on the server.")
                 .defineInRange("radius", 12, 1, 32);
         REFRESH_SECONDS = common
-                .comment("Fallback capture interval, in seconds, for changes that do not update a block state (such as some modded entities).",
-                        "Block changes in the scenery trigger a capture right away. The default fallback is once per minute; values above 60 make it less frequent.",
-                        "0 = OFF (frozen snapshot taken when entering the jar).")
+                .comment("Backup refresh, in seconds (60 minimum; lower values count as 60).",
+                        "Block changes in the scenery already trigger a capture on their own, at most every 5 seconds.",
+                        "This backup refresh also catches what isn't a block (paintings, item frames, armor stands...).",
+                        "0 = OFF (frozen snapshot taken when entering the jar; block changes don't show either).")
                 .defineInRange("refreshSeconds", 60, 0, 3600);
         COMMON_SPEC = common.build();
 

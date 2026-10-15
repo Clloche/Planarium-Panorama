@@ -79,6 +79,11 @@ public final class ServerView {
         boolean sceneryDirty = true;
         /** Tick de la derniere capture (pour garder un ecart minimum entre deux captures). */
         long lastCapture = Long.MIN_VALUE / 2;
+        /**
+         * Capture de suivi apres une capture declenchee par un changement de bloc (0 = aucune) : Minecraft met a jour
+         * la lumiere quelques ticks apres le bloc, la premiere capture peut donc encore avoir l'ancienne lumiere.
+         */
+        long followUpAt;
 
         Track(ResourceKey<Level> pocket, GlobalPos source) {
             this.pocket = pocket;
@@ -295,10 +300,13 @@ public final class ServerView {
         // (une ferme, un four ou de la redstone changent des blocs sans arret). La minuterie reste un filet de securite
         // pour les donnees moddees qui changent sans appeler LevelChunk.setBlockState.
         boolean dirtyReady = track.sceneryDirty && now >= track.lastCapture + MIN_CAPTURE_GAP;
-        if (!force && (refresh <= 0 || (!dirtyReady && now < track.nextRefresh))) {
+        boolean followUpReady = track.followUpAt != 0 && now >= track.followUpAt;
+        if (!force && (refresh <= 0 || (!dirtyReady && !followUpReady && now < track.nextRefresh))) {
             return;
         }
         track.lastCapture = now;
+        // Apres un changement de bloc : une capture de plus 5 secondes plus tard, avec la lumiere a jour.
+        track.followUpAt = dirtyReady ? now + MIN_CAPTURE_GAP : 0;
         // Les entites ou donnees de biome moddees peuvent changer sans changement de bloc ; garde une capture de securite,
         // mais au plus une fois par minute par defaut, meme si une ancienne config contient encore la valeur 5.
         track.nextRefresh = now + Math.max(refresh, 20 * 60);
