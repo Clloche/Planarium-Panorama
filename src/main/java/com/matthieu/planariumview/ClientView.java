@@ -325,6 +325,7 @@ public final class ClientView {
     }
 
     private static void disposeRender() {
+        GiantEntities.clear();
         if (renderData != null) {
             try {
                 PlanariumRenderer.clearByteBuffers(renderData);
@@ -827,6 +828,31 @@ public final class ClientView {
         RenderSystem.setShaderFogShape(com.mojang.blaze3d.shaders.FogShape.CYLINDER);
     }
 
+    /** Tableaux, cadres et porte-armures du decor (des entites, pas des blocs : voir GiantEntities). */
+    private static void drawEntities(StructureRenderData data, float partialTick, Vec3 camera, PoseStack poseStack, int radius) {
+        OutsideViewPayload info = lastInfo;
+        if (info == null || !(data.fakeRenderingWorld instanceof net.minecraft.world.level.Level fake)) {
+            return;
+        }
+        int view = viewRadius();
+        for (net.minecraft.world.entity.Entity entity : GiantEntities.entities(data, fake, info.template(), info.origin())) {
+            if (Math.abs(entity.getX() - radius - 0.5) > view + 1 || Math.abs(entity.getZ() - radius - 0.5) > view + 1) {
+                continue;
+            }
+            poseStack.pushPose();
+            poseStack.translate(-camera.x, -camera.y, -camera.z);
+            poseStack.translate(-ARS_OFFSET * GIANT, -ARS_OFFSET * GIANT - Y_SHIFT, -ARS_OFFSET * GIANT);
+            poseStack.scale(GIANT, GIANT, GIANT);
+            poseStack.translate(-radius, -radius, -radius);
+            try {
+                GiantEntities.render(entity, fake, partialTick, poseStack, blockEntityBuffers);
+            } catch (Exception e) {
+                LOGGER.debug("[Planarium Panorama] Entite du decor ignoree", e);
+            }
+            poseStack.popPose();
+        }
+    }
+
     /** Tampon a part pour les blocs a rendu special (coffres, panneaux, etc.). */
     private static MultiBufferSource.BufferSource blockEntityBuffers;
 
@@ -835,7 +861,7 @@ public final class ClientView {
      * ils sont dessines a chaque image par leur "BlockEntityRenderer", ici agrandis 32 fois.
      */
     private static void drawBlockEntities(StructureRenderData data, RenderLevelStageEvent event) {
-        if (data.fakeRenderingWorld == null || data.fakeRenderingWorld.blockEntityMap.isEmpty()) {
+        if (data.fakeRenderingWorld == null) {
             return;
         }
         Minecraft mc = Minecraft.getInstance();
@@ -888,6 +914,7 @@ public final class ClientView {
                 }
                 poseStack.popPose();
             }
+            drawEntities(data, partialTick, camera, poseStack, radius);
             blockEntityBuffers.endBatch();
         } finally {
             RenderSystem.setShaderFogStart(fogStart);

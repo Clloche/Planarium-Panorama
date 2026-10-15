@@ -434,7 +434,9 @@ public final class ServerView {
                 }
             }
         }
-        return new Snapshot(template.save(new CompoundTag()), captureLight(sourceLevel, min, size), min, palette, biomes,
+        CompoundTag tag = template.save(new CompoundTag());
+        GiantEntities.capture(sourceLevel, min, size, tag);
+        return new Snapshot(tag, captureLight(sourceLevel, min, size), min, palette, biomes,
                 rainTops, precip);
     }
 
