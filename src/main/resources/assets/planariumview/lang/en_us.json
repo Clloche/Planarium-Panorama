@@ -54,6 +54,7 @@
   "planariumview.config.world_sounds": "Outside world sounds",
   "planariumview.config.world_sounds.tooltip": "Sounds from the outside world around the Planarium (mobs, redstone, explosions, jukeboxes...), from their direction in the scenery. Sounds directly caused by a player are excluded.\n\nOFF: the area around the Planarium is paused while no player is there. Only the scenery ambience remains.",
   "planariumview.config.world_sounds.warning": "ON: while you're in the jar, the chunks kept loaded around the Planarium stay active as if you were there (machines, mobs, furnaces keep running). It costs as much as being there.",
+  "planariumview.config.world_sounds.off": "Outside world sounds is OFF.",
   "planariumview.config.mob_sounds": "Mobs and animals",
   "planariumview.config.mob_sounds.tooltip": "Mobs and animals in the outside world, even when you cannot see them.",
   "planariumview.config.block_sounds": "Redstone and blocks",

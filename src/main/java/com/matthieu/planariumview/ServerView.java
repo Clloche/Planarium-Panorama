@@ -283,8 +283,6 @@ public final class ServerView {
                 if (dx * dx + dz * dz > THUNDER_RANGE * THUNDER_RANGE) {
                     continue;
                 }
-                LOGGER.info("[Planarium Panorama] Eclair a {} blocs du Planarium envoye a {}",
-                        Math.round(Math.sqrt(dx * dx + dz * dz)), player.getGameProfile().getName());
                 PacketDistributor.sendToPlayer(player,
                         new LightningPayload(track.pocket.location(), dx, dy, dz, bolt.seed));
             }
@@ -456,12 +454,8 @@ public final class ServerView {
             // Fin : toujours envoyee (le client l'ignore s'il ne jouait rien). Debut : a portee, et si le joueur le veut.
             SoundPrefsPayload prefs = prefsOf(player.getUUID());
             if (!song.isEmpty() && (dx * dx + dy * dy + dz * dz > 64.0 * 64.0 || !prefs.world())) {
-                LOGGER.info("[Planarium Panorama] Jukebox {} non envoye a {} : {}", song, player.getGameProfile().getName(),
-                        !prefs.world() ? "option du client sur OFF" : "plus de 64 blocs du Planarium");
                 continue;
             }
-            LOGGER.info("[Planarium Panorama] Jukebox {} envoye a {}", song.isEmpty() ? "(arret)" : song,
-                    player.getGameProfile().getName());
             PacketDistributor.sendToPlayer(player,
                     new OutsideRecordPayload(track.pocket.location(), pos.asLong(), song, dx, dy, dz));
         }
@@ -504,8 +498,6 @@ public final class ServerView {
                     if (song.isEmpty()) {
                         continue;
                     }
-                    LOGGER.info("[Planarium Panorama] Jukebox qui jouait deja {} envoye a {}", song,
-                            player.getGameProfile().getName());
                     PacketDistributor.sendToPlayer(player, new OutsideRecordPayload(track.pocket.location(),
                             jukebox.getBlockPos().asLong(), song, dx, dy, dz));
                 }
@@ -539,22 +531,13 @@ public final class ServerView {
             return;
         }
         long now = System.nanoTime();
-        // Diagnostic (temporaire) : pour les explosions, on ecrit pourquoi chaque joueur dans un bocal l'entend ou non.
-        boolean diagnose = category == OutsideSoundPayload.EXPLOSIONS;
         for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
             Track track = TRACKS.get(player.getUUID());
-            String skip = track == null ? null
-                    : DISABLED.contains(player.getUUID()) ? "vue OFF"
-                    : !track.source.dimension().equals(level.dimension()) ? "autre dimension que le Planarium"
-                    : !player.serverLevel().dimension().equals(track.pocket) ? "joueur hors du bocal"
-                    : !player.connection.hasChannel(OutsideSoundPayload.TYPE) ? "client sans le paquet des sons"
-                    : !prefsOf(player.getUUID()).allows(category) ? "option du client sur OFF"
-                    : "";
-            if (skip == null || !skip.isEmpty()) {
-                if (diagnose && skip != null) {
-                    LOGGER.info("[Planarium Panorama] Son {} non envoye a {} : {}", soundId,
-                            player.getGameProfile().getName(), skip);
-                }
+            if (track == null || DISABLED.contains(player.getUUID())
+                    || !track.source.dimension().equals(level.dimension())
+                    || !player.serverLevel().dimension().equals(track.pocket)
+                    || !player.connection.hasChannel(OutsideSoundPayload.TYPE)
+                    || !prefsOf(player.getUUID()).allows(category)) {
                 continue;
             }
             BlockPos center = track.source.pos();
@@ -563,10 +546,6 @@ public final class ServerView {
             double dz = position.z - center.getZ();
             double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
             if (distance >= range) {
-                if (diagnose) {
-                    LOGGER.info("[Planarium Panorama] Son {} non envoye a {} : trop loin du Planarium ({} blocs, portee {})",
-                            soundId, player.getGameProfile().getName(), Math.round(distance), Math.round(range));
-                }
                 continue;
             }
             if (track.soundWindowStart == 0L || now - track.soundWindowStart >= 1_000_000_000L) {
@@ -586,11 +565,6 @@ public final class ServerView {
                 track.soundsInWindow++;
             }
             float attenuatedVolume = (float) (volume * (1.0 - distance / range));
-            if (diagnose) {
-                LOGGER.info("[Planarium Panorama] Son {} envoye a {} ({} blocs du Planarium, volume {})", soundId,
-                        player.getGameProfile().getName(), Math.round(distance),
-                        String.format(java.util.Locale.ROOT, "%.2f", attenuatedVolume));
-            }
             PacketDistributor.sendToPlayer(player, new OutsideSoundPayload(track.pocket.location(), soundId,
                     source.ordinal(), attenuatedVolume, pitch, dx, dy, dz, category));
         }

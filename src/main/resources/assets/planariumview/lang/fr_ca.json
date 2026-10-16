@@ -54,6 +54,7 @@
   "planariumview.config.world_sounds": "Sons du monde extérieur",
   "planariumview.config.world_sounds.tooltip": "Sons du monde extérieur autour du Planarium (mobs, redstone, explosions, jukebox...), depuis leur direction dans le décor. Les sons directement causés par un joueur sont exclus.\n\nOFF : la zone autour du Planarium est en pause tant qu'aucun joueur n'y est. Il ne reste que l'ambiance du décor.",
   "planariumview.config.world_sounds.warning": "ON : tant que tu es dans le bocal, les chunks gardés chargés autour du Planarium restent actifs comme si tu y étais (les machines, les mobs et les fours continuent de tourner). Ça coûte autant que d'y être.",
+  "planariumview.config.world_sounds.off": "Les sons du monde extérieur sont sur OFF.",
   "planariumview.config.mob_sounds": "Mobs et animaux",
   "planariumview.config.mob_sounds.tooltip": "Les mobs et les animaux du monde extérieur, même quand tu ne peux pas les voir.",
   "planariumview.config.block_sounds": "Redstone et blocs",

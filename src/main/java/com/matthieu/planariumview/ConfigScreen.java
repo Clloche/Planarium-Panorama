@@ -415,9 +415,15 @@ public final class ConfigScreen {
 
     /** Detail des sons du monde exterieur : OFF en gris quand le groupe est OFF (la valeur enregistree ne change pas). */
     private static Option<Boolean> worldKind(String name, net.neoforged.neoforge.common.ModConfigSpec.BooleanValue value) {
+        OptionDescription normal = describe(name, onOff(value.getDefault()));
+        // Groupe OFF : la meme explication, plus une ligne rouge, comme pour une integration sans son mod.
+        OptionDescription groupOff = OptionDescription.of(Component.translatable(KEY + name + ".tooltip"), Component.empty(),
+                Component.translatable(KEY + "default", onOff(value.getDefault())).withStyle(ChatFormatting.GRAY),
+                Component.empty(), Component.translatable(KEY + "world_sounds.off").withStyle(ChatFormatting.RED));
         return Option.<Boolean>createBuilder()
-                .name(Component.translatable(KEY + name))
-                .description(describe(name, onOff(value.getDefault())))
+                // Nom barre quand le groupe est OFF (relu a chaque affichage).
+                .name(MutableComponent.create(new WorldKindName(KEY + name)))
+                .description(v -> Config.WORLD_SOUNDS.get() ? normal : groupOff)
                 .binding(value.getDefault(), value::get, value::set)
                 .controller(opt -> BooleanControllerBuilder.create(opt).coloured(false)
                         .formatValue(v -> !Config.WORLD_SOUNDS.get() ? greyOff() : coloredOnOff(v)))
@@ -429,9 +435,29 @@ public final class ConfigScreen {
         return onOff(v).copy().withStyle(v ? ChatFormatting.GREEN : ChatFormatting.RED);
     }
 
-    /** OFF en gris : option qui ne peut pas s'appliquer (mod absent, groupe OFF). */
+    /** OFF en gris : option qui ne peut pas s'appliquer (mod absent, groupe OFF). Meme gris que le texte grise. */
     private static Component greyOff() {
-        return CommonComponents.OPTION_OFF.copy().withStyle(ChatFormatting.DARK_GRAY);
+        return CommonComponents.OPTION_OFF.copy().withStyle(ChatFormatting.GRAY);
+    }
+
+    /** Nom d'une option du detail des sons du monde exterieur : barre tant que "Sons du monde exterieur" est OFF. */
+    private record WorldKindName(String key) implements net.minecraft.network.chat.ComponentContents {
+        @Override
+        public <T> java.util.Optional<T> visit(net.minecraft.network.chat.FormattedText.ContentConsumer<T> consumer) {
+            return Component.translatable(key).visit(consumer);
+        }
+
+        @Override
+        public <T> java.util.Optional<T> visit(net.minecraft.network.chat.FormattedText.StyledContentConsumer<T> consumer,
+                                               net.minecraft.network.chat.Style style) {
+            return Component.translatable(key).visit(consumer,
+                    Config.WORLD_SOUNDS.get() ? style : style.withStrikethrough(true));
+        }
+
+        @Override
+        public Type<?> type() {
+            return net.minecraft.network.chat.contents.PlainTextContents.TYPE;
+        }
     }
 
     private static Component onOff(boolean v) {

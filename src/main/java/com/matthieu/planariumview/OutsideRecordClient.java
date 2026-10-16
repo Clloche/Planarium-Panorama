@@ -21,7 +21,6 @@ import java.util.Map;
  * recalculee a chaque tick selon la camera, et il s'arrete si on quitte le bocal ou si les sons du dehors sont coupes.
  */
 final class OutsideRecordClient {
-    private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger("planariumview");
     /** Portee d'un jukebox (comme Minecraft). */
     private static final double RANGE = 64.0;
     private static final Map<Long, RecordSound> PLAYING = new HashMap<>();
@@ -38,8 +37,6 @@ final class OutsideRecordClient {
         ClientLevel level = minecraft.level;
         if (payload.song().isEmpty() || level == null || !Config.jukeboxSounds()
                 || !level.dimension().location().equals(payload.pocketDim())) {
-            LOGGER.info("[Planarium Panorama] Jukebox recu : {}", payload.song().isEmpty() ? "arret"
-                    : "ignore (" + (level == null ? "pas de monde" : !Config.jukeboxSounds() ? "option sur OFF" : "pas dans ce bocal") + ")");
             return;
         }
         ResourceLocation id = ResourceLocation.tryParse(payload.song());
@@ -61,7 +58,6 @@ final class OutsideRecordClient {
                 payload.dx(), payload.dy(), payload.dz(), volume);
         PLAYING.put(payload.key(), sound);
         minecraft.getSoundManager().play(sound);
-        LOGGER.info("[Planarium Panorama] Jukebox recu, joue : {} (volume {})", id, volume);
         // Comme Minecraft : "En cours de lecture" au-dessus de la barre d'objets.
         minecraft.gui.setNowPlaying(song.description());
     }

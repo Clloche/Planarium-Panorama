@@ -12,7 +12,6 @@ import net.minecraft.world.phys.Vec3;
 
 /** Plays server-forwarded sounds from the direction of their real-world source. */
 public final class OutsideSoundClient {
-    private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger("planariumview");
     /** Les sons d'ambiance du decor sont un peu baisses : on les entend a travers le verre du bocal. */
     static final float AMBIENCE_VOLUME = 0.6F;
     private OutsideSoundClient() {
@@ -22,14 +21,7 @@ public final class OutsideSoundClient {
         Minecraft minecraft = Minecraft.getInstance();
         ClientLevel level = minecraft.level;
         if (level == null || !level.dimension().location().equals(payload.pocketDim()) || !allowed(payload.category())) {
-            if (payload.category() == OutsideSoundPayload.EXPLOSIONS) {
-                LOGGER.info("[Planarium Panorama] Son {} recu mais ignore ({})", payload.soundId(),
-                        level == null ? "pas de monde" : !allowed(payload.category()) ? "option sur OFF" : "pas dans ce bocal");
-            }
             return;
-        }
-        if (payload.category() == OutsideSoundPayload.EXPLOSIONS) {
-            LOGGER.info("[Planarium Panorama] Son {} recu, joue (volume {})", payload.soundId(), payload.volume());
         }
         SoundSource[] sources = SoundSource.values();
         if (payload.source() < 0 || payload.source() >= sources.length || payload.volume() <= 0.0F) {
