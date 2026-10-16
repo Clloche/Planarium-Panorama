@@ -392,6 +392,47 @@ public final class ServerView {
                 SoundSource.BLOCKS, volume, pitch, false);
     }
 
+    /**
+     * Pistons en mouvement dans la photo : pendant 2 ticks, le bloc est un "moving_piston" invisible qui contient
+     * l'etat d'arrivee. Une capture tombee a ce moment faisait disparaitre le piston (ou sa tete) du decor jusqu'a la
+     * capture suivante. On remplace donc ces blocs par leur etat d'arrivee.
+     */
+    private static void settleMovingPistons(CompoundTag tag) {
+        net.minecraft.nbt.ListTag palette = tag.getList("palette", net.minecraft.nbt.Tag.TAG_COMPOUND);
+        net.minecraft.nbt.ListTag blocks = tag.getList("blocks", net.minecraft.nbt.Tag.TAG_COMPOUND);
+        Set<Integer> movingStates = new HashSet<>();
+        Map<net.minecraft.nbt.Tag, Integer> indexOf = new HashMap<>();
+        for (int i = 0; i < palette.size(); i++) {
+            CompoundTag state = palette.getCompound(i);
+            indexOf.putIfAbsent(state, i);
+            if ("minecraft:moving_piston".equals(state.getString("Name"))) {
+                movingStates.add(i);
+            }
+        }
+        if (movingStates.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < blocks.size(); i++) {
+            CompoundTag block = blocks.getCompound(i);
+            if (!movingStates.contains(block.getInt("state")) || !block.contains("nbt", net.minecraft.nbt.Tag.TAG_COMPOUND)) {
+                continue;
+            }
+            CompoundTag nbt = block.getCompound("nbt");
+            if (!nbt.contains("blockState", net.minecraft.nbt.Tag.TAG_COMPOUND)) {
+                continue;
+            }
+            CompoundTag arrival = nbt.getCompound("blockState");
+            Integer index = indexOf.get(arrival);
+            if (index == null) {
+                index = palette.size();
+                palette.add(arrival.copy());
+                indexOf.put(arrival, index);
+            }
+            block.putInt("state", index);
+            block.remove("nbt");
+        }
+    }
+
     /** Debut ("" = fin) d'un morceau de jukebox, pour les joueurs dont le Planarium est a portee (64 blocs). */
     private static void sendOutsideRecord(ServerLevel level, BlockPos pos, String song) {
         Vec3 position = Vec3.atCenterOf(pos);
@@ -679,12 +720,19 @@ public final class ServerView {
                 continue;
             }
             BlockState state = level.getBlockState(pos);
+            // Bloc de piston en mouvement (2 ticks) : invisible tel quel, on envoie son etat d'arrivee.
+            boolean moving = false;
+            if (state.is(Blocks.MOVING_PISTON)
+                    && level.getBlockEntity(pos) instanceof net.minecraft.world.level.block.piston.PistonMovingBlockEntity piston) {
+                state = piston.getMovedState();
+                moving = true;
+            }
             CompoundTag entry = new CompoundTag();
             entry.put("pos", new net.minecraft.nbt.IntArrayTag(new int[]{x, y, z}));
             // Comme la photo complete : l'air n'y figure pas (absence d'etat = bloc retire).
             if (!state.is(Blocks.AIR)) {
                 entry.put("state", net.minecraft.nbt.NbtUtils.writeBlockState(state));
-                BlockEntity blockEntity = level.getBlockEntity(pos);
+                BlockEntity blockEntity = moving ? null : level.getBlockEntity(pos);
                 if (blockEntity != null) {
                     entry.put("nbt", blockEntity.saveWithId(level.registryAccess()));
                 }
@@ -938,6 +986,7 @@ public final class ServerView {
             }
         }
         CompoundTag tag = template.save(new CompoundTag());
+        settleMovingPistons(tag);
         GiantEntities.capture(sourceLevel, min, size, tag);
         return new Snapshot(tag, captureLight(sourceLevel, min, size), min, palette, biomes,
                 rainTops, precip);
