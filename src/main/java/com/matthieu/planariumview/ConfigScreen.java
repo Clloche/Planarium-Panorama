@@ -77,6 +77,11 @@ public final class ConfigScreen {
                 .build();
         Option<Boolean> biome = bool("biome", Config.BIOME_COLORS.getDefault(), Config.BIOME_COLORS::get, Config.BIOME_COLORS::set);
         Option<Boolean> weather = bool("weather", Config.WEATHER.getDefault(), Config.WEATHER::get, Config.WEATHER::set);
+        Option<Boolean> outsideSounds = bool("outside_sounds", Config.OUTSIDE_SOUNDS.getDefault(),
+                Config.OUTSIDE_SOUNDS::get, Config.OUTSIDE_SOUNDS::set);
+        Option<Boolean> entitySounds = bool("entity_sounds", Config.INCLUDE_ENTITY_SOUNDS.getDefault(),
+                Config.INCLUDE_ENTITY_SOUNDS::get, Config.INCLUDE_ENTITY_SOUNDS::set);
+        outsideSounds.addListener((option, value) -> entitySounds.setAvailable(Config.enabled() && value));
         boolean betterClouds = BetterCloudsCompat.active();
         Option<Boolean> clouds = Option.<Boolean>createBuilder()
                 .name(Component.translatable(KEY + "clouds"))
@@ -114,6 +119,8 @@ public final class ConfigScreen {
         gated.add(new Gated(lighting, () -> true));
         gated.add(new Gated(biome, () -> true));
         gated.add(new Gated(weather, () -> true));
+        gated.add(new Gated(outsideSounds, () -> true));
+        gated.add(new Gated(entitySounds, Config::outsideSounds));
         gated.add(new Gated(clouds, () -> !betterClouds));
         gated.add(new Gated(fog, () -> true));
         gated.add(new Gated(caveFog, () -> true));
@@ -158,7 +165,7 @@ public final class ConfigScreen {
                 .build();
 
         dirty = false;
-        for (Option<?> option : List.of(master, lighting, radius, biome, weather, clouds, fog, blockUpdates, refresh, color, ambience, ambientSounds, lunar, caveFog)) {
+        for (Option<?> option : List.of(master, lighting, radius, biome, weather, outsideSounds, entitySounds, clouds, fog, blockUpdates, refresh, color, ambience, ambientSounds, lunar, caveFog)) {
             autoSave(option);
         }
 
@@ -194,6 +201,8 @@ public final class ConfigScreen {
                                 .collapsed(false)
                                 .option(biome)
                                 .option(weather)
+                                .option(outsideSounds)
+                                .option(entitySounds)
                                 .option(clouds)
                                 .build())
                         .build())

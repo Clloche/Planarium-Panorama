@@ -74,6 +74,11 @@ public class PlanariumView {
                 LightningPayload.TYPE,
                 LightningPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> LightningView.receive(payload)));
+        // Facultatif pour qu'un client ou serveur plus ancien puisse toujours se connecter.
+        event.registrar("4").optional().playToClient(
+                OutsideSoundPayload.TYPE,
+                OutsideSoundPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> OutsideSoundClient.receive(payload)));
     }
 
     /** Datapack integre : donne la lumiere du ciel (et l'heure normale) a la dimension des bocaux. */

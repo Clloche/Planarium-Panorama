@@ -5,6 +5,7 @@ import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
 import com.hollingsworth.arsnouveau.common.world.saved_data.JarDimData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.core.Holder;
 import net.minecraft.core.Vec3i;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceKey;
@@ -15,6 +16,9 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ThreadedLevelLightEngine;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.network.protocol.game.ClientboundLightUpdatePacket;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.GameRules;
@@ -26,8 +30,11 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.PlayLevelSoundEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.level.ExplosionEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
@@ -100,6 +107,9 @@ public final class ServerView {
          * la lumiere quelques ticks apres le bloc, la premiere capture peut donc encore avoir l'ancienne lumiere.
          */
         long followUpAt;
+        /** Limiteur par joueur pour ne pas inonder le client dans une ferme ou une machine redstone. */
+        long soundWindowStart;
+        int soundsInWindow;
 
         Track(ResourceKey<Level> pocket, GlobalPos source) {
             this.pocket = pocket;
@@ -111,6 +121,7 @@ public final class ServerView {
     }
 
     private static final Set<String> LOGGED_ERRORS = new HashSet<>();
+    private static final int MAX_SOUNDS_PER_SECOND = 40;
 
     /** Ecrit une erreur dans le log une seule fois par type (sinon elle se repeterait chaque seconde). */
     private static void logOnce(String what, Exception e) {
@@ -261,8 +272,97 @@ public final class ServerView {
         }
     }
 
+    /** Sons du monde d'origine : les sons directement causes par un joueur sont filtres par SoundCauseMixin. */
+    @SubscribeEvent
+    public static void onPlayLevelSound(PlayLevelSoundEvent event) {
+        if (!(event.getLevel() instanceof ServerLevel level) || !level.getServer().isSameThread()
+                || event.isCanceled() || PlayerSoundCause.isPlayerCaused()) {
+            return;
+        }
+        SoundSource source = event.getSource();
+        if (source != SoundSource.BLOCKS && source != SoundSource.WEATHER && source != SoundSource.RECORDS
+                && source != SoundSource.AMBIENT && source != SoundSource.HOSTILE && source != SoundSource.NEUTRAL) {
+            return;
+        }
+        Holder<SoundEvent> sound = event.getSound();
+        if (sound == null) {
+            return;
+        }
+        boolean entitySound = source == SoundSource.HOSTILE || source == SoundSource.NEUTRAL;
+        Vec3 position;
+        if (event instanceof PlayLevelSoundEvent.AtEntity atEntity) {
+            if (atEntity.getEntity() instanceof net.minecraft.world.entity.player.Player) {
+                return;
+            }
+            position = atEntity.getEntity().position();
+            entitySound = true;
+        } else if (event instanceof PlayLevelSoundEvent.AtPosition atPosition) {
+            position = atPosition.getPosition();
+        } else {
+            return;
+        }
+        sendOutsideSound(level, position, sound, source, event.getNewVolume(), event.getNewPitch(), entitySound);
+    }
+
+    /** Minecraft emits explosion audio locally, outside PlayLevelSoundEvent, so forward this event separately. */
+    @SubscribeEvent
+    public static void onExplosion(ExplosionEvent.Detonate event) {
+        if (!(event.getLevel() instanceof ServerLevel level) || !level.getServer().isSameThread()) {
+            return;
+        }
+        float pitch = 1.0F / (level.random.nextFloat() * 0.2F + 0.9F);
+        sendOutsideSound(level, event.getExplosion().getPosition(), SoundEvents.GENERIC_EXPLODE,
+                SoundSource.BLOCKS, 4.0F, pitch, false);
+    }
+
+    private static void sendOutsideSound(ServerLevel level, Vec3 position, Holder<SoundEvent> sound,
+                                         SoundSource source, float volume, float pitch, boolean entitySound) {
+        if (TRACKS.isEmpty() || volume <= 0.0F) {
+            return;
+        }
+        ResourceLocation soundId = sound.unwrapKey().map(ResourceKey::location).orElse(null);
+        if (soundId == null) {
+            return;
+        }
+        double range = sound.value().getRange(volume);
+        if (!(range > 0.0) || !Double.isFinite(range)) {
+            return;
+        }
+        long now = System.nanoTime();
+        for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
+            Track track = TRACKS.get(player.getUUID());
+            if (track == null || DISABLED.contains(player.getUUID())
+                    || !track.source.dimension().equals(level.dimension())
+                    || !player.serverLevel().dimension().equals(track.pocket)
+                    || !player.connection.hasChannel(OutsideSoundPayload.TYPE)) {
+                continue;
+            }
+            BlockPos center = track.source.pos();
+            double dx = position.x - center.getX();
+            double dy = position.y - center.getY();
+            double dz = position.z - center.getZ();
+            double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (distance >= range) {
+                continue;
+            }
+            if (track.soundWindowStart == 0L || now - track.soundWindowStart >= 1_000_000_000L) {
+                track.soundWindowStart = now;
+                track.soundsInWindow = 0;
+            }
+            if (track.soundsInWindow >= MAX_SOUNDS_PER_SECOND) {
+                continue;
+            }
+            track.soundsInWindow++;
+            float attenuatedVolume = (float) (volume * (1.0 - distance / range));
+            PacketDistributor.sendToPlayer(player, new OutsideSoundPayload(track.pocket.location(), soundId,
+                    source.ordinal(), attenuatedVolume, pitch, dx, dy, dz, entitySound));
+        }
+    }
+
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
+        // Filet de securite si un appel de son a leve une exception avant l'injection RETURN du mixin.
+        PlayerSoundCause.clear();
         MinecraftServer server = event.getServer();
         if (server.getTickCount() % 20 != 0) {
             return;

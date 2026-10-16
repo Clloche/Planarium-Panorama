@@ -22,6 +22,8 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue BIOME_COLORS;
     public static final ModConfigSpec.BooleanValue WEATHER;
     public static final ModConfigSpec.BooleanValue CLOUDS;
+    public static final ModConfigSpec.BooleanValue OUTSIDE_SOUNDS;
+    public static final ModConfigSpec.BooleanValue INCLUDE_ENTITY_SOUNDS;
     public static final ModConfigSpec.BooleanValue COLORED_LIGHT;
     public static final ModConfigSpec.BooleanValue OUTSIDE_AMBIENCE;
     public static final ModConfigSpec.BooleanValue AMBIENT_SOUNDS;
@@ -87,6 +89,13 @@ public final class Config {
                 .comment("Outside clouds in the jar when the Planarium is near the cloud layer (vanilla cloud shape).",
                         "Ignored while Better Clouds is active (its clouds don't show in the jar).")
                 .define("clouds", true);
+        OUTSIDE_SOUNDS = client
+                .comment("Play nearby sounds from the real world inside the jar: blocks, weather, records and explosions.",
+                        "Flowing water and lava, fire crackling and other ambient block sounds generated locally from scenery blocks are not included yet.")
+                .define("outsideSounds", true);
+        INCLUDE_ENTITY_SOUNDS = client
+                .comment("Also play sounds made by mobs and animals. Sounds directly caused by a player are excluded.")
+                .define("includeEntitySounds", false);
         COLORED_LIGHT = client
                 .comment("Colored light from Contraption Lights on the giant scenery and the miniature (if the mod is installed).")
                 .define("coloredLight", true);
@@ -182,6 +191,14 @@ public final class Config {
 
     public static boolean clouds() {
         return enabled() && CLOUDS.get() && !BetterCloudsCompat.active();
+    }
+
+    public static boolean outsideSounds() {
+        return enabled() && OUTSIDE_SOUNDS.get();
+    }
+
+    public static boolean includeEntitySounds() {
+        return outsideSounds() && INCLUDE_ENTITY_SOUNDS.get();
     }
 
     public static boolean coloredLight() {

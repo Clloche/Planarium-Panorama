@@ -67,15 +67,17 @@ final class LightningView {
         direction = direction.lengthSqr() < 1.0E-4 ? new Vec3(0, 1, 0) : direction.normalize();
         double distance = Math.sqrt(payload.dx() * payload.dx() + payload.dz() * payload.dz());
 
-        // Tonnerre : entendu de loin, comme dehors, dans la direction de l'eclair.
-        Vec3 thunder = camera.add(direction.scale(16.0));
-        mc.getSoundManager().play(new SimpleSoundInstance(SoundEvents.LIGHTNING_BOLT_THUNDER, SoundSource.WEATHER,
-                10000.0F, 0.8F + RANDOM.nextFloat() * 0.2F, RANDOM, thunder.x, thunder.y, thunder.z));
-        // Impact : seulement si l'eclair tombe pres du Planarium.
-        if (distance <= 32.0) {
-            Vec3 impact = camera.add(direction.scale(Math.min(24.0, 4.0 + distance)));
-            mc.getSoundManager().play(new SimpleSoundInstance(SoundEvents.LIGHTNING_BOLT_IMPACT, SoundSource.WEATHER,
-                    2.0F, 0.5F + RANDOM.nextFloat() * 0.2F, RANDOM, impact.x, impact.y, impact.z));
+        // Le tonnerre n'est pas visible par PlayLevelSoundEvent : il garde sa voie speciale, mais suit le bouton Sons.
+        if (Config.outsideSounds()) {
+            Vec3 thunder = camera.add(direction.scale(16.0));
+            mc.getSoundManager().play(new SimpleSoundInstance(SoundEvents.LIGHTNING_BOLT_THUNDER, SoundSource.WEATHER,
+                    10000.0F, 0.8F + RANDOM.nextFloat() * 0.2F, RANDOM, thunder.x, thunder.y, thunder.z));
+            // Impact : seulement si l'eclair tombe pres du Planarium.
+            if (distance <= 32.0) {
+                Vec3 impact = camera.add(direction.scale(Math.min(24.0, 4.0 + distance)));
+                mc.getSoundManager().play(new SimpleSoundInstance(SoundEvents.LIGHTNING_BOLT_IMPACT, SoundSource.WEATHER,
+                        2.0F, 0.5F + RANDOM.nextFloat() * 0.2F, RANDOM, impact.x, impact.y, impact.z));
+            }
         }
         if (SkySync.skyActive(level) && !SkySync.underground(level)) {
             level.setSkyFlashTime(2);
