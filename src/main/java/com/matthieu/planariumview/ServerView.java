@@ -30,6 +30,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.PlayLevelSoundEvent;
@@ -109,7 +110,9 @@ public final class ServerView {
         long followUpAt;
         /** Limiteur par joueur pour ne pas inonder le client dans une ferme ou une machine redstone. */
         long soundWindowStart;
+        /** Sons envoyes dans la seconde en cours : blocs/meteo/disques/explosions, et entites (comptes a part). */
         int soundsInWindow;
+        int entitySoundsInWindow;
 
         Track(ResourceKey<Level> pocket, GlobalPos source) {
             this.pocket = pocket;
@@ -121,7 +124,11 @@ public final class ServerView {
     }
 
     private static final Set<String> LOGGED_ERRORS = new HashSet<>();
-    private static final int MAX_SOUNDS_PER_SECOND = 40;
+    /** Limites separees : une ferme de mobs ne peut pas empecher d'entendre une porte ou un repeteur. */
+    private static final int MAX_SOUNDS_PER_SECOND = 30;
+    private static final int MAX_ENTITY_SOUNDS_PER_SECOND = 10;
+    /** Joueurs qui veulent les sons des entites (option du client, envoyee par SoundPrefsPayload). */
+    private static final java.util.Set<UUID> ENTITY_SOUNDS = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /** Ecrit une erreur dans le log une seule fois par type (sinon elle se repeterait chaque seconde). */
     private static void logOnce(String what, Exception e) {
@@ -237,6 +244,16 @@ public final class ServerView {
         if (event.getEntity() instanceof ServerPlayer player) {
             removeTrack(player.server, player.getUUID());
             DISABLED.remove(player.getUUID());
+            ENTITY_SOUNDS.remove(player.getUUID());
+        }
+    }
+
+    /** Option "Sons des entites" du client : sans elle, le serveur ne lui envoie pas ces sons. */
+    static void setEntitySounds(ServerPlayer player, boolean wanted) {
+        if (wanted) {
+            ENTITY_SOUNDS.add(player.getUUID());
+        } else {
+            ENTITY_SOUNDS.remove(player.getUUID());
         }
     }
 
@@ -304,6 +321,61 @@ public final class ServerView {
         sendOutsideSound(level, position, sound, source, event.getNewVolume(), event.getNewPitch(), entitySound);
     }
 
+    /**
+     * Sons joues par les "evenements de niveau" (ServerLevel.levelEvent, voir LevelEventSoundMixin) : ils ne passent pas
+     * par PlayLevelSoundEvent. Seulement les plus utiles ; ceux causes par un joueur sont exclus, comme les autres sons.
+     */
+    public static void onLevelEvent(ServerLevel level, Player player, int type, BlockPos pos, int data) {
+        if (player != null || TRACKS.isEmpty() || !level.getServer().isSameThread() || PlayerSoundCause.isPlayerCaused()) {
+            return;
+        }
+        net.minecraft.util.RandomSource random = level.random;
+        SoundEvent sound;
+        float volume;
+        float pitch;
+        switch (type) {
+            case 2001 -> {
+                // Bloc casse (par un mob, un villageois, un enderman...) : son de cassure du bloc.
+                BlockState state = net.minecraft.world.level.block.Block.stateById(data);
+                if (state.isAir()) {
+                    return;
+                }
+                net.minecraft.world.level.block.SoundType soundType = state.getSoundType();
+                sound = soundType.getBreakSound();
+                volume = (soundType.getVolume() + 1.0F) / 2.0F;
+                pitch = soundType.getPitch() * 0.8F;
+            }
+            case 1000 -> { sound = SoundEvents.DISPENSER_DISPENSE; volume = 1.0F; pitch = 1.0F; }
+            case 1001 -> { sound = SoundEvents.DISPENSER_FAIL; volume = 1.0F; pitch = 1.2F; }
+            case 1002 -> { sound = SoundEvents.DISPENSER_LAUNCH; volume = 1.0F; pitch = 1.2F; }
+            case 1009 -> {
+                sound = SoundEvents.FIRE_EXTINGUISH;
+                volume = 0.5F;
+                pitch = 2.6F + (random.nextFloat() - random.nextFloat()) * 0.8F;
+            }
+            case 1030 -> { sound = SoundEvents.ANVIL_USE; volume = 1.0F; pitch = random.nextFloat() * 0.1F + 0.9F; }
+            case 1031 -> { sound = SoundEvents.ANVIL_LAND; volume = 0.3F; pitch = random.nextFloat() * 0.1F + 0.9F; }
+            case 1501 -> {
+                sound = SoundEvents.LAVA_EXTINGUISH;
+                volume = 0.5F;
+                pitch = 2.6F + (random.nextFloat() - random.nextFloat()) * 0.8F;
+            }
+            case 1502 -> {
+                sound = SoundEvents.REDSTONE_TORCH_BURNOUT;
+                volume = 0.5F;
+                pitch = 2.6F + (random.nextFloat() - random.nextFloat()) * 0.8F;
+            }
+            default -> {
+                return;
+            }
+        }
+        if (sound == null) {
+            return;
+        }
+        sendOutsideSound(level, Vec3.atCenterOf(pos), net.minecraft.core.registries.BuiltInRegistries.SOUND_EVENT.wrapAsHolder(sound),
+                SoundSource.BLOCKS, volume, pitch, false);
+    }
+
     /** Minecraft emits explosion audio locally, outside PlayLevelSoundEvent, so forward this event separately. */
     @SubscribeEvent
     public static void onExplosion(ExplosionEvent.Detonate event) {
@@ -334,7 +406,8 @@ public final class ServerView {
             if (track == null || DISABLED.contains(player.getUUID())
                     || !track.source.dimension().equals(level.dimension())
                     || !player.serverLevel().dimension().equals(track.pocket)
-                    || !player.connection.hasChannel(OutsideSoundPayload.TYPE)) {
+                    || !player.connection.hasChannel(OutsideSoundPayload.TYPE)
+                    || (entitySound && !ENTITY_SOUNDS.contains(player.getUUID()))) {
                 continue;
             }
             BlockPos center = track.source.pos();
@@ -348,11 +421,19 @@ public final class ServerView {
             if (track.soundWindowStart == 0L || now - track.soundWindowStart >= 1_000_000_000L) {
                 track.soundWindowStart = now;
                 track.soundsInWindow = 0;
+                track.entitySoundsInWindow = 0;
             }
-            if (track.soundsInWindow >= MAX_SOUNDS_PER_SECOND) {
-                continue;
+            if (entitySound) {
+                if (track.entitySoundsInWindow >= MAX_ENTITY_SOUNDS_PER_SECOND) {
+                    continue;
+                }
+                track.entitySoundsInWindow++;
+            } else {
+                if (track.soundsInWindow >= MAX_SOUNDS_PER_SECOND) {
+                    continue;
+                }
+                track.soundsInWindow++;
             }
-            track.soundsInWindow++;
             float attenuatedVolume = (float) (volume * (1.0 - distance / range));
             PacketDistributor.sendToPlayer(player, new OutsideSoundPayload(track.pocket.location(), soundId,
                     source.ordinal(), attenuatedVolume, pitch, dx, dy, dz, entitySound));

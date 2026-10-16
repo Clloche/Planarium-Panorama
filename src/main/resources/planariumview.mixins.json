@@ -9,7 +9,8 @@
     "DimensionTypeSkyMixin",
     "PocketLightningMixin",
     "LevelChunkSceneryMixin",
-    "SoundCauseMixin"
+    "SoundCauseMixin",
+    "LevelEventSoundMixin"
   ],
   "client": [
     "ClientLevelMixin",

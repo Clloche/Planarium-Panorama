@@ -30,7 +30,7 @@
   "planariumview.config.weather": "Météo",
   "planariumview.config.weather.tooltip": "Pluie, neige et éclairs du dehors : la pluie et la neige tombent sur le décor avec le son de la pluie, on entend le tonnerre et on voit les éclairs proches.",
   "planariumview.config.outside_sounds": "Sons extérieurs",
-  "planariumview.config.outside_sounds.tooltip": "Les sons proches du vrai monde sont joués dans le bocal : blocs, ambiance, disques et explosions. Les sons directement causés par un joueur sont exclus. Le tonnerre reste contrôlé par l'option Météo.\n\nL'eau et la lave qui coulent, le feu qui crépite et les autres sons ambiants de blocs générés localement par le décor ne sont pas encore inclus.",
+  "planariumview.config.outside_sounds.tooltip": "Les sons proches du vrai monde sont joués dans le bocal : blocs, météo, disques et explosions. Les sons directement causés par un joueur sont exclus.\n\nL'eau et la lave qui coulent, le feu qui crépite et les autres sons ambiants de blocs générés localement par le décor ne sont pas encore inclus.",
   "planariumview.config.entity_sounds": "Inclure les sons des entités",
   "planariumview.config.entity_sounds.tooltip": "Entends aussi les monstres et les animaux du vrai monde, même si tu ne peux pas les voir. Les sons directement causés par un joueur restent exclus.",
   "planariumview.config.clouds": "Nuages",

@@ -74,6 +74,15 @@ public class PlanariumView {
                 LightningPayload.TYPE,
                 LightningPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> LightningView.receive(payload)));
+        // Facultatif : l'option "Sons des entites" du client, pour que le serveur ne les envoie qu'a qui les veut.
+        event.registrar("4").optional().playToServer(
+                SoundPrefsPayload.TYPE,
+                SoundPrefsPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> {
+                    if (context.player() instanceof net.minecraft.server.level.ServerPlayer player) {
+                        ServerView.setEntitySounds(player, payload.entitySounds());
+                    }
+                }));
         // Facultatif pour qu'un client ou serveur plus ancien puisse toujours se connecter.
         event.registrar("4").optional().playToClient(
                 OutsideSoundPayload.TYPE,

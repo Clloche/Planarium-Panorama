@@ -522,10 +522,24 @@ public final class ClientView {
     private static Boolean sentEnabled;
 
     /** Previent le serveur quand l'interrupteur general change (et a la connexion) : OFF, il ne capture plus rien pour nous. */
+    /** Derniere valeur de l'option "Sons des entites" envoyee au serveur (null : rien d'envoye sur cette connexion). */
+    private static Boolean sentEntitySounds;
+
     private static void sendToggle(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
         net.minecraft.client.multiplayer.ClientPacketListener connection = Minecraft.getInstance().getConnection();
         if (connection == null || Minecraft.getInstance().player == null) {
             return;
+        }
+        boolean entitySounds = Config.includeEntitySounds();
+        if (sentEntitySounds == null || sentEntitySounds != entitySounds) {
+            sentEntitySounds = entitySounds;
+            try {
+                if (connection.hasChannel(SoundPrefsPayload.TYPE)) {
+                    net.neoforged.neoforge.network.PacketDistributor.sendToServer(new SoundPrefsPayload(entitySounds));
+                }
+            } catch (Exception e) {
+                LOGGER.debug("[Planarium Panorama] Option des sons d'entites non envoyee au serveur", e);
+            }
         }
         boolean enabled = Config.enabled();
         if (sentEnabled != null && sentEnabled == enabled) {
@@ -543,6 +557,7 @@ public final class ClientView {
 
     private static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         sentEnabled = null;
+        sentEntitySounds = null;
         dispose();
         MiniLight.clear();
         LunarClient.clear();
