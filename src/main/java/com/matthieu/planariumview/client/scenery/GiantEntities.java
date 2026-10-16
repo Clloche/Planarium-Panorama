@@ -33,7 +33,7 @@ import java.util.List;
 public final class GiantEntities {
     private static final Logger LOGGER = LoggerFactory.getLogger("planariumview");
     /** Cle ajoutee a la photo des blocs (ignoree par Minecraft quand il la relit). */
-    static final String KEY = "planariumview_entities";
+    public static final String KEY = "planariumview_entities";
     /** Champs qui changent tout seuls : retires pour que la photo ne paraisse pas changer a chaque fois. */
     private static final String[] VOLATILE = {"UUID", "Motion", "FallDistance", "Fire", "Air", "OnGround", "PortalCooldown",
             "HurtTime", "HurtByTimestamp", "DeathTime", "AbsorptionAmount", "Brain", "FallFlying", "Health"};
@@ -44,6 +44,14 @@ public final class GiantEntities {
     /** Serveur : decorations de la zone captee, avec leur position dans le monde d'origine. */
     public static void capture(ServerLevel level, BlockPos min, int size, CompoundTag templateTag) {
         AABB box = new AABB(min.getX(), min.getY(), min.getZ(), min.getX() + size, min.getY() + size, min.getZ() + size);
+        ListTag list = list(level, box);
+        if (!list.isEmpty()) {
+            templateTag.put(KEY, list);
+        }
+    }
+
+    /** Serveur : decorations dans cette zone (aussi pour la miniature du bocal, voir MiniEntitiesPayload). */
+    public static ListTag list(ServerLevel level, AABB box) {
         ListTag list = new ListTag();
         for (Entity entity : level.getEntitiesOfClass(Entity.class, box, GiantEntities::decoration)) {
             CompoundTag tag = new CompoundTag();
@@ -54,9 +62,7 @@ public final class GiantEntities {
                 list.add(tag);
             }
         }
-        if (!list.isEmpty()) {
-            templateTag.put(KEY, list);
-        }
+        return list;
     }
 
     private static boolean decoration(Entity entity) {
@@ -74,7 +80,16 @@ public final class GiantEntities {
             return entities;
         }
         builtFor = renderData;
-        entities = new ArrayList<>();
+        entities = create(fakeWorld, templateTag, origin);
+        if (!entities.isEmpty()) {
+            LOGGER.info("[Planarium Panorama] Decor geant : {} tableaux, cadres ou porte-armures", entities.size());
+        }
+        return entities;
+    }
+
+    /** Recree les entites de la photo dans un faux monde (positions moins {@code origin}). */
+    public static List<Entity> create(Level fakeWorld, CompoundTag templateTag, BlockPos origin) {
+        List<Entity> entities = new ArrayList<>();
         if (templateTag == null || fakeWorld == null || origin == null || !templateTag.contains(KEY, Tag.TAG_LIST)) {
             return entities;
         }
@@ -97,19 +112,23 @@ public final class GiantEntities {
                 }
                 EntityType.create(tag, fakeWorld).ifPresent(entity -> {
                     if (entity instanceof ArmorStand stand) {
-                        stand.setYBodyRot(stand.getYRot());
-                        stand.setYHeadRot(stand.getYRot());
-                        stand.yBodyRotO = stand.getYRot();
-                        stand.yHeadRotO = stand.getYRot();
+                        // Pas de tick dans le faux monde : on fixe nous-memes l'orientation du corps et de la tete,
+                        // l'ancienne et la nouvelle (le rendu passe de l'une a l'autre a chaque image). setYBodyRot du
+                        // porte-armure ne change que les anciennes : avec un corps reste a 0, il tournait sur lui-meme.
+                        float yaw = stand.getYRot();
+                        stand.yRotO = yaw;
+                        stand.yBodyRot = yaw;
+                        stand.yBodyRotO = yaw;
+                        stand.yHeadRot = yaw;
+                        stand.yHeadRotO = yaw;
+                        // Il "tremble" aussi pendant 5 ticks apres un coup (heure du monde moins lastHit).
+                        stand.lastHit = Long.MIN_VALUE / 2;
                     }
                     entities.add(entity);
                 });
             } catch (Exception e) {
                 LOGGER.debug("[Planarium Panorama] Entite du decor ignoree : {}", tag.getString("id"), e);
             }
-        }
-        if (!entities.isEmpty()) {
-            LOGGER.info("[Planarium Panorama] Decor geant : {} tableaux, cadres ou porte-armures", entities.size());
         }
         return entities;
     }
@@ -125,15 +144,22 @@ public final class GiantEntities {
      */
     @SuppressWarnings({"rawtypes", "unchecked"})
     static void render(Entity entity, Level fakeWorld, float partialTick, PoseStack poseStack, MultiBufferSource buffers) {
+        render(entity, fakeWorld, partialTick, poseStack, buffers, null);
+    }
+
+    /** Comme render, avec une lumiere imposee ({@code light}, ou null pour celle du faux monde). */
+    public static void render(Entity entity, Level fakeWorld, float partialTick, PoseStack poseStack, MultiBufferSource buffers,
+                              Integer light) {
         EntityRenderer renderer = Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(entity);
         if (renderer == null) {
             return;
         }
         Vec3 offset = renderer.getRenderOffset(entity, partialTick);
-        int light = LevelRenderer.getLightColor(fakeWorld, BlockPos.containing(entity.getLightProbePosition(partialTick)));
+        int packed = light != null ? light
+                : LevelRenderer.getLightColor(fakeWorld, BlockPos.containing(entity.getLightProbePosition(partialTick)));
         poseStack.pushPose();
         poseStack.translate(entity.getX() + offset.x, entity.getY() + offset.y, entity.getZ() + offset.z);
-        renderer.render(entity, entity.getYRot(), partialTick, poseStack, buffers, light);
+        renderer.render(entity, entity.getYRot(), partialTick, poseStack, buffers, packed);
         poseStack.popPose();
     }
 }

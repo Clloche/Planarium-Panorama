@@ -1,6 +1,7 @@
 package com.matthieu.planariumview;
 
 import com.matthieu.planariumview.client.jar.WallColors;
+import com.matthieu.planariumview.client.mini.MiniEntities;
 import com.matthieu.planariumview.client.mini.MiniLight;
 import com.matthieu.planariumview.client.scenery.ClientView;
 import com.matthieu.planariumview.client.sky.LightningView;
@@ -13,6 +14,7 @@ import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.AmbiencePayload;
 import com.matthieu.planariumview.network.LightningPayload;
 import com.matthieu.planariumview.network.LunarPayload;
+import com.matthieu.planariumview.network.MiniEntitiesPayload;
 import com.matthieu.planariumview.network.MiniLightPayload;
 import com.matthieu.planariumview.network.OutsideRecordPayload;
 import com.matthieu.planariumview.network.OutsideSoundPayload;
@@ -72,6 +74,11 @@ public class PlanariumView {
                 MiniLightPayload.TYPE,
                 MiniLightPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> MiniLight.receive(payload)));
+        // Facultatif : un serveur sans cette version du mod ne bloque pas la connexion.
+        event.registrar("4").optional().playToClient(
+                MiniEntitiesPayload.TYPE,
+                MiniEntitiesPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> MiniEntities.receive(payload)));
         event.registrar("4").playToClient(
                 WallPayload.TYPE,
                 WallPayload.STREAM_CODEC,

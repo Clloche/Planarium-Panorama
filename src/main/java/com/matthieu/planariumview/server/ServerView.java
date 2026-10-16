@@ -7,6 +7,7 @@ import com.matthieu.planariumview.compat.SeasonCompat;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.AmbiencePayload;
 import com.matthieu.planariumview.network.LightningPayload;
+import com.matthieu.planariumview.network.MiniEntitiesPayload;
 import com.matthieu.planariumview.network.MiniLightPayload;
 import com.matthieu.planariumview.network.OutsideRecordPayload;
 import com.matthieu.planariumview.network.OutsideSoundPayload;
@@ -79,6 +80,12 @@ public final class ServerView {
     /** Lumiere des bocaux deja envoyee pour les miniatures, et la version du gabarit d'Ars correspondante. */
     private static final Map<ResourceKey<Level>, byte[]> MINI_LIGHT = new HashMap<>();
     private static final Map<ResourceKey<Level>, Long> MINI_VERSION = new HashMap<>();
+    /** Porte-armures, tableaux et cadres de chaque bocal, deja envoyes (voir updateMiniEntities). */
+    private static final Map<ResourceKey<Level>, net.minecraft.nbt.CompoundTag> MINI_ENTITIES = new HashMap<>();
+    /** Bocaux dont Ars vient de refaire le gabarit : leurs entites sont relues aussi. */
+    private static final Set<ResourceKey<Level>> MINI_ENTITIES_DUE = new HashSet<>();
+    /** Prochain rafraichissement de secours des entites de chaque bocal (tick du serveur). */
+    private static final Map<ResourceKey<Level>, Long> MINI_ENTITIES_NEXT = new HashMap<>();
 
     private static final class Track {
         final ResourceKey<Level> pocket;
@@ -257,6 +264,11 @@ public final class ServerView {
             update(player, true);
             for (Map.Entry<ResourceKey<Level>, byte[]> entry : MINI_LIGHT.entrySet()) {
                 PacketDistributor.sendToPlayer(player, new MiniLightPayload(entry.getKey().location(), entry.getValue()));
+            }
+            if (player.connection.hasChannel(MiniEntitiesPayload.TYPE)) {
+                for (Map.Entry<ResourceKey<Level>, net.minecraft.nbt.CompoundTag> entry : MINI_ENTITIES.entrySet()) {
+                    PacketDistributor.sendToPlayer(player, new MiniEntitiesPayload(entry.getKey().location(), entry.getValue()));
+                }
             }
         }
     }
@@ -601,6 +613,11 @@ public final class ServerView {
             updateMiniatures(server);
         } catch (Exception e) {
             LOGGER.error("[Planarium View] Erreur lors de la capture de la lumiere des miniatures", e);
+        }
+        try {
+            updateMiniEntities(server);
+        } catch (Exception e) {
+            LOGGER.error("[Planarium Panorama] Erreur lors de la capture des entites des miniatures", e);
         }
         keepSourcesAwake(server);
     }
@@ -1236,6 +1253,7 @@ public final class ServerView {
                 continue;
             }
             MINI_VERSION.put(key, dimEntry.lastUpdated());
+            MINI_ENTITIES_DUE.add(key);
             relightPocket(pocket);
             // Charge les chunks du bocal (comme Ars le fait pour son gabarit) avant de lire la lumiere.
             for (int cx = -1; cx <= 2; cx++) {
@@ -1250,6 +1268,54 @@ public final class ServerView {
             }
             MINI_LIGHT.put(key, light);
             PacketDistributor.sendToAllPlayers(new MiniLightPayload(key.location(), light));
+        }
+    }
+
+    /**
+     * Porte-armures, tableaux et cadres de chaque bocal, pour la miniature (Ars ne dessine que les blocs). Comme pour le
+     * decor geant : relus quand le gabarit du bocal change (blocs), et au rafraichissement de secours (option
+     * "Backup refresh"). Envoyes seulement s'ils ont change ; un bocal decharge garde la derniere liste envoyee.
+     */
+    private static void updateMiniEntities(MinecraftServer server) {
+        long now = server.getTickCount();
+        int seconds = Config.REFRESH_SECONDS.get();
+        long refresh = seconds > 0 ? Math.max(60, seconds) * 20L : 0L;
+        for (ResourceKey<Level> key : PlanariumTile.dimManager.entries.keySet()) {
+            boolean due = !MINI_ENTITIES.containsKey(key) || MINI_ENTITIES_DUE.contains(key)
+                    || (refresh > 0 && now >= MINI_ENTITIES_NEXT.getOrDefault(key, 0L));
+            if (!due) {
+                continue;
+            }
+            ServerLevel pocket = server.getLevel(key);
+            if (pocket == null) {
+                continue;
+            }
+            boolean loaded = true;
+            for (int cx = 0; cx <= 1 && loaded; cx++) {
+                for (int cz = 0; cz <= 1; cz++) {
+                    if (!pocket.areEntitiesLoaded(ChunkPos.asLong(cx, cz))) {
+                        loaded = false;
+                        break;
+                    }
+                }
+            }
+            if (!loaded) {
+                continue;
+            }
+            MINI_ENTITIES_DUE.remove(key);
+            MINI_ENTITIES_NEXT.put(key, now + refresh);
+            net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
+            tag.put("entities", GiantEntities.list(pocket, new net.minecraft.world.phys.AABB(0, 0, 0, 32, 34, 32)));
+            net.minecraft.nbt.CompoundTag previous = MINI_ENTITIES.put(key, tag);
+            if (tag.equals(previous) || (previous == null && tag.getList("entities", 10).isEmpty())) {
+                continue;
+            }
+            MiniEntitiesPayload payload = new MiniEntitiesPayload(key.location(), tag);
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                if (player.connection.hasChannel(MiniEntitiesPayload.TYPE)) {
+                    PacketDistributor.sendToPlayer(player, payload);
+                }
+            }
         }
     }
 

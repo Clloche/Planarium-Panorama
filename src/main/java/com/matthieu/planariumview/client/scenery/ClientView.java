@@ -849,6 +849,7 @@ public final class ClientView {
         MiniParticles.clear();
         dispose();
         MiniLight.clear();
+        com.matthieu.planariumview.client.mini.MiniEntities.clear();
         LunarClient.clear();
     }
 
