@@ -27,7 +27,6 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue MOB_SOUNDS;
     public static final ModConfigSpec.BooleanValue BLOCK_SOUNDS;
     public static final ModConfigSpec.BooleanValue EXPLOSION_SOUNDS;
-    public static final ModConfigSpec.BooleanValue JUKEBOX_SOUNDS;
     public static final ModConfigSpec.BooleanValue COLORED_LIGHT;
     public static final ModConfigSpec.BooleanValue OUTSIDE_AMBIENCE;
     public static final ModConfigSpec.BooleanValue AMBIENT_SOUNDS;
@@ -112,9 +111,6 @@ public final class Config {
         EXPLOSION_SOUNDS = client
                 .comment("Outside world sounds: explosions.")
                 .define("explosionSounds", true);
-        JUKEBOX_SOUNDS = client
-                .comment("Outside world sounds: jukebox music.")
-                .define("jukeboxSounds", true);
         COLORED_LIGHT = client
                 .comment("Colored light from Contraption Lights on the giant scenery and the miniature (if the mod is installed).")
                 .define("coloredLight", true);
@@ -232,8 +228,9 @@ public final class Config {
         return worldSounds() && EXPLOSION_SOUNDS.get();
     }
 
+    /** Musique des jukebox : fait partie des sons du monde exterieur. */
     public static boolean jukeboxSounds() {
-        return worldSounds() && JUKEBOX_SOUNDS.get();
+        return worldSounds();
     }
 
     public static boolean coloredLight() {

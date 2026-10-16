@@ -29,7 +29,8 @@
     "YaclUndoButtonMixin",
     "TravelersTitlesMixin",
     "EcForecastMixin",
-    "DhClientApiMixin"
+    "DhClientApiMixin",
+    "DsSoundBlockMixin"
   ],
   "injectors": {
     "defaultRequire": 0

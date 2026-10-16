@@ -11,7 +11,10 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.Vec3;
 
 /** Plays server-forwarded sounds from the direction of their real-world source. */
-final class OutsideSoundClient {
+public final class OutsideSoundClient {
+    private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger("planariumview");
+    /** Les sons d'ambiance du decor sont un peu baisses : on les entend a travers le verre du bocal. */
+    static final float AMBIENCE_VOLUME = 0.6F;
     private OutsideSoundClient() {
     }
 
@@ -19,7 +22,14 @@ final class OutsideSoundClient {
         Minecraft minecraft = Minecraft.getInstance();
         ClientLevel level = minecraft.level;
         if (level == null || !level.dimension().location().equals(payload.pocketDim()) || !allowed(payload.category())) {
+            if (payload.category() == OutsideSoundPayload.EXPLOSIONS) {
+                LOGGER.info("[Planarium Panorama] Son {} recu mais ignore ({})", payload.soundId(),
+                        level == null ? "pas de monde" : !allowed(payload.category()) ? "option sur OFF" : "pas dans ce bocal");
+            }
             return;
+        }
+        if (payload.category() == OutsideSoundPayload.EXPLOSIONS) {
+            LOGGER.info("[Planarium Panorama] Son {} recu, joue (volume {})", payload.soundId(), payload.volume());
         }
         SoundSource[] sources = SoundSource.values();
         if (payload.source() < 0 || payload.source() >= sources.length || payload.volume() <= 0.0F) {
@@ -30,7 +40,7 @@ final class OutsideSoundClient {
             return;
         }
 
-        play(sound, sources[payload.source()], payload.volume(), payload.pitch(), payload.dx(), payload.dy(), payload.dz());
+        play(sound, sources[payload.source()], payload.volume(), payload.pitch(), payload.dx(), payload.dy(), payload.dz(), false);
     }
 
     /** Options du client pour chaque categorie de son du monde exterieur (le serveur filtre deja de son cote). */
@@ -57,19 +67,33 @@ final class OutsideSoundClient {
     }
 
     /** Joue un son deja attenue (volume final) venant de (dx, dy, dz) par rapport au Planarium. */
-    static void play(SoundEvent sound, SoundSource source, float volume, float pitch, double dx, double dy, double dz) {
+    static void play(SoundEvent sound, SoundSource source, float volume, float pitch, double dx, double dy, double dz,
+                     boolean scenery) {
         if (volume <= 0.0F) {
             return;
         }
         Vec3 playback = playbackPosition(dx, dy, dz);
-        SimpleSoundInstance instance = new SimpleSoundInstance(sound, source, volume,
-                pitch, RandomSource.create(), playback.x, playback.y, playback.z) {
-            // The server already applied distance falloff. Keep only positional panning here.
-            @Override
-            public SoundInstance.Attenuation getAttenuation() {
-                return SoundInstance.Attenuation.NONE;
-            }
-        };
-        Minecraft.getInstance().getSoundManager().play(instance);
+        Minecraft.getInstance().getSoundManager().play(new OutsideInstance(sound, source, volume, pitch,
+                playback, scenery));
+    }
+
+    /** Vrai pour un son d'ambiance du decor (voir DsSoundBlockMixin). */
+    public static boolean isScenery(SoundInstance sound) {
+        return sound instanceof OutsideInstance outside && outside.scenery;
+    }
+
+    /** Son venu du dehors : deja attenue (par le serveur ou par ClientView), on ne garde que sa direction. */
+    private static final class OutsideInstance extends SimpleSoundInstance {
+        private final boolean scenery;
+
+        OutsideInstance(SoundEvent sound, SoundSource source, float volume, float pitch, Vec3 at, boolean scenery) {
+            super(sound, source, volume, pitch, RandomSource.create(), at.x, at.y, at.z);
+            this.scenery = scenery;
+        }
+
+        @Override
+        public SoundInstance.Attenuation getAttenuation() {
+            return SoundInstance.Attenuation.NONE;
+        }
     }
 }

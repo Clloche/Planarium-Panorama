@@ -79,23 +79,22 @@ public final class ConfigScreen {
         Option<Boolean> weather = bool("weather", Config.WEATHER.getDefault(), Config.WEATHER::get, Config.WEATHER::set);
         Option<Boolean> sceneryAmbience = bool("scenery_ambience", Config.SCENERY_AMBIENCE.getDefault(),
                 Config.SCENERY_AMBIENCE::get, Config.SCENERY_AMBIENCE::set);
-        Option<Boolean> worldSounds = bool("world_sounds", Config.WORLD_SOUNDS.getDefault(),
-                Config.WORLD_SOUNDS::get, Config.WORLD_SOUNDS::set);
-        Option<Boolean> mobSounds = bool("mob_sounds", Config.MOB_SOUNDS.getDefault(),
-                Config.MOB_SOUNDS::get, Config.MOB_SOUNDS::set);
-        Option<Boolean> blockSounds = bool("block_sounds", Config.BLOCK_SOUNDS.getDefault(),
-                Config.BLOCK_SOUNDS::get, Config.BLOCK_SOUNDS::set);
-        Option<Boolean> explosionSounds = bool("explosion_sounds", Config.EXPLOSION_SOUNDS.getDefault(),
-                Config.EXPLOSION_SOUNDS::get, Config.EXPLOSION_SOUNDS::set);
-        Option<Boolean> jukeboxSounds = bool("jukebox_sounds", Config.JUKEBOX_SOUNDS.getDefault(),
-                Config.JUKEBOX_SOUNDS::get, Config.JUKEBOX_SOUNDS::set);
-        // Les sons du monde exterieur se choisissent un par un seulement si le groupe est ON.
-        List<Option<Boolean>> worldKinds = List.of(mobSounds, blockSounds, explosionSounds, jukeboxSounds);
-        worldSounds.addListener((option, value) -> {
-            for (Option<Boolean> kind : worldKinds) {
-                kind.setAvailable(Config.enabled() && value);
-            }
-        });
+        // Sons du monde exterieur : l'avertissement (zone active) est aussi dans le nom du groupe de detail.
+        Option<Boolean> worldSounds = Option.<Boolean>createBuilder()
+                .name(Component.translatable(KEY + "world_sounds"))
+                .description(OptionDescription.of(Component.translatable(KEY + "world_sounds.tooltip"), Component.empty(),
+                        Component.translatable(KEY + "world_sounds.warning"),
+                        Component.empty(),
+                        Component.translatable(KEY + "default", onOff(Config.WORLD_SOUNDS.getDefault())).withStyle(ChatFormatting.GRAY)))
+                .binding(Config.WORLD_SOUNDS.getDefault(), Config.WORLD_SOUNDS::get, Config.WORLD_SOUNDS::set)
+                .controller(opt -> BooleanControllerBuilder.create(opt).onOffFormatter().coloured(true))
+                .build();
+        // Le detail garde ses valeurs enregistrees ; quand le groupe est OFF, il est grise et affiche OFF en gris
+        // (seul l'affichage change : les choix reviennent tels quels avec ON).
+        Option<Boolean> mobSounds = worldKind("mob_sounds", Config.MOB_SOUNDS);
+        Option<Boolean> blockSounds = worldKind("block_sounds", Config.BLOCK_SOUNDS);
+        Option<Boolean> explosionSounds = worldKind("explosion_sounds", Config.EXPLOSION_SOUNDS);
+        List<Option<Boolean>> worldKinds = List.of(mobSounds, blockSounds, explosionSounds);
         boolean betterClouds = BetterCloudsCompat.active();
         Option<Boolean> clouds = Option.<Boolean>createBuilder()
                 .name(Component.translatable(KEY + "clouds"))
@@ -138,7 +137,6 @@ public final class ConfigScreen {
         gated.add(new Gated(mobSounds, Config::worldSounds));
         gated.add(new Gated(blockSounds, Config::worldSounds));
         gated.add(new Gated(explosionSounds, Config::worldSounds));
-        gated.add(new Gated(jukeboxSounds, Config::worldSounds));
         gated.add(new Gated(clouds, () -> !betterClouds));
         gated.add(new Gated(fog, () -> true));
         gated.add(new Gated(caveFog, () -> true));
@@ -184,9 +182,15 @@ public final class ConfigScreen {
 
         dirty = false;
         for (Option<?> option : List.of(master, lighting, radius, biome, weather, sceneryAmbience, worldSounds, mobSounds,
-                blockSounds, explosionSounds, jukeboxSounds, clouds, fog, blockUpdates, refresh, color, ambience, ambientSounds, lunar, caveFog)) {
+                blockSounds, explosionSounds, clouds, fog, blockUpdates, refresh, color, ambience, ambientSounds, lunar, caveFog)) {
             autoSave(option);
         }
+        // Le detail des sons du monde exterieur est grise quand le groupe est OFF (rien n'est ecrit dans la config).
+        worldSounds.addListener((option, value) -> {
+            for (Option<Boolean> kind : worldKinds) {
+                kind.setAvailable(Config.enabled() && value);
+            }
+        });
 
         YetAnotherConfigLib config = YetAnotherConfigLib.createBuilder()
                 .title(Component.translatable(KEY + "title"))
@@ -230,12 +234,12 @@ public final class ConfigScreen {
                                 .build())
                         // YACL ne permet pas de groupe dans un groupe : le detail des sons du monde exterieur suit juste apres.
                         .group(OptionGroup.createBuilder()
-                                .name(Component.translatable(KEY + "group.world_sounds"))
+                                .name(Component.translatable(KEY + "group.world_sounds").withStyle(ChatFormatting.GOLD))
+                                .description(OptionDescription.of(Component.translatable(KEY + "world_sounds.warning")))
                                 .collapsed(false)
                                 .option(mobSounds)
                                 .option(blockSounds)
                                 .option(explosionSounds)
-                                .option(jukeboxSounds)
                                 .build())
                         .build())
                 .category(ConfigCategory.createBuilder()
@@ -344,11 +348,14 @@ public final class ConfigScreen {
             setter = value -> {
             };
         }
+        boolean installed = present;
         return Option.<Boolean>createBuilder()
                 .name(label)
                 .description(description)
                 .binding(defaultValue, getter, setter)
-                .controller(opt -> BooleanControllerBuilder.create(opt).onOffFormatter().coloured(true))
+                // Mod absent : OFF en gris plutot qu'en rouge.
+                .controller(opt -> BooleanControllerBuilder.create(opt).coloured(false)
+                        .formatValue(v -> installed ? coloredOnOff(v) : greyOff()))
                 .build();
     }
 
@@ -404,6 +411,27 @@ public final class ConfigScreen {
             return 0;
         }
         return Math.max(1, Math.min(MAX_REFRESH_MINUTES, Math.round(seconds / 60.0F)));
+    }
+
+    /** Detail des sons du monde exterieur : OFF en gris quand le groupe est OFF (la valeur enregistree ne change pas). */
+    private static Option<Boolean> worldKind(String name, net.neoforged.neoforge.common.ModConfigSpec.BooleanValue value) {
+        return Option.<Boolean>createBuilder()
+                .name(Component.translatable(KEY + name))
+                .description(describe(name, onOff(value.getDefault())))
+                .binding(value.getDefault(), value::get, value::set)
+                .controller(opt -> BooleanControllerBuilder.create(opt).coloured(false)
+                        .formatValue(v -> !Config.WORLD_SOUNDS.get() ? greyOff() : coloredOnOff(v)))
+                .build();
+    }
+
+    /** ON en vert, OFF en rouge, comme les autres options. */
+    private static Component coloredOnOff(boolean v) {
+        return onOff(v).copy().withStyle(v ? ChatFormatting.GREEN : ChatFormatting.RED);
+    }
+
+    /** OFF en gris : option qui ne peut pas s'appliquer (mod absent, groupe OFF). */
+    private static Component greyOff() {
+        return CommonComponents.OPTION_OFF.copy().withStyle(ChatFormatting.DARK_GRAY);
     }
 
     private static Component onOff(boolean v) {

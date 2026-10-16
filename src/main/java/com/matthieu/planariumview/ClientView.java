@@ -598,7 +598,8 @@ public final class ClientView {
         if (!(range > 0.0) || distance >= range) {
             return;
         }
-        OutsideSoundClient.play(sound, source, (float) (volume * (1.0 - distance / range)), pitch, dx, dy, dz);
+        OutsideSoundClient.play(sound, source, (float) (volume * (1.0 - distance / range)) * OutsideSoundClient.AMBIENCE_VOLUME,
+                pitch, dx, dy, dz, true);
     }
 
     /** Dernieres options des sons du monde exterieur envoyees au serveur (null : rien d'envoye sur cette connexion). */
@@ -610,7 +611,7 @@ public final class ClientView {
             return;
         }
         SoundPrefsPayload prefs = new SoundPrefsPayload(Config.worldSounds(), Config.mobSounds(), Config.blockSounds(),
-                Config.explosionSounds(), Config.jukeboxSounds());
+                Config.explosionSounds());
         if (!prefs.equals(sentSoundPrefs)) {
             sentSoundPrefs = prefs;
             try {
