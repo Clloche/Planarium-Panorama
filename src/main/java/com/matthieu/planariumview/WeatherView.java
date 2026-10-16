@@ -14,6 +14,7 @@ import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
@@ -338,7 +339,7 @@ public final class WeatherView {
      * la pluie tombe autour du joueur (a 10 blocs au plus, en hauteur aussi), et il est assourdi si cet endroit est au-dessus
      * de lui alors qu'un toit le couvre. Loin sous un toit, plus rien. Comme le son vient d'un vrai endroit, Dynamic
      * Surroundings (echo, sons etouffes derriere les murs) le traite comme la pluie du dehors.
-     * Si le Planarium lui-meme est a l'abri dehors, le plafond du bocal joue le role du toit.
+     * Si le Planarium lui-meme est a l'abri dehors, on entend plutot la pluie autour de l'abri (voir outsideRain).
      */
     private static void onClientTick(ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
@@ -348,6 +349,13 @@ public final class WeatherView {
         }
         float rain = SkySync.rainLevel(level);
         if (rain <= 0.0F) {
+            return;
+        }
+        RandomSource random = level.getRandom();
+        // Le Planarium est a l'abri dehors (un toit au-dessus de lui) : comme un joueur a sa place, on entend la pluie
+        // tomber autour de l'abri, dans le decor.
+        if (tops[radius * size + radius] > planarium.getY() + 1) {
+            outsideRain(random);
             return;
         }
         // Il doit pleuvoir (pas neiger) juste a cote du Planarium, dehors.
@@ -364,9 +372,7 @@ public final class WeatherView {
         if (!nearby) {
             return;
         }
-        boolean planariumSheltered = tops[radius * size + radius] > planarium.getY() + 1;
         net.minecraft.core.BlockPos player = mc.player.blockPosition();
-        RandomSource random = level.getRandom();
         net.minecraft.core.BlockPos landing = null;
         for (int attempt = 0; attempt < 20 && landing == null; attempt++) {
             int x = player.getX() + random.nextInt(21) - 10;
@@ -374,7 +380,7 @@ public final class WeatherView {
             if (x < 0 || z < 0 || x > JarWalls.MAX_Y - 1 || z > JarWalls.MAX_Y - 1) {
                 continue;
             }
-            int top = planariumSheltered ? JarWalls.MAX_Y : rainTop(level, x, z);
+            int top = rainTop(level, x, z);
             if (top > player.getY() + 10) {
                 continue; // toit trop haut au-dessus : loin sous un abri, on n'entend rien
             }
@@ -387,12 +393,56 @@ public final class WeatherView {
             return;
         }
         rainSoundTime = 0;
-        boolean covered = planariumSheltered || roofedInJar(level, player);
+        boolean covered = roofedInJar(level, player);
         if (landing.getY() > player.getY() + 1 && covered) {
             level.playLocalSound(landing, SoundEvents.WEATHER_RAIN_ABOVE, SoundSource.WEATHER, 0.1F, 0.5F, false);
         } else {
             level.playLocalSound(landing, SoundEvents.WEATHER_RAIN, SoundSource.WEATHER, 0.2F, 1.0F, false);
         }
+    }
+
+    /**
+     * Pluie autour du Planarium quand il est a l'abri dehors, comme Minecraft l'entendrait a sa place (LevelRenderer.tickRain) :
+     * un endroit ou la pluie tombe a 10 blocs au plus (en hauteur aussi), assourdi s'il est plus haut que le Planarium.
+     * Le son vient de cette direction dans le decor.
+     */
+    private static void outsideRain(RandomSource random) {
+        int camY = planarium.getY();
+        int pickI = -1;
+        int pickJ = -1;
+        int landingY = 0;
+        for (int attempt = 0; attempt < 20 && pickI < 0; attempt++) {
+            int i = radius + random.nextInt(21) - 10;
+            int j = radius + random.nextInt(21) - 10;
+            if (i < 0 || j < 0 || i >= size || j >= size) {
+                continue;
+            }
+            int index = i * size + j;
+            int ground = tops[index];
+            if (precip[index] != 1 || ground <= camY - 10 || ground > camY + 10) {
+                continue;
+            }
+            pickI = i;
+            pickJ = j;
+            landingY = ground - 1;
+        }
+        if (pickI < 0 || random.nextInt(3) >= rainSoundTime++) {
+            return;
+        }
+        rainSoundTime = 0;
+        boolean above = landingY > camY + 1;
+        SoundEvent sound = above ? SoundEvents.WEATHER_RAIN_ABOVE : SoundEvents.WEATHER_RAIN;
+        float volume = above ? 0.1F : 0.2F;
+        float pitch = above ? 0.5F : 1.0F;
+        double dx = pickI - radius;
+        double dy = landingY - camY;
+        double dz = pickJ - radius;
+        double range = sound.getRange(volume);
+        double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (!(range > 0.0) || distance >= range) {
+            return;
+        }
+        OutsideSoundClient.play(sound, SoundSource.WEATHER, (float) (volume * (1.0 - distance / range)), pitch, dx, dy, dz, false);
     }
 
     /** Bloc ou la pluie tombe dans cette colonne du bocal : le premier bloc qui l'arrete sous le plafond (pas le plafond). */
