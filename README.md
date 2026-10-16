@@ -3,42 +3,47 @@
 *An addon for [Ars Nouveau](https://github.com/baileyholl/Ars-Nouveau) (NeoForge 1.21.1).*
 
 > [!NOTE]
-> **Made with AI.** This mod was designed and written with **Claude** (Anthropic), then tested and refined in game.
+> **Made with the help AI.** The code was written with the help of **Claude** (Anthropic) and **Codex** (OpenAI).
 
-Ars Nouveau's **Planarium** lets you shrink yourself into a pocket dimension inside a jar. Normally, the world around
-that jar is a black void. **Planarium Panorama turns the jar into a window:** from inside, you see the area around the
+Ars Nouveau's Planarium lets you shrink yourself into a pocket dimension inside a jar. Normally, the world around
+that jar is a black void. Planarium Panorama turns the jar into a window: from inside, you see the area around the
 Planarium as a giant world, 32 times bigger, under the real sky, with real lighting!
 
 ## Features
 
+Include : 
 - **Giant view:** the blocks around the Planarium, drawn 32 times bigger around the jar.
 - **Synced sky and weather:** the outside time, sun, moon, rain, snow, clouds and lightning.
 - **Real lighting:** the giant view, the miniature and the jar interior are lit like the Planarium's real spot.
-- **Biome effects:** the real biome colors, music and ambient sounds of the Planarium's surroundings.
+- **Live scenery:** block changes outside (redstone, pistons, doors...) show up in the giant view within seconds.
+- **Outside sounds:** explosions, blocks, mobs and jukebox music from around the Planarium, heard from their direction.
 
 Everything can be changed in game: **Mods** > **Planarium Panorama** > **Config**.
 
 ## Optional integrations
 
 The mods are detected automatically and their integration can be turned on or off in the config : 
-- AmbientSound
-- Dynamic Surroundings
-- Contraption Lights (Colored Lights)
-- Enhanced Celestials 2
+- [AmbientSounds](https://www.curseforge.com/minecraft/mc-mods/ambientsounds)
+- [Contraption Lights](https://www.curseforge.com/minecraft/mc-mods/contraption-lights) (Colored light)
+- [Dynamic Surroundings](https://www.curseforge.com/minecraft/mc-mods/dynamic-surroundings)
+- [Enhanced Celestials 2](https://www.curseforge.com/minecraft/mc-mods/enhanced-celestials-2-default-lunar-events)
 
 ## Compatible mods
 
-On top of that, several mods are also made to be compatible with Planarium Panorama : 
-- Astrocraft
-- Sodium
-- Serene Seasons
-- Sable
-- Create
-- Traveler's Titles : Shows the name of the Planarium when entered
-- Snow! Real Magic
-- Distant Horizons : Is turned off automatically in the Planarium
-- [NeoVoxy (JohnSnow)](https://github.com/NHblock-Johnsnow/neo-voxy-multiversion) : The giant scenery goes past the render distance.
-- And many more.. !
+Planarium Panorama is made to be compatible with as many mods as possible. This list is not exhaustive.
+
+| Mod and version | Status | Details |
+|---|:---:|---|
+| [Create](https://www.curseforge.com/minecraft/mc-mods/create) / [Flywheel](https://modrinth.com/mod/flywheel)<br>MC 1.21.1 + Create 6.0.10 + Flywheel 1.0.6 | ✅ | |
+| [NeoVoxy (JohnSnow)](https://github.com/NHblock-Johnsnow/neo-voxy-multiversion)<br>MC 1.21.1 + Neo Voxy 0.5.0-alpha.12 | ✅ | The giant scenery can go past the render distance |
+| [Sable](https://www.curseforge.com/minecraft/mc-mods/sable)<br>MC 1.21.1 + Sable 2.0.6 | ✅ | |
+| [Serene Seasons](https://modrinth.com/mod/serene-seasons)<br>MC 1.21.1 + Serene Seasons 10.1.0.3 | ✅ | Grass and leaves in the jar take the season colors of the Planarium's world |
+| [Sodium](https://modrinth.com/mod/sodium)<br>MC 1.21.1 + Sodium 0.8.13 | ✅ | |
+| [Traveler's Titles](https://modrinth.com/mod/travelers-titles)<br>MC 1.21.1 + Traveler's Titles 5.1.3 | ✅ | Shows the Planarium's name when entering a jar, instead of "???" |
+| [Distant Horizons](https://modrinth.com/mod/distanthorizons)<br>MC 1.21.1 + Distant Horizons 3.3.3 | ⚠️ | Doesn't work inside a jar: turned off automatically there (it would draw the void around it), unchanged everywhere else |
+| [Jaden's Nether Expansion](https://www.curseforge.com/minecraft/mc-mods/jadens-nether-expansion)<br>MC 1.21.1 + Jaden's Nether Expansion 2.4.1 | ⚠️ | Its custom particles (flames, smoke...) are not shown in the giant scenery and the miniature; vanilla particles are |
+
+`✅` means compatible, `⚠️` means partly compatible. Versions are the ones it was tested with.
 
 ## Known issues
 
