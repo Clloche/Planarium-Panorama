@@ -113,25 +113,26 @@ public final class MiniParticles {
 
     private static void animate(Minecraft mc, BlockPos tile, Seen seen, StructureRenderData data, Mini mini) {
         float scale = ClientView.ARS_SCALE;
+        // Lumiere : celle du bocal (avec sa couleur) si la vraie lumiere de la miniature est connue, sans depasser le
+        // ciel de l'endroit du Planarium ; sinon celle de l'endroit du Planarium.
+        LitRenderingWorld lit = Config.realLighting() && data.fakeRenderingWorld instanceof LitRenderingWorld world ? world : null;
+        int tileLight = seen.light();
+        int tileBlock = LightTexture.block(tileLight);
+        int tileSky = LightTexture.sky(tileLight);
+        SceneryParticles.CachedLight light = lit != null ? SceneryParticles.lightFor(lit, () -> 0) : null;
+        java.util.function.IntUnaryOperator adjust = lit == null ? packed -> tileLight : packed -> {
+            int block = Math.max((packed >> 4) & 15, tileBlock);
+            int sky = Math.min((packed >> 20) & 15, tileSky);
+            return (packed & ~0x00F000F0) | block << 4 | sky << 20;
+        };
         SceneryParticles.Space space = new SceneryParticles.Space(mini.world(), scale,
                 tile.getX() + ClientView.ARS_OFFSET, tile.getY() + ClientView.ARS_OFFSET + 26 * scale,
-                tile.getZ() + ClientView.ARS_OFFSET, mini.bounds());
-        // Lumiere : celle de l'endroit du Planarium, et celle du bocal si la vraie lumiere de la miniature est connue.
-        LitRenderingWorld lit = Config.realLighting() && data.fakeRenderingWorld instanceof LitRenderingWorld world ? world : null;
-        int tileBlock = LightTexture.block(seen.light());
-        int tileSky = LightTexture.sky(seen.light());
+                tile.getZ() + ClientView.ARS_OFFSET, mini.bounds(), light != null ? light : null, adjust);
         LitRenderingWorld.captureSceneryParticles((world, options, x, y, z, vx, vy, vz) -> {
             if (options == null || !SceneryParticles.allowed()) {
                 return;
             }
-            int block = tileBlock;
-            int sky = tileSky;
-            if (lit != null) {
-                BlockPos at = BlockPos.containing(x, y, z);
-                block = Math.max(block, lit.getBrightness(LightLayer.BLOCK, at));
-                sky = Math.min(sky, lit.getBrightness(LightLayer.SKY, at));
-            }
-            SceneryParticles.spawn(space, options, x, y, z, vx, vy, vz, LightTexture.pack(block, sky));
+            SceneryParticles.spawn(space, options, x, y, z, vx, vy, vz, tileLight);
         });
         try {
             AABB bounds = mini.bounds();

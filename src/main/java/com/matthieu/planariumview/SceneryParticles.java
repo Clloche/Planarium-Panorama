@@ -32,19 +32,115 @@ public final class SceneryParticles {
      * z * scale + oz) dans le vrai monde.
      */
     public record Space(LitRenderingWorld world, double scale, double ox, double oy, double oz,
-                        net.minecraft.world.phys.AABB bounds) {
+                        net.minecraft.world.phys.AABB bounds, CachedLight light, java.util.function.IntUnaryOperator adjust) {
+    }
+
+    /**
+     * Lumiere d'un faux monde bloc par bloc, comme celle que Minecraft donne aux particules (LevelRenderer.getLightColor),
+     * avec la couleur de Contraption Lights. Gardee en memoire jusqu'au prochain changement du faux monde.
+     */
+    public static final class CachedLight {
+        private final LitRenderingWorld world;
+        private final java.util.function.IntSupplier version;
+        private final Map<Long, Integer> values = new java.util.HashMap<>();
+        private int seen = Integer.MIN_VALUE;
+
+        CachedLight(LitRenderingWorld world, java.util.function.IntSupplier version) {
+            this.world = world;
+            this.version = version;
+        }
+
+        LitRenderingWorld world() {
+            return world;
+        }
+
+        int at(net.minecraft.core.BlockPos pos) {
+            int current = version.getAsInt();
+            if (current != seen || values.size() > 32768) {
+                values.clear();
+                seen = current;
+            }
+            long key = pos.asLong();
+            Integer value = values.get(key);
+            if (value == null) {
+                if (batch && !begun) {
+                    ColorCompat.begin(world);
+                    begun = true;
+                } else if (!batch) {
+                    ColorCompat.begin(world);
+                }
+                try {
+                    value = net.minecraft.client.renderer.LevelRenderer.getLightColor(world, pos);
+                } catch (Exception e) {
+                    value = LightTexture.pack(15, 15);
+                } finally {
+                    if (!batch) {
+                        ColorCompat.end();
+                    }
+                }
+                values.put(key, value);
+            }
+            return value;
+        }
+
+        private boolean batch;
+        private boolean begun;
+
+        /** Beaucoup de lectures de suite (la pluie de tout le decor) : Contraption Lights n'est prepare qu'une fois. */
+        void beginBatch() {
+            batch = true;
+        }
+
+        void endBatch() {
+            if (begun) {
+                ColorCompat.end();
+            }
+            batch = false;
+            begun = false;
+        }
+    }
+
+    /** Lumiere du faux monde la ou se trouve maintenant la particule (la fumee s'assombrit en s'eloignant du feu). */
+    private static Integer currentLight(Particle particle, Space space) {
+        net.minecraft.world.phys.AABB box = particle.getBoundingBox();
+        double scale = space.scale();
+        net.minecraft.core.BlockPos pos = net.minecraft.core.BlockPos.containing(
+                ((box.minX + box.maxX) * 0.5 - space.ox()) / scale,
+                ((box.minY + box.maxY) * 0.5 - space.oy()) / scale,
+                ((box.minZ + box.maxZ) * 0.5 - space.oz()) / scale);
+        int light = space.light().at(pos);
+        return space.adjust() != null ? space.adjust().applyAsInt(light) : light;
+    }
+
+    private static final Map<LitRenderingWorld, CachedLight> LIGHTS = Collections.synchronizedMap(new WeakHashMap<>());
+
+    /** Lumiere partagee de ce faux monde (voir CachedLight). */
+    static CachedLight lightFor(LitRenderingWorld world, java.util.function.IntSupplier version) {
+        return LIGHTS.computeIfAbsent(world, w -> new CachedLight(w, version));
     }
 
     /** Le decor geant (positions du gabarit, Planarium au rayon {@code radius}). */
     static Space giantSpace(LitRenderingWorld world, int radius) {
         double giant = ClientView.GIANT;
         double origin = -(radius + ClientView.ARS_OFFSET) * giant;
-        return new Space(world, giant, origin, origin - ClientView.Y_SHIFT, origin, null);
+        return new Space(world, giant, origin, origin - ClientView.Y_SHIFT, origin, null,
+                lightFor(world, ClientView::sceneryVersion), null);
     }
 
     /** Lumiere d'une particule du decor, ou null pour une particule normale. */
     public static Integer lightOf(Particle particle) {
-        return LIGHT.isEmpty() ? null : LIGHT.get(particle);
+        if (LIGHT.isEmpty()) {
+            return null;
+        }
+        Space space = SPACE.get(particle);
+        if (space != null && space.light() != null) {
+            try {
+                return currentLight(particle, space);
+            } catch (Exception ignored) {
+                // position hors du faux monde : la lumiere de depart
+            }
+        }
+        return LIGHT.get(particle);
     }
 
     /** Reglage "Particules" de Minecraft : rien en Minimal, une sur trois en Reduit. */
@@ -147,7 +243,11 @@ public final class SceneryParticles {
                 return;
             }
         }
-        if (dy >= 0.0) {
+        if (dy == 0.0) {
+            return;
+        }
+        if (dy > 0.0) {
+            ceiling(particle, space, dy);
             return;
         }
         LitRenderingWorld world = space.world();
@@ -182,6 +282,42 @@ public final class SceneryParticles {
             }
         } catch (Exception ignored) {
             // Bloc modde qui suppose un vrai monde : la particule continue sans sol.
+        }
+    }
+
+    /** Plafond du faux monde : une particule qui monte (fumee) s'arrete sous le bloc, comme sous un vrai bloc. */
+    private static void ceiling(Particle particle, Space space, double dy) {
+        LitRenderingWorld world = space.world();
+        double scale = space.scale();
+        net.minecraft.world.phys.AABB box = particle.getBoundingBox();
+        double wx = (box.minX + box.maxX) * 0.5;
+        double wz = (box.minZ + box.maxZ) * 0.5;
+        double tx = (wx - space.ox()) / scale;
+        double ty = (box.maxY - space.oy()) / scale;
+        double tz = (wz - space.oz()) / scale;
+        net.minecraft.core.BlockPos pos = net.minecraft.core.BlockPos.containing(tx, ty, tz);
+        try {
+            net.minecraft.world.level.block.state.BlockState state = world.getBlockState(pos);
+            if (state.isAir()) {
+                return;
+            }
+            double bottom = Double.NaN;
+            for (net.minecraft.world.phys.AABB part : state.getCollisionShape(world, pos).toAabbs()) {
+                if (part.contains(tx - pos.getX(), ty - pos.getY(), tz - pos.getZ())) {
+                    double partBottom = pos.getY() + part.minY;
+                    bottom = Double.isNaN(bottom) ? partBottom : Math.min(bottom, partBottom);
+                }
+            }
+            // Deja dans le bloc avant ce tick : on la laisse.
+            if (Double.isNaN(bottom) || ty - dy / scale > bottom + 1.0E-4) {
+                return;
+            }
+            particle.setPos(wx, bottom * scale + space.oy() - (box.maxY - box.minY), wz);
+            if (particle instanceof ParticleAccessor access) {
+                access.planariumview$setYd(0.0);
+            }
+        } catch (Exception ignored) {
+            // Bloc modde qui suppose un vrai monde : la particule continue.
         }
     }
 

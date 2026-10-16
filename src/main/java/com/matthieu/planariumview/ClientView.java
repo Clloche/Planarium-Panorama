@@ -711,6 +711,10 @@ public final class ClientView {
         return renderData != null && renderData.fakeRenderingWorld instanceof LitRenderingWorld lit ? lit : null;
     }
 
+    static int sceneryVersion() {
+        return sceneryVersion;
+    }
+
     static int sceneryRadius() {
         return currentRadius;
     }
