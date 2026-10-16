@@ -118,6 +118,9 @@ public final class GiantSprites {
         return spritesOfStates(states);
     }
 
+    /** Tirages au hasard par etat de bloc pour trouver toutes ses variantes de modele. */
+    private static final int VARIANT_SEEDS = 8;
+
     private static List<TextureAtlasSprite> spritesOfStates(java.util.Collection<BlockState> states) {
         Set<TextureAtlasSprite> sprites = new HashSet<>();
         Set<BlockState> seen = new HashSet<>();
@@ -129,13 +132,19 @@ public final class GiantSprites {
             }
             try {
                 BakedModel model = Minecraft.getInstance().getBlockRenderer().getBlockModel(state);
-                for (Direction direction : Direction.values()) {
-                    for (BakedQuad quad : model.getQuads(state, direction, random)) {
+                // Plusieurs tirages : certains blocs choisissent leur modele au hasard selon la position (le feu a deux
+                // textures, fire_0 et fire_1). Un seul tirage n'en gardait qu'une : une partie des flammes restait figee.
+                for (int seed = 0; seed < VARIANT_SEEDS; seed++) {
+                    random.setSeed(42L + seed * 341873128712L);
+                    for (Direction direction : Direction.values()) {
+                        for (BakedQuad quad : model.getQuads(state, direction, random)) {
+                            sprites.add(quad.getSprite());
+                        }
+                    }
+                    random.setSeed(42L + seed * 341873128712L);
+                    for (BakedQuad quad : model.getQuads(state, null, random)) {
                         sprites.add(quad.getSprite());
                     }
-                }
-                for (BakedQuad quad : model.getQuads(state, null, random)) {
-                    sprites.add(quad.getSprite());
                 }
                 FluidState fluid = state.getFluidState();
                 if (!fluid.isEmpty()) {

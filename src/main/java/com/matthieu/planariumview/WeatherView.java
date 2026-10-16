@@ -217,95 +217,90 @@ public final class WeatherView {
         float captureBottom = giantY(originY);
         RandomSource random = RandomSource.create();
         int view = ClientView.viewRadius();
-        // Lumiere de chaque colonne, comme Minecraft pour sa pluie : celle des blocs du decor (torches, lave...) avec la
-        // couleur de Contraption Lights, a la hauteur de la camera (ou du sol, s'il est plus haut). Toujours en plein ciel.
+        // Lumiere de chaque colonne, comme Minecraft pour sa pluie : celle des blocs du decor (torches, lave...), a la
+        // hauteur de la camera (ou du sol, s'il est plus haut), avec la couleur de Contraption Lights du sol de la
+        // colonne. Toujours en plein ciel.
         LitRenderingWorld world = ClientView.sceneryWorld();
-        SceneryParticles.CachedLight light = world != null ? SceneryParticles.lightFor(world, ClientView::sceneryVersion) : null;
         int cameraY = Mth.floor((camera.y + ClientView.Y_SHIFT) / ClientView.GIANT + ClientView.ARS_OFFSET) + planarium.getY();
         BlockPos.MutableBlockPos lightPos = new BlockPos.MutableBlockPos();
-        if (light != null) {
-            light.beginBatch();
-        }
-        try {
-            for (int i = 0; i < size; i++) {
-                for (int j = 0; j < size; j++) {
-                    int index = i * size + j;
-                    // La colonne du Planarium, c'est l'interieur du bocal : il n'y pleut pas.
-                    if (precip[index] != type || (i == radius && j == radius)) {
-                        continue;
-                    }
-                    // Hors du rayon de vue (limite par la distance d'affichage) : pas de decor, pas de pluie.
-                    if (Math.abs(i - radius) > view || Math.abs(j - radius) > view) {
-                        continue;
-                    }
-                    float bottom = Math.max(Math.max(giantY(tops[index]), captureBottom), floor);
-                    if (bottom >= top) {
-                        continue;
-                    }
-                    int wx = planarium.getX() - radius + i;
-                    int wz = planarium.getZ() - radius + j;
-                    int columnLight = SKY_LIGHT;
-                    if (light != null) {
-                        int ly = Math.max(tops[index], Math.min(cameraY, tops[index] + 15));
-                        try {
-                            int packed = light.at(lightPos.set(i, ly - planarium.getY() + radius, j));
-                            columnLight = (packed & ~0x00F00000) | 15 << 20;
-                        } catch (Exception ignored) {
-                            // lumiere du ciel seulement
+
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+                int index = i * size + j;
+                // La colonne du Planarium, c'est l'interieur du bocal : il n'y pleut pas.
+                if (precip[index] != type || (i == radius && j == radius)) {
+                    continue;
+                }
+                // Hors du rayon de vue (limite par la distance d'affichage) : pas de decor, pas de pluie.
+                if (Math.abs(i - radius) > view || Math.abs(j - radius) > view) {
+                    continue;
+                }
+                float bottom = Math.max(Math.max(giantY(tops[index]), captureBottom), floor);
+                if (bottom >= top) {
+                    continue;
+                }
+                int wx = planarium.getX() - radius + i;
+                int wz = planarium.getZ() - radius + j;
+                int columnLight = SKY_LIGHT;
+                if (world != null) {
+                    int ly = Math.max(tops[index], Math.min(cameraY, tops[index] + 15));
+                    try {
+                        int block = LightTexture.block(SceneryParticles.rawLight(world,
+                                lightPos.set(i, ly - planarium.getY() + radius, j)));
+                        if (block > 0) {
+                            columnLight = LightTexture.pack(block, 15) | SceneryParticles.columnHue(world, i, j);
                         }
-                    }
-                    float x0 = giant(wx, planarium.getX());
-                    float z0 = giant(wz, planarium.getZ());
-                    for (int a = 0; a < CELLS; a++) {
-                        for (int b = 0; b < CELLS; b++) {
-                            float cx = x0 + (a + 0.5F) * cell;
-                            float cz = z0 + (b + 0.5F) * cell;
-                            float dx = (float) (cx - camera.x);
-                            float dz = (float) (cz - camera.z);
-                            float dist = Mth.sqrt(dx * dx + dz * dz);
-                            if (dist < 1.0F || dist > maxDistance) {
-                                continue;
-                            }
-                            // Derriere la camera et assez loin : invisible, on saute.
-                            if (dist > 64.0F && (dx * look.x() + dz * look.z()) / dist < -0.5F) {
-                                continue;
-                            }
-                            long seed = (long) wx * 3121L + (long) wz * 45238971L + a * 13L + b * 7L;
-                            random.setSeed(seed);
-                            float px = -dz / dist * half;
-                            float pz = dx / dist * half;
-                            float fade = Mth.clamp(1.0F - dist / maxDistance, 0.0F, 1.0F);
-                            float alpha = rain * (0.35F + 0.5F * fade);
-                            float u0;
-                            float vOffset;
-                            if (type == 1) {
-                                u0 = 0.0F;
-                                vOffset = -(((ticks + (int) (seed & 0x7FFFFFFF)) & 31) + partial) / 32.0F * (3.0F + random.nextFloat());
-                            } else {
-                                u0 = (float) (random.nextDouble() + time * 0.01 * random.nextGaussian());
-                                vOffset = -((ticks & 511) + partial) / 512.0F
-                                        + (float) (random.nextDouble() + time * random.nextGaussian() * 0.001);
-                            }
-                            float u1 = u0 + cell / DROP_SCALE;
-                            // Texture accrochee au monde (et pas a la camera) : la coordonnee v ne depend que
-                            // de la hauteur du sommet. Elle diminue avec le temps, donc la pluie descend.
-                            float v0 = -top * 0.25F / DROP_SCALE + vOffset;
-                            float v1 = -bottom * 0.25F / DROP_SCALE + vOffset;
-                            float rx = (float) (cx - camera.x);
-                            float rz = (float) (cz - camera.z);
-                            float yb = (float) (bottom - camera.y);
-                            float yt = (float) (top - camera.y);
-                            builder.addVertex(rx - px, yt, rz - pz).setUv(u0, v0).setColor(1.0F, 1.0F, 1.0F, alpha).setLight(columnLight);
-                            builder.addVertex(rx + px, yt, rz + pz).setUv(u1, v0).setColor(1.0F, 1.0F, 1.0F, alpha).setLight(columnLight);
-                            builder.addVertex(rx + px, yb, rz + pz).setUv(u1, v1).setColor(1.0F, 1.0F, 1.0F, alpha).setLight(columnLight);
-                            builder.addVertex(rx - px, yb, rz - pz).setUv(u0, v1).setColor(1.0F, 1.0F, 1.0F, alpha).setLight(columnLight);
-                        }
+                    } catch (Exception ignored) {
+                        // lumiere du ciel seulement
                     }
                 }
-            }
-        } finally {
-            if (light != null) {
-                light.endBatch();
+                float x0 = giant(wx, planarium.getX());
+                float z0 = giant(wz, planarium.getZ());
+                for (int a = 0; a < CELLS; a++) {
+                    for (int b = 0; b < CELLS; b++) {
+                        float cx = x0 + (a + 0.5F) * cell;
+                        float cz = z0 + (b + 0.5F) * cell;
+                        float dx = (float) (cx - camera.x);
+                        float dz = (float) (cz - camera.z);
+                        float dist = Mth.sqrt(dx * dx + dz * dz);
+                        if (dist < 1.0F || dist > maxDistance) {
+                            continue;
+                        }
+                        // Derriere la camera et assez loin : invisible, on saute.
+                        if (dist > 64.0F && (dx * look.x() + dz * look.z()) / dist < -0.5F) {
+                            continue;
+                        }
+                        long seed = (long) wx * 3121L + (long) wz * 45238971L + a * 13L + b * 7L;
+                        random.setSeed(seed);
+                        float px = -dz / dist * half;
+                        float pz = dx / dist * half;
+                        float fade = Mth.clamp(1.0F - dist / maxDistance, 0.0F, 1.0F);
+                        float alpha = rain * (0.35F + 0.5F * fade);
+                        float u0;
+                        float vOffset;
+                        if (type == 1) {
+                            u0 = 0.0F;
+                            vOffset = -(((ticks + (int) (seed & 0x7FFFFFFF)) & 31) + partial) / 32.0F * (3.0F + random.nextFloat());
+                        } else {
+                            u0 = (float) (random.nextDouble() + time * 0.01 * random.nextGaussian());
+                            vOffset = -((ticks & 511) + partial) / 512.0F
+                                    + (float) (random.nextDouble() + time * random.nextGaussian() * 0.001);
+                        }
+                        float u1 = u0 + cell / DROP_SCALE;
+                        // Texture accrochee au monde (et pas a la camera) : la coordonnee v ne depend que
+                        // de la hauteur du sommet. Elle diminue avec le temps, donc la pluie descend.
+                        float v0 = -top * 0.25F / DROP_SCALE + vOffset;
+                        float v1 = -bottom * 0.25F / DROP_SCALE + vOffset;
+                        float rx = (float) (cx - camera.x);
+                        float rz = (float) (cz - camera.z);
+                        float yb = (float) (bottom - camera.y);
+                        float yt = (float) (top - camera.y);
+                        builder.addVertex(rx - px, yt, rz - pz).setUv(u0, v0).setColor(1.0F, 1.0F, 1.0F, alpha).setLight(columnLight);
+                        builder.addVertex(rx + px, yt, rz + pz).setUv(u1, v0).setColor(1.0F, 1.0F, 1.0F, alpha).setLight(columnLight);
+                        builder.addVertex(rx + px, yb, rz + pz).setUv(u1, v1).setColor(1.0F, 1.0F, 1.0F, alpha).setLight(columnLight);
+                        builder.addVertex(rx - px, yb, rz - pz).setUv(u0, v1).setColor(1.0F, 1.0F, 1.0F, alpha).setLight(columnLight);
+                    }
+                }
             }
         }
         MeshData mesh = builder.build();

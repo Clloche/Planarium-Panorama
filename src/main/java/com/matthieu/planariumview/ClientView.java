@@ -1402,6 +1402,10 @@ public final class ClientView {
 
     /** Lumiere des blocs speciaux, calculee pendant que Contraption Lights lit notre faux monde (ColorCompat actif). */
     private static void computeBlockEntityLight(StructureRenderData data) {
+        // Couleur de Contraption Lights pour les particules, la pluie et la neige du decor (voir SceneryParticles.readHues).
+        if (data.fakeRenderingWorld instanceof LitRenderingWorld lit) {
+            SceneryParticles.readHues(lit, data.statePosCache, true, currentRadius, viewRadius());
+        }
         blockEntityLight.clear();
         for (BlockPos pos : data.fakeRenderingWorld.blockEntityMap.keySet()) {
             try {

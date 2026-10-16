@@ -67,6 +67,7 @@ public abstract class PlanariumRendererMixin {
         if (data != null) {
             com.matthieu.planariumview.MiniOutsideLight.apply(data, level, renderPos);
             ColorCompat.begin(data.fakeRenderingWorld);
+            com.matthieu.planariumview.MiniParticles.readHues(data);
         }
     }
 

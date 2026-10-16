@@ -119,15 +119,14 @@ public final class MiniParticles {
         int tileLight = seen.light();
         int tileBlock = LightTexture.block(tileLight);
         int tileSky = LightTexture.sky(tileLight);
-        SceneryParticles.CachedLight light = lit != null ? SceneryParticles.lightFor(lit, () -> 0) : null;
         java.util.function.IntUnaryOperator adjust = lit == null ? packed -> tileLight : packed -> {
             int block = Math.max((packed >> 4) & 15, tileBlock);
             int sky = Math.min((packed >> 20) & 15, tileSky);
             return (packed & ~0x00F000F0) | block << 4 | sky << 20;
         };
-        SceneryParticles.Space space = new SceneryParticles.Space(mini.world(), scale,
+        SceneryParticles.Space space = new SceneryParticles.Space(lit != null ? lit : mini.world(), scale,
                 tile.getX() + ClientView.ARS_OFFSET, tile.getY() + ClientView.ARS_OFFSET + 26 * scale,
-                tile.getZ() + ClientView.ARS_OFFSET, mini.bounds(), light != null ? light : null, adjust);
+                tile.getZ() + ClientView.ARS_OFFSET, mini.bounds(), lit != null, adjust);
         LitRenderingWorld.captureSceneryParticles((world, options, x, y, z, vx, vy, vz) -> {
             if (options == null || !SceneryParticles.allowed()) {
                 return;
@@ -156,7 +155,15 @@ public final class MiniParticles {
         }
     }
 
-    static void clear() {
+    /** Pendant la construction de la miniature (Contraption Lights lit son faux monde) : voir SceneryParticles.readHues. */
+    public static void readHues(StructureRenderData data) {
+        if (Config.sceneryParticles() && Config.realLighting() && data.statePosCache != null
+                && data.fakeRenderingWorld instanceof LitRenderingWorld lit) {
+            SceneryParticles.readHues(lit, data.statePosCache, false, 0, 0);
+        }
+    }
+
+        static void clear() {
         SEEN.clear();
         MINIS.clear();
     }

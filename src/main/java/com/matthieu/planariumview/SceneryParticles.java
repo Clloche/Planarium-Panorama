@@ -32,73 +32,117 @@ public final class SceneryParticles {
      * z * scale + oz) dans le vrai monde.
      */
     public record Space(LitRenderingWorld world, double scale, double ox, double oy, double oz,
-                        net.minecraft.world.phys.AABB bounds, CachedLight light, java.util.function.IntUnaryOperator adjust) {
+                        net.minecraft.world.phys.AABB bounds, boolean liveLight, java.util.function.IntUnaryOperator adjust) {
     }
 
     /**
-     * Lumiere d'un faux monde bloc par bloc, comme celle que Minecraft donne aux particules (LevelRenderer.getLightColor),
-     * avec la couleur de Contraption Lights. Gardee en memoire jusqu'au prochain changement du faux monde.
+     * Couleur de Contraption Lights dans un faux monde (seulement les bits de couleur, sans les niveaux de lumiere).
+     * Contraption Lights ne sait lire qu'un monde a la fois, et changer de monde vide tout son cache : le faire pendant
+     * le jeu faisait clignoter la lumiere. On la lit donc seulement pendant la construction du decor ou de la miniature
+     * (quand Contraption Lights lit deja le faux monde), aux endroits ou naissent les particules : les blocs lumineux et
+     * celui au-dessus, et le sol de chaque colonne (pour la pluie et la neige).
      */
-    public static final class CachedLight {
-        private final LitRenderingWorld world;
-        private final java.util.function.IntSupplier version;
-        private final Map<Long, Integer> values = new java.util.HashMap<>();
-        private int seen = Integer.MIN_VALUE;
+    private static final class Hues {
+        final Map<Long, Integer> cells = new java.util.HashMap<>();
+        final Map<Long, Integer> columns = new java.util.HashMap<>();
+    }
 
-        CachedLight(LitRenderingWorld world, java.util.function.IntSupplier version) {
-            this.world = world;
-            this.version = version;
+    private static final Map<LitRenderingWorld, Hues> HUES = Collections.synchronizedMap(new WeakHashMap<>());
+    private static final int COLOR_BITS = ~0x00F000F0;
+    private static final int MAX_HUE_CELLS = 20000;
+
+    /**
+     * Appele pendant que Contraption Lights lit ce faux monde (ColorCompat.begin). {@code columns} : aussi le sol des
+     * colonnes de {@code center - view} a {@code center + view} (decor geant).
+     */
+    static void readHues(LitRenderingWorld world, Iterable<com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos> states,
+                         boolean columns, int center, int view) {
+        if (world == null) {
+            return;
         }
-
-        LitRenderingWorld world() {
-            return world;
+        if (!ColorCompat.building()) {
+            HUES.remove(world);
+            return;
         }
-
-        int at(net.minecraft.core.BlockPos pos) {
-            int current = version.getAsInt();
-            if (current != seen || values.size() > 32768) {
-                values.clear();
-                seen = current;
-            }
-            long key = pos.asLong();
-            Integer value = values.get(key);
-            if (value == null) {
-                if (batch && !begun) {
-                    ColorCompat.begin(world);
-                    begun = true;
-                } else if (!batch) {
-                    ColorCompat.begin(world);
+        Hues hues = new Hues();
+        net.minecraft.core.BlockPos.MutableBlockPos at = new net.minecraft.core.BlockPos.MutableBlockPos();
+        try {
+            for (com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos statePos : states) {
+                if (hues.cells.size() >= MAX_HUE_CELLS) {
+                    break;
                 }
-                try {
-                    value = net.minecraft.client.renderer.LevelRenderer.getLightColor(world, pos);
-                } catch (Exception e) {
-                    value = LightTexture.pack(15, 15);
-                } finally {
-                    if (!batch) {
-                        ColorCompat.end();
+                net.minecraft.core.BlockPos pos = statePos.pos;
+                if (world.getBlockState(pos).getLightEmission(world, pos) <= 0) {
+                    continue;
+                }
+                for (int dy = 0; dy <= 1; dy++) {
+                    at.set(pos.getX(), pos.getY() + dy, pos.getZ());
+                    hues.cells.putIfAbsent(at.asLong(), hueAt(world, at));
+                }
+            }
+            if (columns) {
+                for (int x = center - view; x <= center + view; x++) {
+                    for (int z = center - view; z <= center + view; z++) {
+                        int y = world.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x, z);
+                        int hue = hueAt(world, at.set(x, y, z));
+                        if (hue != 0) {
+                            hues.columns.put(columnKey(x, z), hue);
+                        }
                     }
                 }
-                values.put(key, value);
             }
-            return value;
+        } catch (Exception ignored) {
+            // un bloc particulier : on garde ce qui est lu
         }
+        HUES.put(world, hues);
+    }
 
-        private boolean batch;
-        private boolean begun;
-
-        /** Beaucoup de lectures de suite (la pluie de tout le decor) : Contraption Lights n'est prepare qu'une fois. */
-        void beginBatch() {
-            batch = true;
-        }
-
-        void endBatch() {
-            if (begun) {
-                ColorCompat.end();
-            }
-            batch = false;
-            begun = false;
+    private static int hueAt(LitRenderingWorld world, net.minecraft.core.BlockPos pos) {
+        try {
+            return net.minecraft.client.renderer.LevelRenderer.getLightColor(world, pos) & COLOR_BITS;
+        } catch (Exception e) {
+            return 0;
         }
     }
+
+    private static long columnKey(int x, int z) {
+        return ((long) x << 32) ^ (z & 0xFFFFFFFFL);
+    }
+
+    /** Couleur la ou nait une particule (son bloc, ou celui d'en dessous : la flamme au-dessus d'une torche). */
+    private static int hueOfSpawn(LitRenderingWorld world, double x, double y, double z) {
+        Hues hues = world == null ? null : HUES.get(world);
+        if (hues == null || hues.cells.isEmpty()) {
+            return 0;
+        }
+        net.minecraft.core.BlockPos pos = net.minecraft.core.BlockPos.containing(x, y, z);
+        Integer hue = hues.cells.get(pos.asLong());
+        if (hue == null) {
+            hue = hues.cells.get(pos.below().asLong());
+        }
+        return hue != null ? hue : 0;
+    }
+
+    /** Couleur du sol de cette colonne du decor (pluie et neige), 0 sans couleur. */
+    static int columnHue(LitRenderingWorld world, int x, int z) {
+        Hues hues = world == null ? null : HUES.get(world);
+        if (hues == null) {
+            return 0;
+        }
+        Integer hue = hues.columns.get(columnKey(x, z));
+        return hue != null ? hue : 0;
+    }
+
+    /** Lumiere d'un faux monde a cet endroit, sans couleur (comme LevelRenderer.getLightColor, sans Contraption Lights). */
+    static int rawLight(LitRenderingWorld world, net.minecraft.core.BlockPos pos) {
+        int block = world.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, pos);
+        int emission = world.getBlockState(pos).getLightEmission(world, pos);
+        int sky = world.getBrightness(net.minecraft.world.level.LightLayer.SKY, pos);
+        return LightTexture.pack(Math.max(block, emission), sky);
+    }
+
+    /** Couleur de chaque particule (bits de couleur seulement), voir Hues. */
+    private static final Map<Particle, Integer> HUE = Collections.synchronizedMap(new WeakHashMap<>());
 
     /** Lumiere du faux monde la ou se trouve maintenant la particule (la fumee s'assombrit en s'eloignant du feu). */
     private static Integer currentLight(Particle particle, Space space) {
@@ -108,23 +152,19 @@ public final class SceneryParticles {
                 ((box.minX + box.maxX) * 0.5 - space.ox()) / scale,
                 ((box.minY + box.maxY) * 0.5 - space.oy()) / scale,
                 ((box.minZ + box.maxZ) * 0.5 - space.oz()) / scale);
-        int light = space.light().at(pos);
+        int light = rawLight(space.world(), pos);
+        Integer hue = HUE.get(particle);
+        if (hue != null && hue != 0 && (light & 0xF0) != 0) {
+            light |= hue;
+        }
         return space.adjust() != null ? space.adjust().applyAsInt(light) : light;
-    }
-
-    private static final Map<LitRenderingWorld, CachedLight> LIGHTS = Collections.synchronizedMap(new WeakHashMap<>());
-
-    /** Lumiere partagee de ce faux monde (voir CachedLight). */
-    static CachedLight lightFor(LitRenderingWorld world, java.util.function.IntSupplier version) {
-        return LIGHTS.computeIfAbsent(world, w -> new CachedLight(w, version));
     }
 
     /** Le decor geant (positions du gabarit, Planarium au rayon {@code radius}). */
     static Space giantSpace(LitRenderingWorld world, int radius) {
         double giant = ClientView.GIANT;
         double origin = -(radius + ClientView.ARS_OFFSET) * giant;
-        return new Space(world, giant, origin, origin - ClientView.Y_SHIFT, origin, null,
-                lightFor(world, ClientView::sceneryVersion), null);
+        return new Space(world, giant, origin, origin - ClientView.Y_SHIFT, origin, null, true, null);
     }
 
     /** Lumiere d'une particule du decor, ou null pour une particule normale. */
@@ -133,7 +173,7 @@ public final class SceneryParticles {
             return null;
         }
         Space space = SPACE.get(particle);
-        if (space != null && space.light() != null) {
+        if (space != null && space.liveLight() && space.world() != null) {
             try {
                 return currentLight(particle, space);
             } catch (Exception ignored) {
@@ -158,22 +198,28 @@ public final class SceneryParticles {
      */
     static void spawn(Space space, ParticleOptions options, double x, double y, double z, double vx, double vy, double vz,
                       int light) {
-        spawnAt(space, options, x * space.scale() + space.ox(), y * space.scale() + space.oy(),
+        Particle particle = spawnAt(space, options, x * space.scale() + space.ox(), y * space.scale() + space.oy(),
                 z * space.scale() + space.oz(), vx, vy, vz, light);
+        if (particle != null && space.liveLight()) {
+            int hue = hueOfSpawn(space.world(), x, y, z);
+            if (hue != 0) {
+                HUE.put(particle, hue);
+            }
+        }
     }
 
     /** Comme spawn, mais a une position deja dans le vrai monde (la vitesse reste celle du gabarit). */
-    private static void spawnAt(Space space, ParticleOptions options, double x, double y, double z, double vx, double vy,
-                                double vz, int light) {
+    private static Particle spawnAt(Space space, ParticleOptions options, double x, double y, double z, double vx, double vy,
+                                    double vz, int light) {
         Minecraft mc = Minecraft.getInstance();
         Particle particle;
         try {
             particle = mc.particleEngine.createParticle(options, x, y, z, vx, vy, vz);
         } catch (Exception e) {
-            return;
+            return null;
         }
         if (particle == null) {
-            return;
+            return null;
         }
         float scale = (float) space.scale();
         particle.scale(scale);
@@ -187,6 +233,7 @@ public final class SceneryParticles {
         }
         LIGHT.put(particle, light);
         SPACE.put(particle, space);
+        return particle;
     }
 
     /** Particule du decor en train de bouger (voir ParticleEngineTickMixin), ou null. */
@@ -216,8 +263,12 @@ public final class SceneryParticles {
         Integer light = LIGHT.get(parent);
         double scale = space.scale();
         // La vitesse du parent est deja a l'echelle du faux monde ; spawnAt la remet a l'echelle.
-        spawnAt(space, options, x, y, z, vx / scale, vy / scale, vz / scale,
+        Particle child = spawnAt(space, options, x, y, z, vx / scale, vy / scale, vz / scale,
                 light != null ? light : LightTexture.pack(15, 15));
+        Integer hue = HUE.get(parent);
+        if (child != null && hue != null) {
+            HUE.put(child, hue);
+        }
         return true;
     }
 
@@ -377,6 +428,8 @@ public final class SceneryParticles {
     static void clear() {
         LIGHT.clear();
         SPACE.clear();
+        HUE.clear();
+        HUES.clear();
         EMITTERS.clear();
         ticking = null;
     }
