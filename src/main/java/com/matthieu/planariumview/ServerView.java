@@ -382,8 +382,8 @@ public final class ServerView {
         if (!(event.getLevel() instanceof ServerLevel level) || !level.getServer().isSameThread()) {
             return;
         }
-        float pitch = 1.0F / (level.random.nextFloat() * 0.2F + 0.9F);
-        sendOutsideSound(level, event.getExplosion().getPosition(), SoundEvents.GENERIC_EXPLODE,
+        float pitch = (1.0F + (level.random.nextFloat() - level.random.nextFloat()) * 0.2F) * 0.7F;
+        sendOutsideSound(level, event.getExplosion().center(), event.getExplosion().getExplosionSound(),
                 SoundSource.BLOCKS, 4.0F, pitch, false);
     }
 
