@@ -133,6 +133,25 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
         }
     }
 
+    /** Vrai pendant que ClientView fait jouer l'ambiance des blocs du decor (voir playLocalSound). */
+    private static boolean ambientCapture;
+
+    static void captureAmbientSounds(boolean capture) {
+        ambientCapture = capture;
+    }
+
+    /**
+     * Sons d'ambiance des blocs du decor (feu, lave, eau, portail...) : Minecraft les joue cote client avec ce point
+     * d'entree. Dans le decor geant, on les fait entendre depuis leur direction dans le decor.
+     */
+    @Override
+    public void playLocalSound(double x, double y, double z, net.minecraft.sounds.SoundEvent sound,
+                               net.minecraft.sounds.SoundSource source, float volume, float pitch, boolean distanceDelay) {
+        if (giant && ambientCapture) {
+            ClientView.onSceneryAmbientSound(x, y, z, sound, source, volume, pitch);
+        }
+    }
+
     public static boolean isGiant(Object world) {
         return constructingGiant || (world instanceof LitRenderingWorld lit && lit.giant);
     }

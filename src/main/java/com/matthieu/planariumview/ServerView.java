@@ -326,7 +326,23 @@ public final class ServerView {
      * par PlayLevelSoundEvent. Seulement les plus utiles ; ceux causes par un joueur sont exclus, comme les autres sons.
      */
     public static void onLevelEvent(ServerLevel level, Player player, int type, BlockPos pos, int data) {
-        if (player != null || TRACKS.isEmpty() || !level.getServer().isSameThread() || PlayerSoundCause.isPlayerCaused()) {
+        if (TRACKS.isEmpty() || !level.getServer().isSameThread()) {
+            return;
+        }
+        // Jukebox : debut (1010, avec le morceau) et fin (1011) de la musique, joues par le client dans Minecraft.
+        if (type == 1010 || type == 1011) {
+            String song = "";
+            if (type == 1010) {
+                song = level.registryAccess().registryOrThrow(net.minecraft.core.registries.Registries.JUKEBOX_SONG)
+                        .getHolder(data).map(holder -> holder.key().location().toString()).orElse("");
+                if (song.isEmpty()) {
+                    return;
+                }
+            }
+            sendOutsideRecord(level, pos, song);
+            return;
+        }
+        if (player != null || PlayerSoundCause.isPlayerCaused()) {
             return;
         }
         net.minecraft.util.RandomSource random = level.random;
@@ -376,12 +392,37 @@ public final class ServerView {
                 SoundSource.BLOCKS, volume, pitch, false);
     }
 
+    /** Debut ("" = fin) d'un morceau de jukebox, pour les joueurs dont le Planarium est a portee (64 blocs). */
+    private static void sendOutsideRecord(ServerLevel level, BlockPos pos, String song) {
+        Vec3 position = Vec3.atCenterOf(pos);
+        for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
+            Track track = TRACKS.get(player.getUUID());
+            if (track == null || DISABLED.contains(player.getUUID())
+                    || !track.source.dimension().equals(level.dimension())
+                    || !player.serverLevel().dimension().equals(track.pocket)
+                    || !player.connection.hasChannel(OutsideRecordPayload.TYPE)) {
+                continue;
+            }
+            BlockPos center = track.source.pos();
+            double dx = position.x - center.getX();
+            double dy = position.y - center.getY();
+            double dz = position.z - center.getZ();
+            // Fin : toujours envoyee (le client l'ignore s'il ne jouait rien). Debut : seulement a portee.
+            if (!song.isEmpty() && dx * dx + dy * dy + dz * dz > 64.0 * 64.0) {
+                continue;
+            }
+            PacketDistributor.sendToPlayer(player,
+                    new OutsideRecordPayload(track.pocket.location(), pos.asLong(), song, dx, dy, dz));
+        }
+    }
+
     /** Minecraft emits explosion audio locally, outside PlayLevelSoundEvent, so forward this event separately. */
     @SubscribeEvent
     public static void onExplosion(ExplosionEvent.Detonate event) {
         if (!(event.getLevel() instanceof ServerLevel level) || !level.getServer().isSameThread()) {
             return;
         }
+        // Meme son et meme hauteur que Minecraft (le son d'une charge de vent n'est pas celui d'une TNT).
         float pitch = (1.0F + (level.random.nextFloat() - level.random.nextFloat()) * 0.2F) * 0.7F;
         sendOutsideSound(level, event.getExplosion().center(), event.getExplosion().getExplosionSound(),
                 SoundSource.BLOCKS, 4.0F, pitch, false);

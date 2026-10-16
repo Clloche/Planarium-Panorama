@@ -30,7 +30,7 @@
   "planariumview.config.weather": "Weather",
   "planariumview.config.weather.tooltip": "Outside rain, snow and lightning: rain and snow fall on the scenery with the rain sound, you hear the thunder and see nearby bolts.",
   "planariumview.config.outside_sounds": "Outside sounds",
-  "planariumview.config.outside_sounds.tooltip": "Nearby sounds from the real world play inside the jar: blocks, weather, records and explosions. Sounds directly caused by a player are excluded.\n\nFlowing water and lava, fire crackling and other ambient block sounds generated locally from scenery blocks are not included yet.",
+  "planariumview.config.outside_sounds.tooltip": "Nearby sounds from the real world play inside the jar, from their direction in the scenery: blocks, weather, jukeboxes, explosions, and ambient block sounds (fire, lava, flowing water, portals...). Sounds directly caused by a player are excluded.",
   "planariumview.config.entity_sounds": "Include entity sounds",
   "planariumview.config.entity_sounds.tooltip": "Also hear mobs and animals in the real world, even when you cannot see them. Sounds directly caused by a player are still excluded.",
   "planariumview.config.clouds": "Clouds",

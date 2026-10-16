@@ -32,23 +32,37 @@ final class OutsideSoundClient {
             return;
         }
 
-        Vec3 camera = minecraft.gameRenderer.getMainCamera().getPosition();
-        // Use the same giant-scene transform as the scenery, so the sound comes from its visible direction.
-        Vec3 source = new Vec3((payload.dx() - ClientView.ARS_OFFSET) * ClientView.GIANT,
-                (payload.dy() - ClientView.ARS_OFFSET) * ClientView.GIANT - ClientView.Y_SHIFT,
-                (payload.dz() - ClientView.ARS_OFFSET) * ClientView.GIANT);
+        play(sound, sources[payload.source()], payload.volume(), payload.pitch(), payload.dx(), payload.dy(), payload.dz());
+    }
+
+    /**
+     * Ou jouer un son venant de (dx, dy, dz) par rapport au Planarium : a 8 blocs de la camera, dans la direction
+     * de cette position dans le decor geant (meme transformation que le decor).
+     */
+    static Vec3 playbackPosition(double dx, double dy, double dz) {
+        Vec3 camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+        Vec3 source = new Vec3((dx - ClientView.ARS_OFFSET) * ClientView.GIANT,
+                (dy - ClientView.ARS_OFFSET) * ClientView.GIANT - ClientView.Y_SHIFT,
+                (dz - ClientView.ARS_OFFSET) * ClientView.GIANT);
         Vec3 direction = source.subtract(camera);
         direction = direction.lengthSqr() < 1.0E-4 ? new Vec3(0.0, 1.0, 0.0) : direction.normalize();
-        Vec3 playback = camera.add(direction.scale(8.0));
+        return camera.add(direction.scale(8.0));
+    }
 
-        SimpleSoundInstance instance = new SimpleSoundInstance(sound, sources[payload.source()], payload.volume(),
-                payload.pitch(), RandomSource.create(), playback.x, playback.y, playback.z) {
+    /** Joue un son deja attenue (volume final) venant de (dx, dy, dz) par rapport au Planarium. */
+    static void play(SoundEvent sound, SoundSource source, float volume, float pitch, double dx, double dy, double dz) {
+        if (volume <= 0.0F) {
+            return;
+        }
+        Vec3 playback = playbackPosition(dx, dy, dz);
+        SimpleSoundInstance instance = new SimpleSoundInstance(sound, source, volume,
+                pitch, RandomSource.create(), playback.x, playback.y, playback.z) {
             // The server already applied distance falloff. Keep only positional panning here.
             @Override
             public SoundInstance.Attenuation getAttenuation() {
                 return SoundInstance.Attenuation.NONE;
             }
         };
-        minecraft.getSoundManager().play(instance);
+        Minecraft.getInstance().getSoundManager().play(instance);
     }
 }

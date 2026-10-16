@@ -83,6 +83,11 @@ public class PlanariumView {
                         ServerView.setEntitySounds(player, payload.entitySounds());
                     }
                 }));
+        // Facultatif : musique des jukebox du dehors.
+        event.registrar("4").optional().playToClient(
+                OutsideRecordPayload.TYPE,
+                OutsideRecordPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> OutsideRecordClient.receive(payload)));
         // Facultatif pour qu'un client ou serveur plus ancien puisse toujours se connecter.
         event.registrar("4").optional().playToClient(
                 OutsideSoundPayload.TYPE,

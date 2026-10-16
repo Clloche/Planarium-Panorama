@@ -193,6 +193,7 @@ public final class ClientView {
         NeoForge.EVENT_BUS.addListener(ClientView::onRenderStage);
         NeoForge.EVENT_BUS.addListener(ClientView::onLoggingOut);
         NeoForge.EVENT_BUS.addListener(ClientView::sendToggle);
+        NeoForge.EVENT_BUS.addListener(ClientView::tickSceneryAmbience);
         JarInteriorBiome.init();
         WeatherView.init();
         LightningView.init();
@@ -522,6 +523,84 @@ public final class ClientView {
     private static Boolean sentEnabled;
 
     /** Previent le serveur quand l'interrupteur general change (et a la connexion) : OFF, il ne capture plus rien pour nous. */
+    private static final net.minecraft.util.RandomSource AMBIENT_RANDOM = net.minecraft.util.RandomSource.create();
+    /** Blocs dont l'ambiance a leve une erreur dans le faux monde : on ne les essaie plus. */
+    private static final Set<net.minecraft.world.level.block.Block> AMBIENT_BROKEN = new HashSet<>();
+
+    /**
+     * Sons d'ambiance des blocs du decor (feu qui crepite, lave, eau qui coule, portail...). Le serveur ne les joue
+     * jamais : comme Minecraft autour du joueur, on tire chaque tick des blocs au hasard autour du Planarium dans le
+     * faux monde du decor, et on leur fait jouer leur ambiance (les particules sont ignorees).
+     */
+    private static void tickSceneryAmbience(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || mc.isPaused() || renderData == null || currentDim == null || !Config.outsideSounds()
+                || !mc.level.dimension().location().equals(currentDim)
+                || !(renderData.fakeRenderingWorld instanceof LitRenderingWorld lit)) {
+            return;
+        }
+        int radius = currentRadius;
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        LitRenderingWorld.captureAmbientSounds(true);
+        try {
+            // Comme ClientLevel.animateTick : 667 tirages a 16 blocs et 667 a 32 blocs du point d'ecoute.
+            for (int i = 0; i < 667; i++) {
+                ambientTick(lit, radius, 16, pos);
+                ambientTick(lit, radius, 32, pos);
+            }
+        } finally {
+            LitRenderingWorld.captureAmbientSounds(false);
+        }
+    }
+
+    private static void ambientTick(LitRenderingWorld lit, int radius, int range, BlockPos.MutableBlockPos pos) {
+        int x = radius + AMBIENT_RANDOM.nextInt(range) - AMBIENT_RANDOM.nextInt(range);
+        int y = radius + AMBIENT_RANDOM.nextInt(range) - AMBIENT_RANDOM.nextInt(range);
+        int z = radius + AMBIENT_RANDOM.nextInt(range) - AMBIENT_RANDOM.nextInt(range);
+        // Le Planarium lui-meme et le bloc au-dessus ne font pas partie du decor.
+        if (x == radius && z == radius && (y == radius || y == radius + 1)) {
+            return;
+        }
+        pos.set(x, y, z);
+        BlockState state = lit.getBlockState(pos);
+        if (state.isAir() || AMBIENT_BROKEN.contains(state.getBlock())) {
+            return;
+        }
+        BlockPos at = pos.immutable();
+        try {
+            state.getBlock().animateTick(state, lit, at, AMBIENT_RANDOM);
+            FluidState fluid = state.getFluidState();
+            if (!fluid.isEmpty()) {
+                fluid.animateTick(lit, at, AMBIENT_RANDOM);
+            }
+        } catch (Throwable t) {
+            // Un bloc modde qui suppose un vrai monde : on l'ignore pour le reste de la session.
+            AMBIENT_BROKEN.add(state.getBlock());
+            LOGGER.debug("[Planarium Panorama] Ambiance du bloc {} ignoree dans le decor", state.getBlock(), t);
+        }
+    }
+
+    /**
+     * Son d'ambiance d'un bloc du decor (positions du gabarit). On l'attenue comme si on l'ecoutait a la place du
+     * Planarium, puis on le joue dans sa direction dans le decor geant.
+     */
+    static void onSceneryAmbientSound(double x, double y, double z, net.minecraft.sounds.SoundEvent sound,
+                                      net.minecraft.sounds.SoundSource source, float volume, float pitch) {
+        if (sound == null || volume <= 0.0F) {
+            return;
+        }
+        int radius = currentRadius;
+        double dx = x - radius;
+        double dy = y - radius;
+        double dz = z - radius;
+        double distance = Math.sqrt((dx - 0.5) * (dx - 0.5) + (dy - 0.5) * (dy - 0.5) + (dz - 0.5) * (dz - 0.5));
+        double range = sound.getRange(volume);
+        if (!(range > 0.0) || distance >= range) {
+            return;
+        }
+        OutsideSoundClient.play(sound, source, (float) (volume * (1.0 - distance / range)), pitch, dx, dy, dz);
+    }
+
     /** Derniere valeur de l'option "Sons des entites" envoyee au serveur (null : rien d'envoye sur cette connexion). */
     private static Boolean sentEntitySounds;
 
@@ -558,6 +637,7 @@ public final class ClientView {
     private static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         sentEnabled = null;
         sentEntitySounds = null;
+        OutsideRecordClient.clear();
         dispose();
         MiniLight.clear();
         LunarClient.clear();

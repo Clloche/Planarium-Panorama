@@ -90,8 +90,8 @@ public final class Config {
                         "Ignored while Better Clouds is active (its clouds don't show in the jar).")
                 .define("clouds", true);
         OUTSIDE_SOUNDS = client
-                .comment("Play nearby sounds from the real world inside the jar: blocks, weather, records and explosions.",
-                        "Flowing water and lava, fire crackling and other ambient block sounds generated locally from scenery blocks are not included yet.")
+                .comment("Play nearby sounds from the real world inside the jar, from their direction in the scenery:",
+                        "blocks, weather, jukeboxes, explosions, and ambient block sounds (fire, lava, flowing water, portals...).")
                 .define("outsideSounds", true);
         INCLUDE_ENTITY_SOUNDS = client
                 .comment("Also play sounds made by mobs and animals. Sounds directly caused by a player are excluded.")
