@@ -35,7 +35,7 @@ final class OutsideRecordClient {
         }
         Minecraft minecraft = Minecraft.getInstance();
         ClientLevel level = minecraft.level;
-        if (payload.song().isEmpty() || level == null || !Config.outsideSounds()
+        if (payload.song().isEmpty() || level == null || !Config.jukeboxSounds()
                 || !level.dimension().location().equals(payload.pocketDim())) {
             return;
         }
@@ -91,7 +91,7 @@ final class OutsideRecordClient {
         @Override
         public void tick() {
             ClientLevel level = Minecraft.getInstance().level;
-            if (level == null || !Config.outsideSounds() || !level.dimension().location().equals(pocketDim)) {
+            if (level == null || !Config.jukeboxSounds() || !level.dimension().location().equals(pocketDim)) {
                 stop();
                 return;
             }

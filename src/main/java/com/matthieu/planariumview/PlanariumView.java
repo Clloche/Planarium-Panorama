@@ -74,13 +74,13 @@ public class PlanariumView {
                 LightningPayload.TYPE,
                 LightningPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> LightningView.receive(payload)));
-        // Facultatif : l'option "Sons des entites" du client, pour que le serveur ne les envoie qu'a qui les veut.
+        // Facultatif : les options des sons du monde exterieur du client (quels sons envoyer, zone active ou en pause).
         event.registrar("4").optional().playToServer(
                 SoundPrefsPayload.TYPE,
                 SoundPrefsPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof net.minecraft.server.level.ServerPlayer player) {
-                        ServerView.setEntitySounds(player, payload.entitySounds());
+                        ServerView.setSoundPrefs(player, payload);
                     }
                 }));
         // Facultatif : musique des jukebox du dehors.

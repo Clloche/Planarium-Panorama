@@ -534,7 +534,7 @@ public final class ClientView {
      */
     private static void tickSceneryAmbience(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null || mc.isPaused() || renderData == null || currentDim == null || !Config.outsideSounds()
+        if (mc.level == null || mc.isPaused() || renderData == null || currentDim == null || !Config.sceneryAmbience()
                 || !mc.level.dimension().location().equals(currentDim)
                 || !(renderData.fakeRenderingWorld instanceof LitRenderingWorld lit)) {
             return;
@@ -601,23 +601,24 @@ public final class ClientView {
         OutsideSoundClient.play(sound, source, (float) (volume * (1.0 - distance / range)), pitch, dx, dy, dz);
     }
 
-    /** Derniere valeur de l'option "Sons des entites" envoyee au serveur (null : rien d'envoye sur cette connexion). */
-    private static Boolean sentEntitySounds;
+    /** Dernieres options des sons du monde exterieur envoyees au serveur (null : rien d'envoye sur cette connexion). */
+    private static SoundPrefsPayload sentSoundPrefs;
 
     private static void sendToggle(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
         net.minecraft.client.multiplayer.ClientPacketListener connection = Minecraft.getInstance().getConnection();
         if (connection == null || Minecraft.getInstance().player == null) {
             return;
         }
-        boolean entitySounds = Config.includeEntitySounds();
-        if (sentEntitySounds == null || sentEntitySounds != entitySounds) {
-            sentEntitySounds = entitySounds;
+        SoundPrefsPayload prefs = new SoundPrefsPayload(Config.worldSounds(), Config.mobSounds(), Config.blockSounds(),
+                Config.explosionSounds(), Config.jukeboxSounds());
+        if (!prefs.equals(sentSoundPrefs)) {
+            sentSoundPrefs = prefs;
             try {
                 if (connection.hasChannel(SoundPrefsPayload.TYPE)) {
-                    net.neoforged.neoforge.network.PacketDistributor.sendToServer(new SoundPrefsPayload(entitySounds));
+                    net.neoforged.neoforge.network.PacketDistributor.sendToServer(prefs);
                 }
             } catch (Exception e) {
-                LOGGER.debug("[Planarium Panorama] Option des sons d'entites non envoyee au serveur", e);
+                LOGGER.debug("[Planarium Panorama] Options des sons non envoyees au serveur", e);
             }
         }
         boolean enabled = Config.enabled();
@@ -636,7 +637,7 @@ public final class ClientView {
 
     private static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         sentEnabled = null;
-        sentEntitySounds = null;
+        sentSoundPrefs = null;
         OutsideRecordClient.clear();
         dispose();
         MiniLight.clear();

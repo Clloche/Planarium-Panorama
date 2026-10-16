@@ -113,6 +113,8 @@ public final class ServerView {
         /** Sons envoyes dans la seconde en cours : blocs/meteo/disques/explosions, et entites (comptes a part). */
         int soundsInWindow;
         int entitySoundsInWindow;
+        /** Mode des tickets de chargement actuels : vrai = la zone tourne, faux = chargee mais en pause. */
+        boolean ticketActive;
 
         Track(ResourceKey<Level> pocket, GlobalPos source) {
             this.pocket = pocket;
@@ -127,8 +129,12 @@ public final class ServerView {
     /** Limites separees : une ferme de mobs ne peut pas empecher d'entendre une porte ou un repeteur. */
     private static final int MAX_SOUNDS_PER_SECOND = 30;
     private static final int MAX_ENTITY_SOUNDS_PER_SECOND = 10;
-    /** Joueurs qui veulent les sons des entites (option du client, envoyee par SoundPrefsPayload). */
-    private static final java.util.Set<UUID> ENTITY_SOUNDS = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /** Options des sons du monde exterieur de chaque joueur (SoundPrefsPayload ; sans message : tout permis). */
+    private static final Map<UUID, SoundPrefsPayload> SOUND_PREFS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static SoundPrefsPayload prefsOf(UUID id) {
+        return SOUND_PREFS.getOrDefault(id, SoundPrefsPayload.DEFAULT);
+    }
 
     /** Ecrit une erreur dans le log une seule fois par type (sinon elle se repeterait chaque seconde). */
     private static void logOnce(String what, Exception e) {
@@ -244,17 +250,13 @@ public final class ServerView {
         if (event.getEntity() instanceof ServerPlayer player) {
             removeTrack(player.server, player.getUUID());
             DISABLED.remove(player.getUUID());
-            ENTITY_SOUNDS.remove(player.getUUID());
+            SOUND_PREFS.remove(player.getUUID());
         }
     }
 
-    /** Option "Sons des entites" du client : sans elle, le serveur ne lui envoie pas ces sons. */
-    static void setEntitySounds(ServerPlayer player, boolean wanted) {
-        if (wanted) {
-            ENTITY_SOUNDS.add(player.getUUID());
-        } else {
-            ENTITY_SOUNDS.remove(player.getUUID());
-        }
+    /** Options des sons du client ; la zone autour du Planarium passe en pause ou tourne a la prochaine mise a jour. */
+    static void setSoundPrefs(ServerPlayer player, SoundPrefsPayload prefs) {
+        SOUND_PREFS.put(player.getUUID(), prefs);
     }
 
     /** Distance (en blocs) a laquelle on entend le tonnerre d'un eclair du monde d'origine. */
@@ -305,20 +307,21 @@ public final class ServerView {
         if (sound == null) {
             return;
         }
-        boolean entitySound = source == SoundSource.HOSTILE || source == SoundSource.NEUTRAL;
+        int category = source == SoundSource.HOSTILE || source == SoundSource.NEUTRAL
+                ? OutsideSoundPayload.MOBS : OutsideSoundPayload.BLOCKS;
         Vec3 position;
         if (event instanceof PlayLevelSoundEvent.AtEntity atEntity) {
             if (atEntity.getEntity() instanceof net.minecraft.world.entity.player.Player) {
                 return;
             }
             position = atEntity.getEntity().position();
-            entitySound = true;
+            category = OutsideSoundPayload.MOBS;
         } else if (event instanceof PlayLevelSoundEvent.AtPosition atPosition) {
             position = atPosition.getPosition();
         } else {
             return;
         }
-        sendOutsideSound(level, position, sound, source, event.getNewVolume(), event.getNewPitch(), entitySound);
+        sendOutsideSound(level, position, sound, source, event.getNewVolume(), event.getNewPitch(), category);
     }
 
     /**
@@ -389,7 +392,7 @@ public final class ServerView {
             return;
         }
         sendOutsideSound(level, Vec3.atCenterOf(pos), net.minecraft.core.registries.BuiltInRegistries.SOUND_EVENT.wrapAsHolder(sound),
-                SoundSource.BLOCKS, volume, pitch, false);
+                SoundSource.BLOCKS, volume, pitch, OutsideSoundPayload.BLOCKS);
     }
 
     /**
@@ -448,8 +451,9 @@ public final class ServerView {
             double dx = position.x - center.getX();
             double dy = position.y - center.getY();
             double dz = position.z - center.getZ();
-            // Fin : toujours envoyee (le client l'ignore s'il ne jouait rien). Debut : seulement a portee.
-            if (!song.isEmpty() && dx * dx + dy * dy + dz * dz > 64.0 * 64.0) {
+            // Fin : toujours envoyee (le client l'ignore s'il ne jouait rien). Debut : a portee, et si le joueur le veut.
+            SoundPrefsPayload prefs = prefsOf(player.getUUID());
+            if (!song.isEmpty() && (dx * dx + dy * dy + dz * dz > 64.0 * 64.0 || !prefs.world() || !prefs.jukeboxes())) {
                 continue;
             }
             PacketDistributor.sendToPlayer(player,
@@ -466,11 +470,11 @@ public final class ServerView {
         // Meme son et meme hauteur que Minecraft (le son d'une charge de vent n'est pas celui d'une TNT).
         float pitch = (1.0F + (level.random.nextFloat() - level.random.nextFloat()) * 0.2F) * 0.7F;
         sendOutsideSound(level, event.getExplosion().center(), event.getExplosion().getExplosionSound(),
-                SoundSource.BLOCKS, 4.0F, pitch, false);
+                SoundSource.BLOCKS, 4.0F, pitch, OutsideSoundPayload.EXPLOSIONS);
     }
 
     private static void sendOutsideSound(ServerLevel level, Vec3 position, Holder<SoundEvent> sound,
-                                         SoundSource source, float volume, float pitch, boolean entitySound) {
+                                         SoundSource source, float volume, float pitch, int category) {
         if (TRACKS.isEmpty() || volume <= 0.0F) {
             return;
         }
@@ -489,7 +493,7 @@ public final class ServerView {
                     || !track.source.dimension().equals(level.dimension())
                     || !player.serverLevel().dimension().equals(track.pocket)
                     || !player.connection.hasChannel(OutsideSoundPayload.TYPE)
-                    || (entitySound && !ENTITY_SOUNDS.contains(player.getUUID()))) {
+                    || !prefsOf(player.getUUID()).allows(category)) {
                 continue;
             }
             BlockPos center = track.source.pos();
@@ -505,7 +509,7 @@ public final class ServerView {
                 track.soundsInWindow = 0;
                 track.entitySoundsInWindow = 0;
             }
-            if (entitySound) {
+            if (category == OutsideSoundPayload.MOBS) {
                 if (track.entitySoundsInWindow >= MAX_ENTITY_SOUNDS_PER_SECOND) {
                     continue;
                 }
@@ -518,7 +522,7 @@ public final class ServerView {
             }
             float attenuatedVolume = (float) (volume * (1.0 - distance / range));
             PacketDistributor.sendToPlayer(player, new OutsideSoundPayload(track.pocket.location(), soundId,
-                    source.ordinal(), attenuatedVolume, pitch, dx, dy, dz, entitySound));
+                    source.ordinal(), attenuatedVolume, pitch, dx, dy, dz, category));
         }
     }
 
@@ -537,6 +541,27 @@ public final class ServerView {
             updateMiniatures(server);
         } catch (Exception e) {
             LOGGER.error("[Planarium View] Erreur lors de la capture de la lumiere des miniatures", e);
+        }
+        keepSourcesAwake(server);
+    }
+
+    /**
+     * Option "Sons du monde exterieur" ON.
+     * Minecraft arrete de faire tourner les entites et les blocs speciaux d'une dimension 15 s apres que le dernier
+     * joueur l'a quittee (pistons figes en plein mouvement, fours, entonnoirs et mobs arretes). Un joueur qui regarde
+     * cette dimension depuis un bocal la garde donc "occupee", comme s'il y etait. Les chunks qui tournent restent ceux
+     * que le Planarium garde charges, plus ceux que Minecraft garde deja.
+     */
+    private static void keepSourcesAwake(MinecraftServer server) {
+        for (Map.Entry<UUID, Track> entry : TRACKS.entrySet()) {
+            // Seulement pour les joueurs qui veulent les sons du monde exterieur (zone active, voir keepLoaded).
+            if (DISABLED.contains(entry.getKey()) || !entry.getValue().ticketActive) {
+                continue;
+            }
+            ServerLevel source = server.getLevel(entry.getValue().source.dimension());
+            if (source != null && source.players().isEmpty()) {
+                source.resetEmptyTime();
+            }
         }
     }
 
@@ -620,7 +645,7 @@ public final class ServerView {
         if (radius != track.lastRadius) {
             force = true;
         }
-        keepLoaded(player.server, track, radius);
+        keepLoaded(player.server, player.getUUID(), track, radius);
 
         long now = player.server.getTickCount();
         int refresh = Config.REFRESH_SECONDS.get() * 20;
@@ -1172,21 +1197,54 @@ public final class ServerView {
      * Sans joueur a proximite, les chunks autour du Planarium se dechargent et les rafraichissements
      * ne peuvent plus lire les blocs. On les garde charges (sans les faire "tourner") pendant la visite.
      */
-    private static void keepLoaded(MinecraftServer server, Track track, int radius) {
+    /**
+     * Garde la zone du decor chargee. Option "Sons du monde exterieur" ON : un seul ticket qui fait aussi tourner la zone
+     * (redstone, machines, mobs), comme si le joueur y etait. OFF : un ticket par chunk, au niveau juste suffisant pour que
+     * le chunk soit charge et lisible, sans rien y faire tourner (comme quand un joueur s'en va).
+     */
+    private static void keepLoaded(MinecraftServer server, UUID player, Track track, int radius) {
         int chunks = Math.floorDiv(radius + 15, 16) + 1;
-        if (chunks == track.ticketChunks) {
+        boolean active = prefsOf(player).world();
+        if (chunks == track.ticketChunks && active == track.ticketActive) {
             return;
         }
         ServerLevel source = server.getLevel(track.source.dimension());
         if (source == null) {
             return;
         }
+        releaseTickets(source, track);
         ChunkPos center = new ChunkPos(track.source.pos());
-        if (track.ticketChunks >= 0) {
-            source.getChunkSource().removeRegionTicket(VIEW_TICKET, center, track.ticketChunks, center);
+        if (active) {
+            source.getChunkSource().addRegionTicket(VIEW_TICKET, center, chunks, center);
+        } else {
+            for (int dx = -chunks; dx <= chunks; dx++) {
+                for (int dz = -chunks; dz <= chunks; dz++) {
+                    ChunkPos chunk = new ChunkPos(center.x + dx, center.z + dz);
+                    source.getChunkSource().addRegionTicket(VIEW_TICKET, chunk, 0, chunk);
+                }
+            }
         }
-        source.getChunkSource().addRegionTicket(VIEW_TICKET, center, chunks, center);
         track.ticketChunks = chunks;
+        track.ticketActive = active;
+    }
+
+    /** Retire les tickets de chargement de ce suivi, selon le mode avec lequel ils ont ete poses. */
+    private static void releaseTickets(ServerLevel source, Track track) {
+        if (track.ticketChunks < 0) {
+            return;
+        }
+        ChunkPos center = new ChunkPos(track.source.pos());
+        if (track.ticketActive) {
+            source.getChunkSource().removeRegionTicket(VIEW_TICKET, center, track.ticketChunks, center);
+        } else {
+            for (int dx = -track.ticketChunks; dx <= track.ticketChunks; dx++) {
+                for (int dz = -track.ticketChunks; dz <= track.ticketChunks; dz++) {
+                    ChunkPos chunk = new ChunkPos(center.x + dx, center.z + dz);
+                    source.getChunkSource().removeRegionTicket(VIEW_TICKET, chunk, 0, chunk);
+                }
+            }
+        }
+        track.ticketChunks = -1;
     }
 
     private static void removeTrack(MinecraftServer server, UUID id) {
@@ -1197,8 +1255,7 @@ public final class ServerView {
         }
         ServerLevel source = server.getLevel(track.source.dimension());
         if (source != null) {
-            ChunkPos center = new ChunkPos(track.source.pos());
-            source.getChunkSource().removeRegionTicket(VIEW_TICKET, center, track.ticketChunks, center);
+            releaseTickets(source, track);
         }
         track.ticketChunks = -1;
     }

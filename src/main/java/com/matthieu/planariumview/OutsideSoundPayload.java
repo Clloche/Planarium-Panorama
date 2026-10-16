@@ -9,7 +9,12 @@ import net.minecraft.resources.ResourceLocation;
 /** Server to client: a sound heard at the real Planarium, with its direction and attenuated volume. */
 public record OutsideSoundPayload(ResourceLocation pocketDim, ResourceLocation soundId, int source,
                                   float volume, float pitch, double dx, double dy, double dz,
-                                  boolean entitySound) implements CustomPacketPayload {
+                                  int category) implements CustomPacketPayload {
+    /** Categories de sons (options du client) : redstone et blocs, mobs et animaux, explosions. */
+    public static final int BLOCKS = 0;
+    public static final int MOBS = 1;
+    public static final int EXPLOSIONS = 2;
+
     public static final Type<OutsideSoundPayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(PlanariumView.MODID, "outside_sound"));
 
@@ -23,7 +28,7 @@ public record OutsideSoundPayload(ResourceLocation pocketDim, ResourceLocation s
                 ByteBufCodecs.DOUBLE.encode(buf, payload.dx());
                 ByteBufCodecs.DOUBLE.encode(buf, payload.dy());
                 ByteBufCodecs.DOUBLE.encode(buf, payload.dz());
-                ByteBufCodecs.BOOL.encode(buf, payload.entitySound());
+                ByteBufCodecs.VAR_INT.encode(buf, payload.category());
             },
             buf -> new OutsideSoundPayload(
                     ResourceLocation.STREAM_CODEC.decode(buf),
@@ -34,7 +39,7 @@ public record OutsideSoundPayload(ResourceLocation pocketDim, ResourceLocation s
                     ByteBufCodecs.DOUBLE.decode(buf),
                     ByteBufCodecs.DOUBLE.decode(buf),
                     ByteBufCodecs.DOUBLE.decode(buf),
-                    ByteBufCodecs.BOOL.decode(buf)));
+                    ByteBufCodecs.VAR_INT.decode(buf)));
 
     @Override
     public Type<? extends CustomPacketPayload> type() {

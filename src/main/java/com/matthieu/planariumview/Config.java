@@ -22,8 +22,12 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue BIOME_COLORS;
     public static final ModConfigSpec.BooleanValue WEATHER;
     public static final ModConfigSpec.BooleanValue CLOUDS;
-    public static final ModConfigSpec.BooleanValue OUTSIDE_SOUNDS;
-    public static final ModConfigSpec.BooleanValue INCLUDE_ENTITY_SOUNDS;
+    public static final ModConfigSpec.BooleanValue SCENERY_AMBIENCE;
+    public static final ModConfigSpec.BooleanValue WORLD_SOUNDS;
+    public static final ModConfigSpec.BooleanValue MOB_SOUNDS;
+    public static final ModConfigSpec.BooleanValue BLOCK_SOUNDS;
+    public static final ModConfigSpec.BooleanValue EXPLOSION_SOUNDS;
+    public static final ModConfigSpec.BooleanValue JUKEBOX_SOUNDS;
     public static final ModConfigSpec.BooleanValue COLORED_LIGHT;
     public static final ModConfigSpec.BooleanValue OUTSIDE_AMBIENCE;
     public static final ModConfigSpec.BooleanValue AMBIENT_SOUNDS;
@@ -89,13 +93,28 @@ public final class Config {
                 .comment("Outside clouds in the jar when the Planarium is near the cloud layer (vanilla cloud shape).",
                         "Ignored while Better Clouds is active (its clouds don't show in the jar).")
                 .define("clouds", true);
-        OUTSIDE_SOUNDS = client
-                .comment("Play nearby sounds from the real world inside the jar, from their direction in the scenery:",
-                        "blocks, weather, jukeboxes, explosions, and ambient block sounds (fire, lava, flowing water, portals...).")
-                .define("outsideSounds", true);
-        INCLUDE_ENTITY_SOUNDS = client
-                .comment("Also play sounds made by mobs and animals. Sounds directly caused by a player are excluded.")
-                .define("includeEntitySounds", false);
+        SCENERY_AMBIENCE = client
+                .comment("Ambient sounds of the scenery blocks (fire, lava, flowing water, portals, campfires...), from their direction",
+                        "in the scenery. Made on your side, like Minecraft does around the player: works even when the outside world is paused.")
+                .define("sceneryAmbience", true);
+        WORLD_SOUNDS = client
+                .comment("Sounds from the outside world around the Planarium (mobs, redstone, explosions, jukeboxes...), from their direction",
+                        "in the scenery. Sounds directly caused by a player are excluded.",
+                        "While ON, the area kept loaded around the Planarium keeps running as if you were there (machines, mobs, furnaces).",
+                        "OFF: that area is paused while no player is there; only the scenery's ambient sounds remain.")
+                .define("worldSounds", true);
+        MOB_SOUNDS = client
+                .comment("Outside world sounds: mobs and animals.")
+                .define("mobSounds", true);
+        BLOCK_SOUNDS = client
+                .comment("Outside world sounds: redstone and blocks (pistons, doors, dispensers, note blocks, anvils, blocks broken by mobs...).")
+                .define("blockSounds", true);
+        EXPLOSION_SOUNDS = client
+                .comment("Outside world sounds: explosions.")
+                .define("explosionSounds", true);
+        JUKEBOX_SOUNDS = client
+                .comment("Outside world sounds: jukebox music.")
+                .define("jukeboxSounds", true);
         COLORED_LIGHT = client
                 .comment("Colored light from Contraption Lights on the giant scenery and the miniature (if the mod is installed).")
                 .define("coloredLight", true);
@@ -193,12 +212,28 @@ public final class Config {
         return enabled() && CLOUDS.get() && !BetterCloudsCompat.active();
     }
 
-    public static boolean outsideSounds() {
-        return enabled() && OUTSIDE_SOUNDS.get();
+    public static boolean sceneryAmbience() {
+        return enabled() && SCENERY_AMBIENCE.get();
     }
 
-    public static boolean includeEntitySounds() {
-        return outsideSounds() && INCLUDE_ENTITY_SOUNDS.get();
+    public static boolean worldSounds() {
+        return enabled() && WORLD_SOUNDS.get();
+    }
+
+    public static boolean mobSounds() {
+        return worldSounds() && MOB_SOUNDS.get();
+    }
+
+    public static boolean blockSounds() {
+        return worldSounds() && BLOCK_SOUNDS.get();
+    }
+
+    public static boolean explosionSounds() {
+        return worldSounds() && EXPLOSION_SOUNDS.get();
+    }
+
+    public static boolean jukeboxSounds() {
+        return worldSounds() && JUKEBOX_SOUNDS.get();
     }
 
     public static boolean coloredLight() {

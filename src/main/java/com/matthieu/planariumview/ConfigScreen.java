@@ -77,11 +77,25 @@ public final class ConfigScreen {
                 .build();
         Option<Boolean> biome = bool("biome", Config.BIOME_COLORS.getDefault(), Config.BIOME_COLORS::get, Config.BIOME_COLORS::set);
         Option<Boolean> weather = bool("weather", Config.WEATHER.getDefault(), Config.WEATHER::get, Config.WEATHER::set);
-        Option<Boolean> outsideSounds = bool("outside_sounds", Config.OUTSIDE_SOUNDS.getDefault(),
-                Config.OUTSIDE_SOUNDS::get, Config.OUTSIDE_SOUNDS::set);
-        Option<Boolean> entitySounds = bool("entity_sounds", Config.INCLUDE_ENTITY_SOUNDS.getDefault(),
-                Config.INCLUDE_ENTITY_SOUNDS::get, Config.INCLUDE_ENTITY_SOUNDS::set);
-        outsideSounds.addListener((option, value) -> entitySounds.setAvailable(Config.enabled() && value));
+        Option<Boolean> sceneryAmbience = bool("scenery_ambience", Config.SCENERY_AMBIENCE.getDefault(),
+                Config.SCENERY_AMBIENCE::get, Config.SCENERY_AMBIENCE::set);
+        Option<Boolean> worldSounds = bool("world_sounds", Config.WORLD_SOUNDS.getDefault(),
+                Config.WORLD_SOUNDS::get, Config.WORLD_SOUNDS::set);
+        Option<Boolean> mobSounds = bool("mob_sounds", Config.MOB_SOUNDS.getDefault(),
+                Config.MOB_SOUNDS::get, Config.MOB_SOUNDS::set);
+        Option<Boolean> blockSounds = bool("block_sounds", Config.BLOCK_SOUNDS.getDefault(),
+                Config.BLOCK_SOUNDS::get, Config.BLOCK_SOUNDS::set);
+        Option<Boolean> explosionSounds = bool("explosion_sounds", Config.EXPLOSION_SOUNDS.getDefault(),
+                Config.EXPLOSION_SOUNDS::get, Config.EXPLOSION_SOUNDS::set);
+        Option<Boolean> jukeboxSounds = bool("jukebox_sounds", Config.JUKEBOX_SOUNDS.getDefault(),
+                Config.JUKEBOX_SOUNDS::get, Config.JUKEBOX_SOUNDS::set);
+        // Les sons du monde exterieur se choisissent un par un seulement si le groupe est ON.
+        List<Option<Boolean>> worldKinds = List.of(mobSounds, blockSounds, explosionSounds, jukeboxSounds);
+        worldSounds.addListener((option, value) -> {
+            for (Option<Boolean> kind : worldKinds) {
+                kind.setAvailable(Config.enabled() && value);
+            }
+        });
         boolean betterClouds = BetterCloudsCompat.active();
         Option<Boolean> clouds = Option.<Boolean>createBuilder()
                 .name(Component.translatable(KEY + "clouds"))
@@ -119,8 +133,12 @@ public final class ConfigScreen {
         gated.add(new Gated(lighting, () -> true));
         gated.add(new Gated(biome, () -> true));
         gated.add(new Gated(weather, () -> true));
-        gated.add(new Gated(outsideSounds, () -> true));
-        gated.add(new Gated(entitySounds, Config::outsideSounds));
+        gated.add(new Gated(sceneryAmbience, () -> true));
+        gated.add(new Gated(worldSounds, () -> true));
+        gated.add(new Gated(mobSounds, Config::worldSounds));
+        gated.add(new Gated(blockSounds, Config::worldSounds));
+        gated.add(new Gated(explosionSounds, Config::worldSounds));
+        gated.add(new Gated(jukeboxSounds, Config::worldSounds));
         gated.add(new Gated(clouds, () -> !betterClouds));
         gated.add(new Gated(fog, () -> true));
         gated.add(new Gated(caveFog, () -> true));
@@ -165,7 +183,8 @@ public final class ConfigScreen {
                 .build();
 
         dirty = false;
-        for (Option<?> option : List.of(master, lighting, radius, biome, weather, outsideSounds, entitySounds, clouds, fog, blockUpdates, refresh, color, ambience, ambientSounds, lunar, caveFog)) {
+        for (Option<?> option : List.of(master, lighting, radius, biome, weather, sceneryAmbience, worldSounds, mobSounds,
+                blockSounds, explosionSounds, jukeboxSounds, clouds, fog, blockUpdates, refresh, color, ambience, ambientSounds, lunar, caveFog)) {
             autoSave(option);
         }
 
@@ -201,9 +220,22 @@ public final class ConfigScreen {
                                 .collapsed(false)
                                 .option(biome)
                                 .option(weather)
-                                .option(outsideSounds)
-                                .option(entitySounds)
                                 .option(clouds)
+                                .build())
+                        .group(OptionGroup.createBuilder()
+                                .name(Component.translatable(KEY + "group.sounds"))
+                                .collapsed(false)
+                                .option(sceneryAmbience)
+                                .option(worldSounds)
+                                .build())
+                        // YACL ne permet pas de groupe dans un groupe : le detail des sons du monde exterieur suit juste apres.
+                        .group(OptionGroup.createBuilder()
+                                .name(Component.translatable(KEY + "group.world_sounds"))
+                                .collapsed(false)
+                                .option(mobSounds)
+                                .option(blockSounds)
+                                .option(explosionSounds)
+                                .option(jukeboxSounds)
                                 .build())
                         .build())
                 .category(ConfigCategory.createBuilder()

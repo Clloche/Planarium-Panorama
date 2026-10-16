@@ -7,17 +7,38 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * Client -> serveur : l'option "Sons des entites" du joueur. Sur OFF, le serveur ne lui envoie pas les sons des mobs
- * et des animaux (moins de reseau, et ils ne prennent pas la place des autres sons dans la limite par seconde).
+ * Client -> serveur : les options des sons du monde exterieur. {@code world} OFF : la zone autour du Planarium
+ * reste en pause tant que personne n'y est, et le serveur n'envoie aucun de ces sons. Les autres choisissent
+ * quels sons envoyer : mobs et animaux, redstone et blocs, explosions, jukebox.
  */
-public record SoundPrefsPayload(boolean entitySounds) implements CustomPacketPayload {
+public record SoundPrefsPayload(boolean world, boolean mobs, boolean blocks, boolean explosions, boolean jukeboxes)
+        implements CustomPacketPayload {
 
     public static final Type<SoundPrefsPayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(PlanariumView.MODID, "sound_prefs"));
 
+    /** Sans message du client (ancienne version) : tout est permis, comme avant. */
+    public static final SoundPrefsPayload DEFAULT = new SoundPrefsPayload(true, true, true, true, true);
+
     public static final StreamCodec<ByteBuf, SoundPrefsPayload> STREAM_CODEC = StreamCodec.composite(
-            ByteBufCodecs.BOOL, SoundPrefsPayload::entitySounds,
+            ByteBufCodecs.BOOL, SoundPrefsPayload::world,
+            ByteBufCodecs.BOOL, SoundPrefsPayload::mobs,
+            ByteBufCodecs.BOOL, SoundPrefsPayload::blocks,
+            ByteBufCodecs.BOOL, SoundPrefsPayload::explosions,
+            ByteBufCodecs.BOOL, SoundPrefsPayload::jukeboxes,
             SoundPrefsPayload::new);
+
+    /** Ce joueur veut-il les sons de cette categorie (voir OutsideSoundPayload) ? */
+    public boolean allows(int category) {
+        if (!world) {
+            return false;
+        }
+        return switch (category) {
+            case OutsideSoundPayload.MOBS -> mobs;
+            case OutsideSoundPayload.EXPLOSIONS -> explosions;
+            default -> blocks;
+        };
+    }
 
     @Override
     public Type<? extends CustomPacketPayload> type() {

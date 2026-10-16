@@ -18,9 +18,7 @@ final class OutsideSoundClient {
     static void receive(OutsideSoundPayload payload) {
         Minecraft minecraft = Minecraft.getInstance();
         ClientLevel level = minecraft.level;
-        if (level == null || !Config.outsideSounds()
-                || !level.dimension().location().equals(payload.pocketDim())
-                || (payload.entitySound() && !Config.includeEntitySounds())) {
+        if (level == null || !level.dimension().location().equals(payload.pocketDim()) || !allowed(payload.category())) {
             return;
         }
         SoundSource[] sources = SoundSource.values();
@@ -33,6 +31,15 @@ final class OutsideSoundClient {
         }
 
         play(sound, sources[payload.source()], payload.volume(), payload.pitch(), payload.dx(), payload.dy(), payload.dz());
+    }
+
+    /** Options du client pour chaque categorie de son du monde exterieur (le serveur filtre deja de son cote). */
+    private static boolean allowed(int category) {
+        return switch (category) {
+            case OutsideSoundPayload.MOBS -> Config.mobSounds();
+            case OutsideSoundPayload.EXPLOSIONS -> Config.explosionSounds();
+            default -> Config.blockSounds();
+        };
     }
 
     /**
