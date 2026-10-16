@@ -21,6 +21,7 @@ import java.util.WeakHashMap;
  * de son faux monde, et prend la lumiere de l'endroit ou elle nait.
  */
 public final class SceneryParticles {
+    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
     private static final RandomSource RANDOM = RandomSource.create();
     /** Particules du decor ou d'une miniature, avec leur lumiere (format de la lightmap) et leur espace. */
     private static final Map<Particle, Integer> LIGHT = Collections.synchronizedMap(new WeakHashMap<>());
@@ -224,7 +225,15 @@ public final class SceneryParticles {
             return null;
         }
         float scale = (float) space.scale();
+        float before = particle instanceof com.matthieu.planariumview.mixin.SingleQuadParticleAccessor quad
+                ? quad.planariumview$getQuadSize() : -1.0F;
         particle.scale(scale);
+        if (!resized(particle, before, scale)) {
+            // Particule d'un autre mod qui garde sa taille (ou se dessine a sa facon) : dans une miniature, elle
+            // apparaitrait 32 fois trop grande. On l'enleve.
+            particle.remove();
+            return null;
+        }
         if (particle instanceof ParticleAccessor access) {
             // La vitesse (y compris la part au hasard ajoutee par la particule) et la gravite, a l'echelle du faux monde.
             access.planariumview$setXd(access.planariumview$getXd() * scale);
@@ -236,6 +245,28 @@ public final class SceneryParticles {
         LIGHT.put(particle, light);
         SPACE.put(particle, space);
         return particle;
+    }
+
+    /** Classes de particules deja ecrites dans le log (voir resized). */
+    private static final java.util.Set<Class<?>> UNSCALED = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+
+    /**
+     * Vrai si la particule a bien pris la taille du faux monde. Seulement verifie pour les miniatures (plus petites) :
+     * une particule restee a sa taille normale y serait geante. Dans le decor geant, une particule trop petite ne gene pas.
+     */
+    private static boolean resized(Particle particle, float before, float scale) {
+        if (scale >= 1.0F) {
+            return true;
+        }
+        // La taille de base (quadSize) et pas getQuadSize : la fumee, par exemple, part d'une taille 0 et grossit.
+        boolean ok = particle instanceof com.matthieu.planariumview.mixin.SingleQuadParticleAccessor quad && before > 0.0F
+                && quad.planariumview$getQuadSize() <= before * scale * 2.0F + 1.0E-4F;
+        if (UNSCALED.add(particle.getClass())) {
+            // TEMPORAIRE : chaque sorte de particule de miniature, une fois, pour trouver celles qui restent geantes.
+            LOGGER.info("[Planarium Panorama] Particule de miniature : {} ({})", particle.getClass().getName(),
+                    ok ? "rapetissee" : "ignoree, sa taille ne change pas");
+        }
+        return ok;
     }
 
     /** Particule du decor en train de bouger (voir ParticleEngineTickMixin), ou null. */
