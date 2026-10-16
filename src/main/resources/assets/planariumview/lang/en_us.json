@@ -35,7 +35,7 @@
   "planariumview.config.reenter": "Some changes only fully apply after leaving and re-entering the jar.",
   "planariumview.config.radius": "View radius",
   "planariumview.config.refresh": "Backup refresh",
-  "planariumview.config.block_updates.tooltip": "Maximum delay before a block change in the scenery shows up (placed or broken blocks, torches, crops...). A follow-up capture also runs so lighting can settle. Lower values cost more on busy servers (farms, redstone...).\n\nOFF = block changes only show with the backup refresh.",
+  "planariumview.config.block_updates.tooltip": "Maximum delay before a block change in the scenery shows up (placed or broken blocks, torches, crops...). When a change can affect lighting, a second capture follows so lighting can settle. Lower values cost more on busy servers (farms, redstone...).\n\nOFF = block changes only show with the backup refresh.",
   "planariumview.config.block_updates.value": "within %s s",
   "planariumview.config.block_updates.off": "OFF (backup only)",
   "planariumview.config.block_updates": "Block updates",

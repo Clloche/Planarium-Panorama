@@ -35,7 +35,7 @@ import java.util.function.Supplier;
  */
 public final class ConfigScreen {
     private static final String KEY = "planariumview.config.";
-    /** Rafraichissement de secours : curseur en minutes (0 = OFF, puis 1 a 30 min). */
+    /** Rafraichissement de secours : curseur en minutes (0 = OFF, puis 1 a 20 min). */
     private static final int MAX_REFRESH_MINUTES = 20;
 
     private ConfigScreen() {
@@ -210,11 +210,11 @@ public final class ConfigScreen {
         return config.generateScreen(parent);
     }
 
-    /** Le menu ouvert en dernier : ses options sont moins larges (voir YaclOptionListMixin). */
+    /** Le menu ouvert en dernier : ses options sont assez larges pour afficher les valeurs des curseurs (voir YaclOptionListMixin). */
     private static YetAnotherConfigLib current;
 
     /** Largeur maximale des options de notre menu. */
-    public static final int ROW_WIDTH = 280;
+    public static final int ROW_WIDTH = 320;
 
     public static boolean isOurs(YetAnotherConfigLib config) {
         return config != null && config == current;
@@ -350,7 +350,7 @@ public final class ConfigScreen {
     }
 
     private static Component blockUpdatesLabel(Integer seconds) {
-        return seconds == 0 ? Component.translatable(KEY + "refresh.off") : Component.translatable(KEY + "block_updates.value", seconds);
+        return seconds == 0 ? Component.translatable(KEY + "block_updates.off") : Component.translatable(KEY + "block_updates.value", seconds);
     }
 
     private static Component refreshLabel(Integer minutes) {

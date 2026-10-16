@@ -35,7 +35,7 @@
   "planariumview.config.reenter": "Certains changements ne s'appliquent complètement qu'après être sorti et rentré dans le bocal.",
   "planariumview.config.radius": "Rayon de la vue",
   "planariumview.config.refresh": "Rafraîchissement de secours",
-  "planariumview.config.block_updates.tooltip": "Délai maximal avant l'apparition d'un changement de bloc dans le décor (blocs posés ou cassés, torches, cultures...). Une autre capture est faite ensuite pour laisser la lumière se stabiliser. Les petites valeurs coûtent plus cher sur les serveurs chargés (fermes, redstone...).\n\nOFF = les changements de blocs n'apparaissent qu'avec le rafraîchissement de secours.",
+  "planariumview.config.block_updates.tooltip": "Délai maximal avant l'apparition d'un changement de bloc dans le décor (blocs posés ou cassés, torches, cultures...). Quand un changement peut toucher l'éclairage, une autre capture suit pour laisser la lumière se stabiliser. Les petites valeurs coûtent plus cher sur les serveurs chargés (fermes, redstone...).\n\nOFF = les changements de blocs n'apparaissent qu'avec le rafraîchissement de secours.",
   "planariumview.config.block_updates.value": "en %s s",
   "planariumview.config.block_updates.off": "OFF (secours seul)",
   "planariumview.config.block_updates": "Mises à jour des blocs",

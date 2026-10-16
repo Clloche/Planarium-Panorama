@@ -39,7 +39,9 @@ public final class Config {
                         "Above ~24, the scenery often goes past the render distance and the capture costs more on the server.")
                 .defineInRange("radius", 12, 1, 32);
         BLOCK_UPDATE_SECONDS = common
-                .comment("Block updates: a block change in the scenery triggers a new capture, at most this often (in seconds).",
+                .comment("Block updates: a block change in the scenery shows up with at most this much delay (in seconds).",
+                        "Changes that don't affect light (redstone, doors...) only send the changed blocks; others take a new capture,",
+                        "followed by a second one a bit later so lighting can settle. Continuous changes can therefore cause updates at this interval.",
                         "Lower values show changes faster, but cost more on busy servers (farms, redstone...).",
                         "5 minimum (lower values count as 5). 0 = OFF (block changes only show with the backup refresh).")
                 .defineInRange("blockUpdateSeconds", 10, 0, 60);
