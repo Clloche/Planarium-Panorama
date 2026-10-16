@@ -31,7 +31,7 @@
   "planariumview.config.weather.tooltip": "Outside rain, snow and lightning: rain and snow fall on the scenery with the rain sound, you hear the thunder and see nearby bolts.",
   "planariumview.config.clouds": "Clouds",
   "planariumview.config.clouds.tooltip": "Outside clouds show up in the jar when the Planarium is close to the cloud layer, giant like the scenery. Follows the Clouds video setting.",
-  "planariumview.config.clouds.better_clouds": "Off: Better Clouds is active, its clouds can't be shown in the jar. Switch Better Clouds to vanilla clouds to use this option.",
+  "planariumview.config.clouds.other_mod": "%s is installed: the clouds in the jar will be vanilla clouds, unlike the ones outside. Turn this off if you prefer no clouds in the jar.",
   "planariumview.config.reenter": "Some changes only fully apply after leaving and re-entering the jar.",
   "planariumview.config.radius": "View radius",
   "planariumview.config.refresh": "Backup refresh",

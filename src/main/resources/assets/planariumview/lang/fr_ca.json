@@ -31,7 +31,7 @@
   "planariumview.config.weather.tooltip": "Pluie, neige et éclairs du dehors : la pluie et la neige tombent sur le décor avec le son de la pluie, on entend le tonnerre et on voit les éclairs proches.",
   "planariumview.config.clouds": "Nuages",
   "planariumview.config.clouds.tooltip": "Les nuages du dehors apparaissent dans le bocal quand le Planarium est proche de la couche de nuages, géants comme le décor. Suit l'option vidéo Nuages.",
-  "planariumview.config.clouds.better_clouds": "Désactivé : Better Clouds est actif, ses nuages ne peuvent pas être affichés dans le bocal. Passe Better Clouds aux nuages vanilla pour utiliser cette option.",
+  "planariumview.config.clouds.other_mod": "%s est installé : les nuages du bocal seront des nuages vanilla, différents de ceux du dehors. Mets OFF si tu préfères ne pas avoir de nuages dans le bocal.",
   "planariumview.config.reenter": "Certains changements ne s'appliquent complètement qu'après être sorti et rentré dans le bocal.",
   "planariumview.config.radius": "Rayon de la vue",
   "planariumview.config.refresh": "Rafraîchissement de secours",

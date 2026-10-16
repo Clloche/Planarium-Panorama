@@ -1,6 +1,5 @@
 package com.matthieu.planariumview.config;
 
-import com.matthieu.planariumview.compat.BetterCloudsCompat;
 
 import net.neoforged.neoforge.common.ModConfigSpec;
 
@@ -212,7 +211,7 @@ public final class Config {
     }
 
     public static boolean clouds() {
-        return enabled() && CLOUDS.get() && !BetterCloudsCompat.active();
+        return enabled() && CLOUDS.get();
     }
 
     public static boolean sceneryAmbience() {

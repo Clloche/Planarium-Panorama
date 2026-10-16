@@ -2,6 +2,7 @@ package com.matthieu.planariumview.config;
 
 import com.matthieu.planariumview.client.scenery.ClientView;
 import com.matthieu.planariumview.compat.BetterCloudsCompat;
+import com.matthieu.planariumview.compat.SimpleCloudsCompat;
 
 import dev.isxander.yacl3.api.ConfigCategory;
 import dev.isxander.yacl3.api.LabelOption;
@@ -100,18 +101,19 @@ public final class ConfigScreen {
         Option<Boolean> blockSounds = worldKind("block_sounds", Config.BLOCK_SOUNDS);
         Option<Boolean> explosionSounds = worldKind("explosion_sounds", Config.EXPLOSION_SOUNDS);
         List<Option<Boolean>> worldKinds = List.of(mobSounds, blockSounds, explosionSounds);
-        boolean betterClouds = BetterCloudsCompat.active();
+        // Better Clouds actif ou Simple Clouds installe : leurs nuages remplacent ceux de Minecraft dehors, mais le bocal
+        // dessine des nuages vanilla. On laisse le choix, avec un avertissement dans la description.
+        String cloudsMod = SimpleCloudsCompat.installed() ? "Simple Clouds" : BetterCloudsCompat.active() ? "Better Clouds" : null;
+        OptionDescription cloudsDescription = cloudsMod == null ? describe("clouds", onOff(Config.CLOUDS.getDefault()))
+                : OptionDescription.of(Component.translatable(KEY + "clouds.tooltip"), Component.empty(),
+                Component.translatable(KEY + "clouds.other_mod", cloudsMod).withStyle(ChatFormatting.YELLOW),
+                Component.empty(),
+                Component.translatable(KEY + "default", onOff(Config.CLOUDS.getDefault())).withStyle(ChatFormatting.GRAY));
         Option<Boolean> clouds = Option.<Boolean>createBuilder()
-                // Better Clouds actif : nom barre et OFF en gris, comme une integration sans son mod.
-                .name(betterClouds ? Component.translatable(KEY + "clouds").withStyle(ChatFormatting.STRIKETHROUGH)
-                        : Component.translatable(KEY + "clouds"))
-                .description(betterClouds
-                        ? OptionDescription.of(Component.translatable(KEY + "clouds.tooltip"), Component.empty(),
-                        Component.translatable(KEY + "clouds.better_clouds").withStyle(ChatFormatting.RED))
-                        : describe("clouds", onOff(Config.CLOUDS.getDefault())))
-                .binding(Config.CLOUDS.getDefault(), () -> !betterClouds && Config.CLOUDS.get(), Config.CLOUDS::set)
-                .controller(opt -> BooleanControllerBuilder.create(opt).coloured(false)
-                        .formatValue(v -> betterClouds ? greyOff() : coloredOnOff(v)))
+                .name(Component.translatable(KEY + "clouds"))
+                .description(cloudsDescription)
+                .binding(Config.CLOUDS.getDefault(), Config.CLOUDS::get, Config.CLOUDS::set)
+                .controller(opt -> BooleanControllerBuilder.create(opt).coloured(false).formatValue(ConfigScreen::coloredOnOff))
                 .build();
         Option<Config.Fog> fog = Option.<Config.Fog>createBuilder()
                 .name(Component.translatable(KEY + "fog"))
@@ -146,7 +148,7 @@ public final class ConfigScreen {
         gated.add(new Gated(mobSounds, Config::worldSounds));
         gated.add(new Gated(blockSounds, Config::worldSounds));
         gated.add(new Gated(explosionSounds, Config::worldSounds));
-        gated.add(new Gated(clouds, () -> !betterClouds));
+        gated.add(new Gated(clouds, () -> true));
         gated.add(new Gated(fog, () -> true));
         gated.add(new Gated(caveFog, () -> true));
         gated.add(new Gated(color, () -> clPresent));
