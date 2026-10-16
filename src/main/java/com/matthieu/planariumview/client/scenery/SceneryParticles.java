@@ -227,6 +227,7 @@ public final class SceneryParticles {
         } finally {
             creating = outer;
         }
+        debugSpawn(space, options, particle, added);
         if (particle == null || !adopt(particle, space, light)) {
             return null;
         }
@@ -240,6 +241,26 @@ public final class SceneryParticles {
             }
         }
         return particle;
+    }
+
+    /** TEMPORAIRE : chaque sorte de particule de miniature, une fois, pour trouver les flammes geantes. */
+    private static final java.util.Set<String> DEBUG_SEEN = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+
+    private static void debugSpawn(Space space, ParticleOptions options, Particle particle, List<Particle> added) {
+        if (space.bounds() == null) {
+            return;
+        }
+        String type = String.valueOf(net.minecraft.core.registries.BuiltInRegistries.PARTICLE_TYPE.getKey(options.getType()));
+        StringBuilder others = new StringBuilder();
+        for (Particle other : added) {
+            if (other != particle) {
+                others.append(' ').append(other.getClass().getName());
+            }
+        }
+        String key = type + " -> " + (particle == null ? "null" : particle.getClass().getName()) + others;
+        if (DEBUG_SEEN.add(key)) {
+            LOGGER.info("[Planarium Panorama] DEBUG miniature : {}", key);
+        }
     }
 
     /** Particules ajoutees au moteur pendant que spawnAt en cree une (voir onEngineAdd), ou null. */
@@ -272,6 +293,10 @@ public final class SceneryParticles {
         Space space = SPACE.get(parent);
         if (space != null && space.bounds() != null) {
             particle.remove();
+            if (DEBUG_SEEN.add("enfant " + parent.getClass().getName() + " -> " + particle.getClass().getName())) {
+                LOGGER.info("[Planarium Panorama] DEBUG miniature : enfant de {} enleve : {}", parent.getClass().getName(),
+                        particle.getClass().getName());
+            }
         }
     }
 
