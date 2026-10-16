@@ -26,8 +26,10 @@ public abstract class ParticleEngineTickMixin {
         SceneryParticles.endTick();
     }
 
-    @Inject(method = "add(Lnet/minecraft/client/particle/Particle;)V", at = @At("HEAD"), require = 0)
+    @Inject(method = "add(Lnet/minecraft/client/particle/Particle;)V", at = @At("HEAD"), cancellable = true, require = 0)
     private void planariumview$add(Particle particle, CallbackInfo ci) {
-        SceneryParticles.onEngineAdd(particle);
+        if (!SceneryParticles.onEngineAdd(particle)) {
+            ci.cancel();
+        }
     }
 }

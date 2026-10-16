@@ -170,7 +170,15 @@ public final class MiniParticles {
         }
     }
 
-        public static void clear() {
+    /**
+     * Vrai si ce point est dans un Planarium dont on fait les particules de miniature. Rien du vrai monde n'y nait (le
+     * bloc est plein) : une particule qui y apparait vient d'un bloc de la miniature, par un chemin qu'on ne voit pas.
+     */
+    public static boolean covers(double x, double y, double z) {
+        return !SEEN.isEmpty() && SEEN.containsKey(BlockPos.containing(x, y, z));
+    }
+
+    public static void clear() {
         SEEN.clear();
         MINIS.clear();
     }

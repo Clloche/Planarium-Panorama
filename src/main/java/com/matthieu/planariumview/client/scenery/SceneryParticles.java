@@ -217,51 +217,51 @@ public final class SceneryParticles {
                                     double vz, int light) {
         Minecraft mc = Minecraft.getInstance();
         Particle particle;
+        boolean mini = space.bounds() != null;
         List<Particle> added = new java.util.ArrayList<>(1);
         List<Particle> outer = creating;
+        boolean outerHold = holding;
         creating = added;
+        // Miniature : rien n'entre dans le moteur pendant la creation. Une particule enlevee apres y etre entree restait
+        // dessinee jusqu'au tick suivant (les flammes geantes clignotaient) : on n'ajoute que celle qu'on garde.
+        holding = mini;
         try {
             particle = mc.particleEngine.createParticle(options, x, y, z, vx, vy, vz);
         } catch (Exception e) {
             return null;
         } finally {
             creating = outer;
+            holding = outerHold;
         }
-        debugSpawn(space, options, particle, added);
-        if (particle == null || !adopt(particle, space, light)) {
-            return null;
-        }
-        // Particules creees en meme temps par celle-ci (un autre mod qui en ajoute une seconde directement) : dans une
-        // miniature, elles apparaitraient a taille normale (geantes). Les mettre a l'echelle les deformait : on les enleve.
-        if (space.bounds() != null) {
+        // Particules creees en meme temps par celle-ci (un autre mod qui en ajoute une seconde directement, comme Nether
+        // Experience pour la flamme des torches) : dans une miniature, elles apparaitraient a taille normale (geantes).
+        if (mini) {
             for (Particle other : added) {
                 if (other != particle) {
                     other.remove();
+                    noteForeign(other);
                 }
+            }
+        }
+        if (particle == null || !adopt(particle, space, light)) {
+            return null;
+        }
+        if (mini && added.contains(particle)) {
+            // Retenue pendant la creation : on l'ajoute maintenant, a la bonne taille.
+            adding = true;
+            try {
+                mc.particleEngine.add(particle);
+            } finally {
+                adding = false;
             }
         }
         return particle;
     }
 
-    /** TEMPORAIRE : chaque sorte de particule de miniature, une fois, pour trouver les flammes geantes. */
-    private static final java.util.Set<String> DEBUG_SEEN = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
-
-    private static void debugSpawn(Space space, ParticleOptions options, Particle particle, List<Particle> added) {
-        if (space.bounds() == null) {
-            return;
-        }
-        String type = String.valueOf(net.minecraft.core.registries.BuiltInRegistries.PARTICLE_TYPE.getKey(options.getType()));
-        StringBuilder others = new StringBuilder();
-        for (Particle other : added) {
-            if (other != particle) {
-                others.append(' ').append(other.getClass().getName());
-            }
-        }
-        String key = type + " -> " + (particle == null ? "null" : particle.getClass().getName()) + others;
-        if (DEBUG_SEEN.add(key)) {
-            LOGGER.info("[Planarium Panorama] DEBUG miniature : {}", key);
-        }
-    }
+    /** Vrai pendant la creation d'une particule de miniature : ce qui est ajoute au moteur est retenu (voir spawnAt). */
+    private static boolean holding;
+    /** Vrai pendant que spawnAt ajoute lui-meme sa particule au moteur. */
+    private static boolean adding;
 
     /** Particules ajoutees au moteur pendant que spawnAt en cree une (voir onEngineAdd), ou null. */
     private static List<Particle> creating;
@@ -271,33 +271,45 @@ public final class SceneryParticles {
      * bouge, celles qu'elle ajoute directement au moteur (sans passer par le monde, comme le font certains mods) seraient a
      * taille normale, geantes dans la miniature : on les enleve.
      */
-    public static void onEngineAdd(Particle particle) {
-        if (particle == null) {
-            return;
+    /** Faux si la particule ne doit pas entrer dans le moteur (voir ParticleEngineTickMixin). */
+    public static boolean onEngineAdd(Particle particle) {
+        if (particle == null || adding) {
+            return true;
         }
         if (creating != null) {
             creating.add(particle);
-            return;
+            return !holding;
         }
         if (miniAnimating) {
             // Un bloc modde de la miniature qui ajoute sa particule directement au moteur, a sa position dans le
             // gabarit : elle ne serait ni au bon endroit ni a la bonne taille.
-            particle.remove();
             noteForeign(particle);
-            return;
+            return false;
         }
         Particle parent = ticking;
-        if (parent == null || SPACE.containsKey(particle)) {
-            return;
+        if (parent == null) {
+            // Ajoutee plus tard (certains mods, comme Lodestone, creent leurs particules un peu apres) : si elle nait
+            // dans un Planarium dont on fait la miniature, elle vient d'un bloc de la miniature, a taille normale.
+            // (Sauf les eclats d'un bloc qu'on casse : ceux du Planarium lui-meme naissent dans son bloc.)
+            if (!SPACE.containsKey(particle) && !(particle instanceof net.minecraft.client.particle.TerrainParticle)) {
+                net.minecraft.world.phys.AABB box = particle.getBoundingBox();
+                if (com.matthieu.planariumview.client.mini.MiniParticles.covers((box.minX + box.maxX) * 0.5,
+                        (box.minY + box.maxY) * 0.5, (box.minZ + box.maxZ) * 0.5)) {
+                    noteForeign(particle);
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (SPACE.containsKey(particle)) {
+            return true;
         }
         Space space = SPACE.get(parent);
         if (space != null && space.bounds() != null) {
-            particle.remove();
-            if (DEBUG_SEEN.add("enfant " + parent.getClass().getName() + " -> " + particle.getClass().getName())) {
-                LOGGER.info("[Planarium Panorama] DEBUG miniature : enfant de {} enleve : {}", parent.getClass().getName(),
-                        particle.getClass().getName());
-            }
+            noteForeign(particle);
+            return false;
         }
+        return true;
     }
 
     /** Vrai pendant que MiniParticles fait jouer l'ambiance des blocs d'une miniature. */
@@ -564,5 +576,7 @@ public final class SceneryParticles {
         EMITTERS.clear();
         ticking = null;
         creating = null;
+        holding = false;
+        adding = false;
     }
 }
