@@ -60,14 +60,18 @@ public final class JarLight {
     private static volatile byte[] lit;
     /** Blocs qui laissent passer la lumiere (lus chaque seconde), ou null si les chunks du bocal ne sont pas charges. */
     private static boolean[] passable;
+    /** Faces pleines de chaque bloc (voir faceMask), memes indices que passable. */
+    private static byte[] faces;
 
     /** Relit les blocs du bocal (chaque seconde) et recalcule la lumiere s'ils ont change. */
     public static void updateReach(ClientLevel level) {
         boolean[] next = readPassable(level);
-        if (java.util.Arrays.equals(next, passable)) {
+        byte[] nextFaces = next == null ? null : readFaces(level);
+        if (java.util.Arrays.equals(next, passable) && java.util.Arrays.equals(nextFaces, faces)) {
             return;
         }
         passable = next;
+        faces = nextFaces;
         relight();
         // Un bloc pose ou casse dans le bocal. On ne redessine tout le bocal que si de la lumiere du dehors y entre
         // (sinon rien ne change), et on ne fait recolorer Contraption Lights que si cette lumiere a une couleur :
@@ -115,6 +119,45 @@ public final class JarLight {
         return open;
     }
 
+    /** Faces pleines des blocs du bocal (escaliers, dalles...), memes indices que readPassable. */
+    private static byte[] readFaces(ClientLevel level) {
+        byte[] masks = new byte[SIZE * HEIGHT * SIZE];
+        net.minecraft.core.BlockPos.MutableBlockPos pos = new net.minecraft.core.BlockPos.MutableBlockPos();
+        for (int x = 0; x < SIZE; x++) {
+            for (int y = 0; y < HEIGHT; y++) {
+                for (int z = 0; z < SIZE; z++) {
+                    pos.set(x, y, z);
+                    masks[(x * HEIGHT + y) * SIZE + z] = faceMask(level.getBlockState(pos), level, pos);
+                }
+            }
+        }
+        return masks;
+    }
+
+    /**
+     * Faces d'un bloc qui arretent completement la lumiere, comme pour Minecraft : un escalier ou une dalle laisse passer
+     * la lumiere par ses cotes ouverts, mais pas a travers sa face pleine. Un bit par Direction (ordinal).
+     * 0 pour les blocs entierement transparents ou opaques (ceux-la sont deja geres par "passable").
+     */
+    static byte faceMask(net.minecraft.world.level.block.state.BlockState state, net.minecraft.world.level.BlockGetter level,
+                         net.minecraft.core.BlockPos pos) {
+        if (!state.useShapeForLightOcclusion()) {
+            return 0;
+        }
+        int mask = 0;
+        try {
+            for (net.minecraft.core.Direction direction : net.minecraft.core.Direction.values()) {
+                net.minecraft.world.phys.shapes.VoxelShape face = state.getFaceOcclusionShape(level, pos, direction);
+                if (net.minecraft.world.phys.shapes.Shapes.faceShapeOccludes(net.minecraft.world.phys.shapes.Shapes.empty(), face)) {
+                    mask |= 1 << direction.ordinal();
+                }
+            }
+        } catch (Exception e) {
+            return 0;
+        }
+        return (byte) mask;
+    }
+
     /** Recalcule la lumiere du dehors bloc par bloc (voir lit). */
     private static void relight() {
         byte[] source = table;
@@ -123,7 +166,7 @@ public final class JarLight {
             lit = null;
             return;
         }
-        lit = occlude(source, open);
+        lit = occlude(source, open, faces);
     }
 
     /**
@@ -131,6 +174,26 @@ public final class JarLight {
      * la lumiere, meme indices que la table. Sert au bocal et a la miniature.
      */
     static byte[] occlude(byte[] source, boolean[] open) {
+        return occlude(source, open, null);
+    }
+
+    /** Bits de faceMask par sens de propagation : x+1, x-1, y+1, y-1, z+1, z-1 (EAST, WEST, UP, DOWN, SOUTH, NORTH). */
+    private static final int[] LEAVING = {
+            1 << net.minecraft.core.Direction.EAST.ordinal(), 1 << net.minecraft.core.Direction.WEST.ordinal(),
+            1 << net.minecraft.core.Direction.UP.ordinal(), 1 << net.minecraft.core.Direction.DOWN.ordinal(),
+            1 << net.minecraft.core.Direction.SOUTH.ordinal(), 1 << net.minecraft.core.Direction.NORTH.ordinal()};
+    private static final int[] ENTERING = {LEAVING[1], LEAVING[0], LEAVING[3], LEAVING[2], LEAVING[5], LEAVING[4]};
+
+    /** La lumiere peut-elle passer du bloc {@code from} au bloc {@code to} dans le sens {@code d} (voir LEAVING) ? */
+    private static boolean crosses(byte[] faces, int from, int to, int d) {
+        return faces == null || ((from < 0 || (faces[from] & LEAVING[d]) == 0) && (faces[to] & ENTERING[d]) == 0);
+    }
+
+    /**
+     * Comme occlude(source, open), en tenant compte des faces pleines des blocs ({@code faces}, voir faceMask, ou null) :
+     * la lumiere ne traverse plus un toit d'escaliers ou de dalles comme s'il etait ouvert.
+     */
+    static byte[] occlude(byte[] source, boolean[] open, byte[] faces) {
         int total = SIZE * HEIGHT * SIZE;
         boolean[] sees = new boolean[total];
         // Comme la lumiere du ciel de Minecraft : elle descend tout droit depuis le haut du bocal (verre) sans perdre
@@ -138,14 +201,19 @@ public final class JarLight {
         // elle se propage en perdant un niveau par bloc (une fenetre eclaire une piece de moins en moins).
         for (int a = 0; a < SIZE; a++) {
             for (int b = 0; b < SIZE; b++) {
-                sweepY(open, sees, a, b, HEIGHT - 1, -1);
+                sweepY(open, faces, sees, a, b, HEIGHT - 1, -1);
             }
         }
         for (int x = 0; x < SIZE; x++) {
             for (int y = 1; y < HEIGHT; y++) {
                 for (int z = 0; z < SIZE; z++) {
                     int index = (x * HEIGHT + y) * SIZE + z;
-                    if (open[index] && (x == 0 || x == SIZE - 1 || z == 0 || z == SIZE - 1)) {
+                    if (!open[index]) {
+                        continue;
+                    }
+                    // Par la paroi de verre, sauf si la face du bloc tournee vers elle est pleine.
+                    if ((x == 0 && crosses(faces, -1, index, 0)) || (x == SIZE - 1 && crosses(faces, -1, index, 1))
+                            || (z == 0 && crosses(faces, -1, index, 4)) || (z == SIZE - 1 && crosses(faces, -1, index, 5))) {
                         sees[index] = true;
                     }
                 }
@@ -185,7 +253,7 @@ public final class JarLight {
                         continue;
                     }
                     int neighbor = (nx * HEIGHT + ny) * SIZE + nz;
-                    if (!open[neighbor] || next[neighbor] >= level - 1) {
+                    if (!open[neighbor] || next[neighbor] >= level - 1 || !crosses(faces, index, neighbor, d)) {
                         continue;
                     }
                     next[neighbor] = (byte) (level - 1);
@@ -200,7 +268,8 @@ public final class JarLight {
         return next;
     }
 
-    private static void sweepY(boolean[] open, boolean[] sees, int x, int z, int start, int step) {
+    private static void sweepY(boolean[] open, byte[] faces, boolean[] sees, int x, int z, int start, int step) {
+        int above = -1;
         for (int y = start; y >= 1 && y < HEIGHT; y += step) {
             int index = (x * HEIGHT + y) * SIZE + z;
             if (!open[index]) {
@@ -209,7 +278,12 @@ public final class JarLight {
                 }
                 return;
             }
+            // En descendant (sens y-1) : la face du dessous du bloc d'au-dessus et celle du dessus de ce bloc.
+            if (!crosses(faces, above, index, 3)) {
+                return;
+            }
             sees[index] = true;
+            above = index;
         }
     }
 

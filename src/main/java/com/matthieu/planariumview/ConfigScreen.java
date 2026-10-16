@@ -97,13 +97,16 @@ public final class ConfigScreen {
         List<Option<Boolean>> worldKinds = List.of(mobSounds, blockSounds, explosionSounds);
         boolean betterClouds = BetterCloudsCompat.active();
         Option<Boolean> clouds = Option.<Boolean>createBuilder()
-                .name(Component.translatable(KEY + "clouds"))
+                // Better Clouds actif : nom barre et OFF en gris, comme une integration sans son mod.
+                .name(betterClouds ? Component.translatable(KEY + "clouds").withStyle(ChatFormatting.STRIKETHROUGH)
+                        : Component.translatable(KEY + "clouds"))
                 .description(betterClouds
                         ? OptionDescription.of(Component.translatable(KEY + "clouds.tooltip"), Component.empty(),
                         Component.translatable(KEY + "clouds.better_clouds").withStyle(ChatFormatting.RED))
                         : describe("clouds", onOff(Config.CLOUDS.getDefault())))
                 .binding(Config.CLOUDS.getDefault(), () -> !betterClouds && Config.CLOUDS.get(), Config.CLOUDS::set)
-                .controller(opt -> BooleanControllerBuilder.create(opt).onOffFormatter().coloured(true))
+                .controller(opt -> BooleanControllerBuilder.create(opt).coloured(false)
+                        .formatValue(v -> betterClouds ? greyOff() : coloredOnOff(v)))
                 .build();
         Option<Config.Fog> fog = Option.<Config.Fog>createBuilder()
                 .name(Component.translatable(KEY + "fog"))
@@ -237,9 +240,9 @@ public final class ConfigScreen {
                                 .name(Component.translatable(KEY + "group.world_sounds").withStyle(ChatFormatting.GOLD))
                                 .description(OptionDescription.of(Component.translatable(KEY + "world_sounds.warning")))
                                 .collapsed(false)
-                                .option(mobSounds)
-                                .option(blockSounds)
                                 .option(explosionSounds)
+                                .option(blockSounds)
+                                .option(mobSounds)
                                 .build())
                         .build())
                 .category(ConfigCategory.createBuilder()
@@ -421,8 +424,8 @@ public final class ConfigScreen {
                 Component.translatable(KEY + "default", onOff(value.getDefault())).withStyle(ChatFormatting.GRAY),
                 Component.empty(), Component.translatable(KEY + "world_sounds.off").withStyle(ChatFormatting.RED));
         return Option.<Boolean>createBuilder()
-                // Nom barre quand le groupe est OFF (relu a chaque affichage).
-                .name(MutableComponent.create(new WorldKindName(KEY + name)))
+                // Nom barre quand le groupe est OFF : YACL relit le style du nom a chaque affichage.
+                .name(new StrikeWhen(Component.translatable(KEY + name), () -> !Config.WORLD_SOUNDS.get()))
                 .description(v -> Config.WORLD_SOUNDS.get() ? normal : groupOff)
                 .binding(value.getDefault(), value::get, value::set)
                 .controller(opt -> BooleanControllerBuilder.create(opt).coloured(false)
@@ -440,23 +443,38 @@ public final class ConfigScreen {
         return CommonComponents.OPTION_OFF.copy().withStyle(ChatFormatting.GRAY);
     }
 
-    /** Nom d'une option du detail des sons du monde exterieur : barre tant que "Sons du monde exterieur" est OFF. */
-    private record WorldKindName(String key) implements net.minecraft.network.chat.ComponentContents {
-        @Override
-        public <T> java.util.Optional<T> visit(net.minecraft.network.chat.FormattedText.ContentConsumer<T> consumer) {
-            return Component.translatable(key).visit(consumer);
+    /**
+     * Nom dont le style est relu a chaque affichage : barre tant que {@code strike} est vrai. YACL redessine le nom
+     * avec son style (getStyle) a chaque image, ce qui permet de le barrer sans reconstruire le menu.
+     */
+    private static final class StrikeWhen implements Component {
+        private final Component base;
+        private final BooleanSupplier strike;
+
+        StrikeWhen(Component base, BooleanSupplier strike) {
+            this.base = base;
+            this.strike = strike;
         }
 
         @Override
-        public <T> java.util.Optional<T> visit(net.minecraft.network.chat.FormattedText.StyledContentConsumer<T> consumer,
-                                               net.minecraft.network.chat.Style style) {
-            return Component.translatable(key).visit(consumer,
-                    Config.WORLD_SOUNDS.get() ? style : style.withStrikethrough(true));
+        public net.minecraft.network.chat.Style getStyle() {
+            net.minecraft.network.chat.Style style = base.getStyle();
+            return strike.getAsBoolean() ? style.withStrikethrough(true) : style;
         }
 
         @Override
-        public Type<?> type() {
-            return net.minecraft.network.chat.contents.PlainTextContents.TYPE;
+        public net.minecraft.network.chat.ComponentContents getContents() {
+            return base.getContents();
+        }
+
+        @Override
+        public List<Component> getSiblings() {
+            return base.getSiblings();
+        }
+
+        @Override
+        public net.minecraft.util.FormattedCharSequence getVisualOrderText() {
+            return net.minecraft.locale.Language.getInstance().getVisualOrder(this);
         }
     }
 

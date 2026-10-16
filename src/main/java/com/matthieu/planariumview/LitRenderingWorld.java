@@ -70,7 +70,7 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
         if (outsideShaded == null && !giant && !shading) {
             shading = true;
             try {
-                outsideShaded = JarLight.occlude(outsideLight, passableMap());
+                outsideShaded = JarLight.occlude(outsideLight, passableMap(), facesMap());
             } catch (Exception e) {
                 outsideShaded = outsideLight;
             } finally {
@@ -79,6 +79,23 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
         }
         byte[] values = outsideShaded != null ? outsideShaded : outsideLight;
         return values[index];
+    }
+
+    /** Faces pleines des blocs de la miniature (escaliers, dalles...), aux indices de la table du bocal. */
+    private byte[] facesMap() {
+        int size = JarLight.TABLE_SIZE;
+        int height = JarLight.TABLE_HEIGHT;
+        byte[] masks = new byte[size * height * size];
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < height; y++) {
+                for (int z = 0; z < size; z++) {
+                    at.set(x, y - 1, z);
+                    masks[(x * height + y) * size + z] = JarLight.faceMask(getBlockState(at), this, at);
+                }
+            }
+        }
+        return masks;
     }
 
     /** Blocs de la miniature qui laissent passer la lumiere, aux indices de la table du bocal. */

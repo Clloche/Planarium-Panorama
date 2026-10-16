@@ -104,7 +104,7 @@ public final class Config {
                 .define("worldSounds", true);
         MOB_SOUNDS = client
                 .comment("Outside world sounds: mobs and animals.")
-                .define("mobSounds", true);
+                .define("mobSounds", false);
         BLOCK_SOUNDS = client
                 .comment("Outside world sounds: redstone and blocks (pistons, doors, dispensers, note blocks, anvils, blocks broken by mobs...).")
                 .define("blockSounds", true);

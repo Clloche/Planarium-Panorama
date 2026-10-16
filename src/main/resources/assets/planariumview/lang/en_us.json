@@ -19,7 +19,7 @@
   "planariumview.pack.real_light": "Planarium Panorama - real lighting",
   "planariumview.config.default": "Default: %s",
   "planariumview.config.ambience": "Outside ambience (Dynamic Surroundings)",
-  "planariumview.config.ambience.tooltip": "Dynamic Surroundings plays the sounds of the Planarium's surroundings, and its biome fog colors show in the jar. Flowing water in the scenery stays audible (DS normally replaces it with its own waterfall sounds, which can't play for the scenery).",
+  "planariumview.config.ambience.tooltip": "Dynamic Surroundings plays the sounds of the Planarium's surroundings, and its biome fog colors show in the jar.",
   "planariumview.config.server_controlled": "Set by the server you are playing on.",
   "planariumview.config.section.general": "General",
   "planariumview.config.enabled": "Planarium Panorama",
