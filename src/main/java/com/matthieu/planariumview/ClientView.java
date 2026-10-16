@@ -59,7 +59,7 @@ public final class ClientView {
 
     // Memes constantes que PlanariumRenderer d'Ars Nouveau (la dimension de 32 blocs tient dans 1 bloc).
     private static final float PAD = 0.0025f;
-    private static final float ARS_SCALE = (1.0f - 2.0f * PAD) / 32.0f;
+    static final float ARS_SCALE = (1.0f - 2.0f * PAD) / 32.0f;
     static final float ARS_OFFSET = PAD + ((1.0f - 2.0f * PAD) - 32 * ARS_SCALE) * 0.5f;
     /** Facteur d'agrandissement : 1 bloc du monde = ~32 blocs dans la poche. */
     static final float GIANT = 1.0f / ARS_SCALE;
@@ -536,6 +536,9 @@ public final class ClientView {
         Minecraft mc = Minecraft.getInstance();
         if (!mc.isPaused()) {
             SceneryParticles.tick();
+            if (Config.sceneryParticles()) {
+                MiniParticles.tick();
+            }
         }
         boolean sounds = Config.sceneryAmbience();
         boolean particles = Config.sceneryParticles();
@@ -547,7 +550,8 @@ public final class ClientView {
         int radius = currentRadius;
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         LitRenderingWorld.captureAmbientSounds(sounds);
-        LitRenderingWorld.captureSceneryParticles(particles);
+        LitRenderingWorld.captureSceneryParticles(particles
+                ? (world, options, x, y, z, vx, vy, vz) -> onSceneryParticle(options, x, y, z, vx, vy, vz) : null);
         try {
             // Comme ClientLevel.animateTick : 667 tirages a 16 blocs et 667 a 32 blocs du point d'ecoute.
             for (int i = 0; i < 667; i++) {
@@ -559,7 +563,7 @@ public final class ClientView {
             }
         } finally {
             LitRenderingWorld.captureAmbientSounds(false);
-            LitRenderingWorld.captureSceneryParticles(false);
+            LitRenderingWorld.captureSceneryParticles(null);
         }
     }
 
@@ -576,7 +580,17 @@ public final class ClientView {
         if (state.isAir() || AMBIENT_BROKEN.contains(state.getBlock())) {
             return;
         }
-        BlockPos at = pos.immutable();
+        animateBlock(lit, pos.immutable(), state);
+    }
+
+    /**
+     * Ambiance d'un bloc d'un faux monde (decor geant ou miniature), comme ClientLevel.doAnimateTick : celle du bloc,
+     * de son liquide, et les gouttes sous un plafond de liquide.
+     */
+    static void animateBlock(LitRenderingWorld lit, BlockPos at, BlockState state) {
+        if (state.isAir() || AMBIENT_BROKEN.contains(state.getBlock())) {
+            return;
+        }
         try {
             state.getBlock().animateTick(state, lit, at, AMBIENT_RANDOM);
             FluidState fluid = state.getFluidState();
@@ -650,37 +664,45 @@ public final class ClientView {
     private static void campfireSmoke(LitRenderingWorld lit, int radius) {
         if (campfireVersion != sceneryVersion) {
             campfireVersion = sceneryVersion;
-            List<BlockPos> found = new ArrayList<>();
-            for (CulledStatePos statePos : statePosByPos.values()) {
-                BlockState state = statePos.state;
-                if (state != null && state.getBlock() instanceof net.minecraft.world.level.block.CampfireBlock
-                        && state.hasProperty(net.minecraft.world.level.block.CampfireBlock.LIT)) {
-                    found.add(statePos.pos.immutable());
-                }
-            }
-            campfires = found;
+            campfires = findCampfires(statePosByPos.values());
         }
         int view = viewRadius();
         for (BlockPos at : campfires) {
             if (Math.abs(at.getX() - radius) > view || Math.abs(at.getZ() - radius) > view) {
                 continue;
             }
-            BlockState state = lit.getBlockState(at);
-            if (!(state.getBlock() instanceof net.minecraft.world.level.block.CampfireBlock)
-                    || !state.getValue(net.minecraft.world.level.block.CampfireBlock.LIT)) {
-                continue;
+            campfireTick(lit, at, lit.getBlockState(at));
+        }
+    }
+
+    /** Positions des feux de camp parmi ces blocs (allumes ou non). */
+    static List<BlockPos> findCampfires(Iterable<CulledStatePos> states) {
+        List<BlockPos> found = new ArrayList<>();
+        for (CulledStatePos statePos : states) {
+            BlockState state = statePos.state;
+            if (state != null && state.getBlock() instanceof net.minecraft.world.level.block.CampfireBlock
+                    && state.hasProperty(net.minecraft.world.level.block.CampfireBlock.LIT)) {
+                found.add(statePos.pos.immutable());
             }
-            if (AMBIENT_RANDOM.nextFloat() < 0.11F) {
-                boolean signal = state.getValue(net.minecraft.world.level.block.CampfireBlock.SIGNAL_FIRE);
-                int count = AMBIENT_RANDOM.nextInt(2) + 2;
-                try {
-                    for (int i = 0; i < count; i++) {
-                        net.minecraft.world.level.block.CampfireBlock.makeParticles(lit, at, signal, false);
-                    }
-                } catch (Throwable t) {
-                    LOGGER.debug("[Planarium Panorama] Fumee de feu de camp ignoree dans le decor", t);
-                }
+        }
+        return found;
+    }
+
+    /** Un tick de fumee d'un feu de camp allume, comme CampfireBlockEntity.particleTick. */
+    static void campfireTick(LitRenderingWorld lit, BlockPos at, BlockState state) {
+        if (!(state.getBlock() instanceof net.minecraft.world.level.block.CampfireBlock)
+                || !state.getValue(net.minecraft.world.level.block.CampfireBlock.LIT)
+                || AMBIENT_RANDOM.nextFloat() >= 0.11F) {
+            return;
+        }
+        boolean signal = state.getValue(net.minecraft.world.level.block.CampfireBlock.SIGNAL_FIRE);
+        int count = AMBIENT_RANDOM.nextInt(2) + 2;
+        try {
+            for (int i = 0; i < count; i++) {
+                net.minecraft.world.level.block.CampfireBlock.makeParticles(lit, at, signal, false);
             }
+        } catch (Throwable t) {
+            LOGGER.debug("[Planarium Panorama] Fumee de feu de camp ignoree dans le decor", t);
         }
     }
 
@@ -721,7 +743,10 @@ public final class ClientView {
                     lit.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, at),
                     lit.getBrightness(net.minecraft.world.level.LightLayer.SKY, at));
         }
-        SceneryParticles.spawn(options, dx, dy, dz, vx, vy, vz, light);
+        LitRenderingWorld world = sceneryWorld();
+        if (world != null) {
+            SceneryParticles.spawn(SceneryParticles.giantSpace(world, radius), options, x, y, z, vx, vy, vz, light);
+        }
     }
 
     /** Explosion du dehors (position par rapport au Planarium) : ses particules, si elle est dans le rayon de vue. */
@@ -730,7 +755,11 @@ public final class ClientView {
         if (!Config.sceneryParticles() || Math.abs(dx - 0.5) > view + 2 || Math.abs(dz - 0.5) > view + 2) {
             return;
         }
-        SceneryParticles.explosion(dx, dy, dz);
+        LitRenderingWorld world = sceneryWorld();
+        if (world != null) {
+            int radius = currentRadius;
+            SceneryParticles.explosion(SceneryParticles.giantSpace(world, radius), dx + radius, dy + radius, dz + radius);
+        }
     }
 
     static void onSceneryAmbientSound(double x, double y, double z, net.minecraft.sounds.SoundEvent sound,
@@ -790,6 +819,7 @@ public final class ClientView {
         sentSoundPrefs = null;
         OutsideRecordClient.clear();
         SceneryParticles.clear();
+        MiniParticles.clear();
         dispose();
         MiniLight.clear();
         LunarClient.clear();

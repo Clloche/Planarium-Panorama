@@ -13,16 +13,33 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 /**
- * Particules du decor geant : fumee des torches et des feux de camp, flammes, lave, explosions...
- * Une particule du decor est 32 fois plus grande, va 32 fois plus vite et tombe 32 fois plus vite, comme le decor.
- * Elle ne touche pas les blocs du bocal, et prend la lumiere du decor la ou elle nait.
+ * Particules du decor geant et des miniatures : fumee des torches et des feux de camp, flammes, lave, gouttes,
+ * explosions... Une particule du decor est 32 fois plus grande, va 32 fois plus vite et tombe 32 fois plus vite, comme
+ * le decor ; une particule de miniature est 32 fois plus petite. Elle ne touche pas les vrais blocs, s'arrete sur ceux
+ * de son faux monde, et prend la lumiere de l'endroit ou elle nait.
  */
 public final class SceneryParticles {
     private static final RandomSource RANDOM = RandomSource.create();
-    /** Particules du decor et leur lumiere (lumiere des blocs et du ciel, format de la lightmap). */
+    /** Particules du decor ou d'une miniature, avec leur lumiere (format de la lightmap) et leur espace. */
     private static final Map<Particle, Integer> LIGHT = Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<Particle, Space> SPACE = Collections.synchronizedMap(new WeakHashMap<>());
 
     private SceneryParticles() {
+    }
+
+    /**
+     * Ou un faux monde est dessine : un point du gabarit (x, y, z) apparait en (x * scale + ox, y * scale + oy,
+     * z * scale + oz) dans le vrai monde.
+     */
+    public record Space(LitRenderingWorld world, double scale, double ox, double oy, double oz,
+                        net.minecraft.world.phys.AABB bounds) {
+    }
+
+    /** Le decor geant (positions du gabarit, Planarium au rayon {@code radius}). */
+    static Space giantSpace(LitRenderingWorld world, int radius) {
+        double giant = ClientView.GIANT;
+        double origin = -(radius + ClientView.ARS_OFFSET) * giant;
+        return new Space(world, giant, origin, origin - ClientView.Y_SHIFT, origin, null);
     }
 
     /** Lumiere d'une particule du decor, ou null pour une particule normale. */
@@ -40,18 +57,18 @@ public final class SceneryParticles {
     }
 
     /**
-     * Cree une particule du decor. {@code dx, dy, dz} : position par rapport au Planarium (en blocs du monde),
-     * {@code vx, vy, vz} : vitesse d'origine (en blocs du monde par tick), {@code light} : lumiere au format lightmap.
+     * Cree une particule dans un faux monde. {@code x, y, z} : position dans le gabarit, {@code vx, vy, vz} : vitesse
+     * d'origine (en blocs du gabarit par tick), {@code light} : lumiere au format lightmap.
      */
-    static void spawn(ParticleOptions options, double dx, double dy, double dz, double vx, double vy, double vz, int light) {
-        spawnGiant(options, (dx - ClientView.ARS_OFFSET) * ClientView.GIANT,
-                (dy - ClientView.ARS_OFFSET) * ClientView.GIANT - ClientView.Y_SHIFT,
-                (dz - ClientView.ARS_OFFSET) * ClientView.GIANT, vx, vy, vz, light);
+    static void spawn(Space space, ParticleOptions options, double x, double y, double z, double vx, double vy, double vz,
+                      int light) {
+        spawnAt(space, options, x * space.scale() + space.ox(), y * space.scale() + space.oy(),
+                z * space.scale() + space.oz(), vx, vy, vz, light);
     }
 
-    /** Comme spawn, mais a une position deja dans le decor geant (la vitesse reste celle d'origine). */
-    private static void spawnGiant(ParticleOptions options, double x, double y, double z, double vx, double vy, double vz,
-                                   int light) {
+    /** Comme spawn, mais a une position deja dans le vrai monde (la vitesse reste celle du gabarit). */
+    private static void spawnAt(Space space, ParticleOptions options, double x, double y, double z, double vx, double vy,
+                                double vz, int light) {
         Minecraft mc = Minecraft.getInstance();
         Particle particle;
         try {
@@ -62,24 +79,25 @@ public final class SceneryParticles {
         if (particle == null) {
             return;
         }
-        float giant = ClientView.GIANT;
-        particle.scale(giant);
+        float scale = (float) space.scale();
+        particle.scale(scale);
         if (particle instanceof ParticleAccessor access) {
-            // La vitesse (y compris la part au hasard ajoutee par la particule) et la gravite, a l'echelle du decor.
-            access.planariumview$setXd(access.planariumview$getXd() * giant);
-            access.planariumview$setYd(access.planariumview$getYd() * giant);
-            access.planariumview$setZd(access.planariumview$getZd() * giant);
-            access.planariumview$setGravity(access.planariumview$getGravity() * giant);
+            // La vitesse (y compris la part au hasard ajoutee par la particule) et la gravite, a l'echelle du faux monde.
+            access.planariumview$setXd(access.planariumview$getXd() * scale);
+            access.planariumview$setYd(access.planariumview$getYd() * scale);
+            access.planariumview$setZd(access.planariumview$getZd() * scale);
+            access.planariumview$setGravity(access.planariumview$getGravity() * scale);
             access.planariumview$setHasPhysics(false);
         }
         LIGHT.put(particle, light);
+        SPACE.put(particle, space);
     }
 
     /** Particule du decor en train de bouger (voir ParticleEngineTickMixin), ou null. */
     private static Particle ticking;
 
     public static void beginTick(Particle particle) {
-        ticking = LIGHT.isEmpty() || !LIGHT.containsKey(particle) ? null : particle;
+        ticking = SPACE.isEmpty() || !SPACE.containsKey(particle) ? null : particle;
     }
 
     public static void endTick() {
@@ -95,33 +113,51 @@ public final class SceneryParticles {
         if (parent == null) {
             return false;
         }
+        Space space = SPACE.get(parent);
+        if (space == null) {
+            return false;
+        }
         Integer light = LIGHT.get(parent);
-        float giant = ClientView.GIANT;
-        // La vitesse du parent est deja a l'echelle du decor ; spawnGiant la remet a l'echelle.
-        spawnGiant(options, x, y, z, vx / giant, vy / giant, vz / giant, light != null ? light : LightTexture.pack(15, 15));
+        double scale = space.scale();
+        // La vitesse du parent est deja a l'echelle du faux monde ; spawnAt la remet a l'echelle.
+        spawnAt(space, options, x, y, z, vx / scale, vy / scale, vz / scale,
+                light != null ? light : LightTexture.pack(15, 15));
         return true;
     }
 
     /**
-     * Sol du decor : une particule du decor qui descend dans un bloc du decor s'arrete dessus (comme les vraies
-     * particules sur les blocs), au lieu de traverser le decor. {@code dy} : deplacement vertical de ce tick.
+     * Sol du faux monde : une particule qui descend dans un de ses blocs s'arrete dessus (comme les vraies particules
+     * sur les blocs), au lieu de le traverser. {@code dy} : deplacement vertical de ce tick.
      */
     public static void collide(Particle particle, double dy) {
-        if (dy >= 0.0 || LIGHT.isEmpty() || !LIGHT.containsKey(particle)) {
+        if (SPACE.isEmpty()) {
             return;
         }
-        LitRenderingWorld world = ClientView.sceneryWorld();
-        if (world == null) {
+        Space space = SPACE.get(particle);
+        if (space == null || space.world() == null) {
             return;
         }
-        float giant = ClientView.GIANT;
-        int radius = ClientView.sceneryRadius();
+        if (space.bounds() != null) {
+            // Miniature : une particule qui sort du bocal (fumee qui monte au plafond) disparait.
+            net.minecraft.world.phys.AABB box = particle.getBoundingBox();
+            double scale = space.scale();
+            if (!space.bounds().contains((box.minX + box.maxX) * 0.5 / scale - space.ox() / scale,
+                    (box.minY - space.oy()) / scale, (box.minZ + box.maxZ) * 0.5 / scale - space.oz() / scale)) {
+                particle.remove();
+                return;
+            }
+        }
+        if (dy >= 0.0) {
+            return;
+        }
+        LitRenderingWorld world = space.world();
+        double scale = space.scale();
         net.minecraft.world.phys.AABB box = particle.getBoundingBox();
-        double gx = (box.minX + box.maxX) * 0.5;
-        double gz = (box.minZ + box.maxZ) * 0.5;
-        double tx = gx / giant + ClientView.ARS_OFFSET + radius;
-        double ty = (box.minY + ClientView.Y_SHIFT) / giant + ClientView.ARS_OFFSET + radius;
-        double tz = gz / giant + ClientView.ARS_OFFSET + radius;
+        double wx = (box.minX + box.maxX) * 0.5;
+        double wz = (box.minZ + box.maxZ) * 0.5;
+        double tx = (wx - space.ox()) / scale;
+        double ty = (box.minY - space.oy()) / scale;
+        double tz = (wz - space.oz()) / scale;
         net.minecraft.core.BlockPos pos = net.minecraft.core.BlockPos.containing(tx, ty, tz);
         try {
             net.minecraft.world.level.block.state.BlockState state = world.getBlockState(pos);
@@ -136,10 +172,10 @@ public final class SceneryParticles {
                 }
             }
             // Deja dans le bloc avant ce tick (nee dedans) : on la laisse.
-            if (Double.isNaN(top) || ty - dy / giant < top - 1.0E-4) {
+            if (Double.isNaN(top) || ty - dy / scale < top - 1.0E-4) {
                 return;
             }
-            particle.setPos(gx, (top - ClientView.ARS_OFFSET - radius) * giant - ClientView.Y_SHIFT, gz);
+            particle.setPos(wx, top * scale + space.oy(), wz);
             if (particle instanceof ParticleAccessor access) {
                 access.planariumview$setYd(0.0);
                 access.planariumview$setOnGround(true);
@@ -149,16 +185,31 @@ public final class SceneryParticles {
         }
     }
 
-    /** Explosions du dehors en cours (position, tick), comme la particule EXPLOSION_EMITTER de Minecraft. */
-    private static final java.util.List<double[]> EMITTERS = new java.util.ArrayList<>();
+    /** Explosions du dehors en cours, comme la particule EXPLOSION_EMITTER de Minecraft. */
+    private static final java.util.List<Emitter> EMITTERS = new java.util.ArrayList<>();
+
+    private static final class Emitter {
+        final Space space;
+        final double x;
+        final double y;
+        final double z;
+        int age;
+
+        Emitter(Space space, double x, double y, double z) {
+            this.space = space;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+    }
 
     /**
-     * Explosion du dehors : comme Minecraft (EXPLOSION_EMITTER), pendant 8 ticks, 6 boules de fumee par tick autour du
-     * centre, de plus en plus petites, a l'echelle du decor.
+     * Explosion du dehors (position dans le gabarit) : comme Minecraft (EXPLOSION_EMITTER), pendant 8 ticks, 6 boules
+     * de fumee par tick autour du centre, de plus en plus petites, a l'echelle du decor.
      */
-    static void explosion(double dx, double dy, double dz) {
+    static void explosion(Space space, double x, double y, double z) {
         if (EMITTERS.size() < 32) {
-            EMITTERS.add(new double[]{dx, dy, dz, 0});
+            EMITTERS.add(new Emitter(space, x, y, z));
         }
     }
 
@@ -168,20 +219,20 @@ public final class SceneryParticles {
             return;
         }
         int light = LightTexture.pack(15, 15);
-        java.util.Iterator<double[]> it = EMITTERS.iterator();
+        java.util.Iterator<Emitter> it = EMITTERS.iterator();
         while (it.hasNext()) {
-            double[] emitter = it.next();
-            double size = emitter[3] / 8.0;
+            Emitter emitter = it.next();
+            double size = emitter.age / 8.0;
             for (int i = 0; i < 6; i++) {
                 if (allowed()) {
-                    spawn(ParticleTypes.EXPLOSION,
-                            emitter[0] + (RANDOM.nextDouble() - RANDOM.nextDouble()) * 4.0,
-                            emitter[1] + (RANDOM.nextDouble() - RANDOM.nextDouble()) * 4.0,
-                            emitter[2] + (RANDOM.nextDouble() - RANDOM.nextDouble()) * 4.0, size, 0.0, 0.0, light);
+                    spawn(emitter.space, ParticleTypes.EXPLOSION,
+                            emitter.x + (RANDOM.nextDouble() - RANDOM.nextDouble()) * 4.0,
+                            emitter.y + (RANDOM.nextDouble() - RANDOM.nextDouble()) * 4.0,
+                            emitter.z + (RANDOM.nextDouble() - RANDOM.nextDouble()) * 4.0, size, 0.0, 0.0, light);
                 }
             }
-            emitter[3]++;
-            if (emitter[3] >= 8) {
+            emitter.age++;
+            if (emitter.age >= 8) {
                 it.remove();
             }
         }
@@ -189,6 +240,7 @@ public final class SceneryParticles {
 
     static void clear() {
         LIGHT.clear();
+        SPACE.clear();
         EMITTERS.clear();
         ticking = null;
     }

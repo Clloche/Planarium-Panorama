@@ -80,6 +80,7 @@ public abstract class PlanariumRendererMixin {
         PlanariumRenderer.StructureRenderData miniData = tile.key != null ? PlanariumRenderer.structureRenderData.get(tile.key) : null;
         planariumview$miniWorld = miniData != null ? miniData.fakeRenderingWorld : null;
         com.matthieu.planariumview.MiniOutsideLight.check(tile);
+        com.matthieu.planariumview.MiniParticles.seen(tile, packedLight);
         com.matthieu.planariumview.PlanariumFloor.render(tile, poseStack, buffers, packedLight);
         if (tile.key != null && com.matthieu.planariumview.Config.enabled()) {
             com.matthieu.planariumview.GiantSprites.markMini(PlanariumRenderer.structureRenderData.get(tile.key));

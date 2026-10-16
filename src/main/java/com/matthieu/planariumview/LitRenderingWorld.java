@@ -157,19 +157,26 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
         ambientCapture = capture;
     }
 
-    /** Vrai pendant que ClientView fait jouer l'ambiance des blocs du decor et en veut les particules. */
-    private static boolean particleCapture;
-
-    static void captureSceneryParticles(boolean capture) {
-        particleCapture = capture;
+    /** Recoit les particules d'un faux monde (positions du gabarit). */
+    public interface ParticleSink {
+        void accept(LitRenderingWorld world, net.minecraft.core.particles.ParticleOptions options, double x, double y,
+                    double z, double vx, double vy, double vz);
     }
 
-    /** Particules d'ambiance des blocs du decor (fumee, flammes, lave...) : voir SceneryParticles. */
+    /** Non null pendant que l'on fait jouer l'ambiance des blocs du decor ou d'une miniature et qu'on en veut les particules. */
+    private static ParticleSink particleSink;
+
+    static void captureSceneryParticles(ParticleSink sink) {
+        particleSink = sink;
+    }
+
+    /** Particules d'ambiance des blocs du decor ou de la miniature (fumee, flammes, lave...) : voir SceneryParticles. */
     @Override
     public void addParticle(net.minecraft.core.particles.ParticleOptions options, double x, double y, double z,
                             double vx, double vy, double vz) {
-        if (giant && particleCapture) {
-            ClientView.onSceneryParticle(options, x, y, z, vx, vy, vz);
+        ParticleSink sink = particleSink;
+        if (sink != null) {
+            sink.accept(this, options, x, y, z, vx, vy, vz);
         }
     }
 
