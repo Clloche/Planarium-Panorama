@@ -1,6 +1,7 @@
 package com.matthieu.planariumview.mixin.compat;
 
-import com.matthieu.planariumview.ConfigScreen;
+import com.matthieu.planariumview.config.ConfigScreen;
+
 import dev.isxander.yacl3.gui.YACLScreen;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

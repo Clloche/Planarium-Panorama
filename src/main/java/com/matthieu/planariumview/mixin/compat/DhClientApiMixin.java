@@ -1,7 +1,8 @@
 package com.matthieu.planariumview.mixin.compat;
 
+import com.matthieu.planariumview.config.Config;
+
 import com.hollingsworth.arsnouveau.ArsNouveau;
-import com.matthieu.planariumview.Config;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import org.spongepowered.asm.mixin.Mixin;

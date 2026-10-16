@@ -1,7 +1,8 @@
 package com.matthieu.planariumview.mixin;
 
+import com.matthieu.planariumview.client.sky.SkySync;
+
 import com.hollingsworth.arsnouveau.ArsNouveau;
-import com.matthieu.planariumview.SkySync;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
@@ -23,7 +24,7 @@ public abstract class LevelWeatherMixin {
 
     private boolean planariumview$isJar() {
         Object self = this;
-        return self instanceof ClientLevel level && com.matthieu.planariumview.Config.enabled()
+        return self instanceof ClientLevel level && com.matthieu.planariumview.config.Config.enabled()
                 && level.dimensionTypeRegistration().is(ArsNouveau.DIMENSION_TYPE_KEY);
     }
 

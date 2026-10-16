@@ -1,7 +1,8 @@
 package com.matthieu.planariumview.mixin.compat;
 
+import com.matthieu.planariumview.client.sound.OutsideAmbience;
+
 import com.hollingsworth.arsnouveau.ArsNouveau;
-import com.matthieu.planariumview.OutsideAmbience;
 import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;

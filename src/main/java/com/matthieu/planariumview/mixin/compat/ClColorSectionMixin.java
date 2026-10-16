@@ -1,7 +1,8 @@
 package com.matthieu.planariumview.mixin.compat;
 
+import com.matthieu.planariumview.client.jar.JarColor;
+
 import com.llamalad7.mixinextras.sugar.Local;
-import com.matthieu.planariumview.JarColor;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;

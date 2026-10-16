@@ -1,7 +1,8 @@
 package com.matthieu.planariumview.mixin;
 
+import com.matthieu.planariumview.client.jar.JarWalls;
+
 import com.hollingsworth.arsnouveau.common.block.DimBoundary;
-import com.matthieu.planariumview.JarWalls;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Final;

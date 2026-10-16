@@ -1,6 +1,7 @@
 package com.matthieu.planariumview.mixin;
 
-import com.matthieu.planariumview.JarLight;
+import com.matthieu.planariumview.client.jar.JarLight;
+
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.core.BlockPos;

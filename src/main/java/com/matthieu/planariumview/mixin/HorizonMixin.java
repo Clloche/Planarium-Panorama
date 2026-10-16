@@ -1,6 +1,7 @@
 package com.matthieu.planariumview.mixin;
 
-import com.matthieu.planariumview.SkySync;
+import com.matthieu.planariumview.client.sky.SkySync;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.LevelHeightAccessor;
 import org.spongepowered.asm.mixin.Mixin;

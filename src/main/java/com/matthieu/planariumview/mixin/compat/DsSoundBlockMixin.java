@@ -1,7 +1,8 @@
 package com.matthieu.planariumview.mixin.compat;
 
-import com.matthieu.planariumview.Config;
-import com.matthieu.planariumview.OutsideSoundClient;
+import com.matthieu.planariumview.client.sound.OutsideSoundClient;
+import com.matthieu.planariumview.config.Config;
+
 import net.minecraft.client.resources.sounds.SoundInstance;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

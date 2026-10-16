@@ -1,6 +1,7 @@
 package com.matthieu.planariumview.mixin;
 
-import com.matthieu.planariumview.JarLight;
+import com.matthieu.planariumview.client.jar.JarLight;
+
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.BlockAndTintGetter;
@@ -44,9 +45,9 @@ public abstract class LevelRendererLightMixin {
             // deja calcule sa couleur avec l'ancienne lumiere. On la recalcule avec la nouvelle, quel que soit l'ordre.
             // Dans les chunks (Sodium), c'est le cas des coffres, lits, panneaux et cloches de Better Block Entities.
             if (level instanceof net.minecraft.client.multiplayer.ClientLevel) {
-                next = com.matthieu.planariumview.ClTag.retag(next, level, pos);
+                next = com.matthieu.planariumview.compat.ClTag.retag(next, level, pos);
             } else {
-                next = com.matthieu.planariumview.ClTag.retagBaked(next, level, pos);
+                next = com.matthieu.planariumview.compat.ClTag.retagBaked(next, level, pos);
             }
             cir.setReturnValue(next);
         }

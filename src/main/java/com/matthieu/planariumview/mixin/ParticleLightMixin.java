@@ -1,6 +1,7 @@
 package com.matthieu.planariumview.mixin;
 
-import com.matthieu.planariumview.SceneryParticles;
+import com.matthieu.planariumview.client.scenery.SceneryParticles;
+
 import net.minecraft.client.particle.Particle;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

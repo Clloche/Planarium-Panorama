@@ -1,6 +1,7 @@
 package com.matthieu.planariumview.mixin;
 
-import com.matthieu.planariumview.PlayerSoundCause;
+import com.matthieu.planariumview.server.PlayerSoundCause;
+
 import net.minecraft.core.Holder;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;

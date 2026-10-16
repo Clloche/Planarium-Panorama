@@ -1,7 +1,8 @@
 package com.matthieu.planariumview.mixin.compat;
 
-import com.matthieu.planariumview.OutsideAmbience;
-import com.matthieu.planariumview.SkySync;
+import com.matthieu.planariumview.client.sky.SkySync;
+import com.matthieu.planariumview.client.sound.OutsideAmbience;
+
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;

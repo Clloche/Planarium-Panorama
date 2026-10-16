@@ -1,7 +1,8 @@
 package com.matthieu.planariumview.mixin.compat;
 
+import com.matthieu.planariumview.client.sky.SkySync;
+
 import com.hollingsworth.arsnouveau.ArsNouveau;
-import com.matthieu.planariumview.SkySync;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.network.chat.Component;
@@ -20,7 +21,7 @@ public abstract class TravelersTitlesMixin {
 
     @ModifyVariable(method = "displayTitle", at = @At("HEAD"), argsOnly = true, ordinal = 0, require = 0)
     private Component planariumview$jarTitle(Component title) {
-        if (title == null || !com.matthieu.planariumview.Config.enabled() || !"???".equals(title.getString())) {
+        if (title == null || !com.matthieu.planariumview.config.Config.enabled() || !"???".equals(title.getString())) {
             return title;
         }
         ClientLevel level = Minecraft.getInstance().level;

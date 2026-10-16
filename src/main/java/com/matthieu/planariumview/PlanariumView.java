@@ -1,5 +1,29 @@
 package com.matthieu.planariumview;
 
+import com.matthieu.planariumview.client.jar.WallColors;
+import com.matthieu.planariumview.client.mini.MiniLight;
+import com.matthieu.planariumview.client.scenery.ClientView;
+import com.matthieu.planariumview.client.sky.LightningView;
+import com.matthieu.planariumview.client.sky.LunarClient;
+import com.matthieu.planariumview.client.sky.SkySync;
+import com.matthieu.planariumview.client.sound.OutsideAmbience;
+import com.matthieu.planariumview.client.sound.OutsideRecordClient;
+import com.matthieu.planariumview.client.sound.OutsideSoundClient;
+import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.network.AmbiencePayload;
+import com.matthieu.planariumview.network.LightningPayload;
+import com.matthieu.planariumview.network.LunarPayload;
+import com.matthieu.planariumview.network.MiniLightPayload;
+import com.matthieu.planariumview.network.OutsideRecordPayload;
+import com.matthieu.planariumview.network.OutsideSoundPayload;
+import com.matthieu.planariumview.network.OutsideViewDeltaPayload;
+import com.matthieu.planariumview.network.OutsideViewPayload;
+import com.matthieu.planariumview.network.SkyPayload;
+import com.matthieu.planariumview.network.SoundPrefsPayload;
+import com.matthieu.planariumview.network.ViewTogglePayload;
+import com.matthieu.planariumview.network.WallPayload;
+import com.matthieu.planariumview.server.ServerView;
+
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.PackType;

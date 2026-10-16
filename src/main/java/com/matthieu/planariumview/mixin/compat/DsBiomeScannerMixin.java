@@ -1,6 +1,7 @@
 package com.matthieu.planariumview.mixin.compat;
 
-import com.matthieu.planariumview.OutsideAmbience;
+import com.matthieu.planariumview.client.sound.OutsideAmbience;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.biome.Biome;
@@ -35,7 +36,7 @@ public abstract class DsBiomeScannerMixin {
         if (!OutsideAmbience.active() || OutsideAmbience.underground() || OutsideAmbience.sheltered()) {
             return;
         }
-        String altitude = com.matthieu.planariumview.DsAltitude.altitudeBiome();
+        String altitude = com.matthieu.planariumview.compat.DsAltitude.altitudeBiome();
         if (altitude == null) {
             return;
         }

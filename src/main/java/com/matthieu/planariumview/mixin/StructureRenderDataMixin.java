@@ -1,7 +1,8 @@
 package com.matthieu.planariumview.mixin;
 
+import com.matthieu.planariumview.client.mini.MiniLight;
+
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer;
-import com.matthieu.planariumview.MiniLight;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

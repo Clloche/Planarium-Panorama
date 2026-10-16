@@ -1,7 +1,8 @@
 package com.matthieu.planariumview.mixin;
 
+import com.matthieu.planariumview.client.sky.SkySync;
+
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumProjectorRenderer;
-import com.matthieu.planariumview.SkySync;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
@@ -29,6 +30,6 @@ public abstract class PlanariumProjectorRendererMixin {
             index = 2, require = 0)
     private net.minecraft.client.renderer.MultiBufferSource planariumview$buffers(
             net.minecraft.client.renderer.MultiBufferSource source) {
-        return com.matthieu.planariumview.ProjectorLighting.wrap(source);
+        return com.matthieu.planariumview.client.jar.ProjectorLighting.wrap(source);
     }
 }

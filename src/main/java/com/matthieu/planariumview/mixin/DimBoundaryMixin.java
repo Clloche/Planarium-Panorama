@@ -24,7 +24,7 @@ public abstract class DimBoundaryMixin extends Block {
     @Override
     protected void createBlockStateDefinition(net.minecraft.world.level.block.state.StateDefinition.Builder<Block, BlockState> builder) {
         super.createBlockStateDefinition(builder);
-        builder.add(com.matthieu.planariumview.JarWalls.LIGHT);
+        builder.add(com.matthieu.planariumview.client.jar.JarWalls.LIGHT);
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.matthieu.planariumview.mixin;
 
+import com.matthieu.planariumview.compat.ColorCompat;
+
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer;
 import com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -17,7 +19,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import com.matthieu.planariumview.ColorCompat;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
@@ -38,8 +39,8 @@ public abstract class PlanariumRendererMixin {
                                                   VertexConsumer consumer, RandomSource random, long seed, int overlay,
                                                   ModelData modelData, RenderType renderType) {
         // Bloc couvert de neige de Snow! Real Magic : le vrai bloc, puis la neige (voir SnowRealMagicCompat).
-        if (com.matthieu.planariumview.Config.enabled()
-                && com.matthieu.planariumview.SnowRealMagicCompat.render(level, state, tile.pos, renderType, poseStack,
+        if (com.matthieu.planariumview.config.Config.enabled()
+                && com.matthieu.planariumview.compat.SnowRealMagicCompat.render(level, state, tile.pos, renderType, poseStack,
                 (partState, partModel, pose) -> PlanariumRenderer.tesselateBlock(tile, renderer, level, partModel, partState,
                         tile.pos, pose, consumer, random, seed, overlay, ModelData.EMPTY, renderType))) {
             return;
@@ -54,7 +55,7 @@ public abstract class PlanariumRendererMixin {
     private static void planariumview$colorTag(BlockAndTintGetter level, BlockState state, BlockPos pos,
                                                org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable<Integer> cir) {
         int packed = cir.getReturnValueI();
-        int tagged = com.matthieu.planariumview.ClTag.tagBaked(packed, level, pos);
+        int tagged = com.matthieu.planariumview.compat.ClTag.tagBaked(packed, level, pos);
         if (tagged != packed) {
             cir.setReturnValue(tagged);
         }
@@ -65,9 +66,9 @@ public abstract class PlanariumRendererMixin {
     private static void planariumview$colorBegin(PlanariumRenderer.StructureRenderData data, Level level, BlockPos renderPos,
                                                  Vec3 cameraPosition, CallbackInfo ci) {
         if (data != null) {
-            com.matthieu.planariumview.MiniOutsideLight.apply(data, level, renderPos);
+            com.matthieu.planariumview.client.mini.MiniOutsideLight.apply(data, level, renderPos);
             ColorCompat.begin(data.fakeRenderingWorld);
-            com.matthieu.planariumview.MiniParticles.readHues(data);
+            com.matthieu.planariumview.client.mini.MiniParticles.readHues(data);
         }
     }
 
@@ -80,11 +81,11 @@ public abstract class PlanariumRendererMixin {
         // Faux monde de cette miniature : les blocs speciaux d'Ars sont rattaches au vrai monde, pas a lui.
         PlanariumRenderer.StructureRenderData miniData = tile.key != null ? PlanariumRenderer.structureRenderData.get(tile.key) : null;
         planariumview$miniWorld = miniData != null ? miniData.fakeRenderingWorld : null;
-        com.matthieu.planariumview.MiniOutsideLight.check(tile);
-        com.matthieu.planariumview.MiniParticles.seen(tile, packedLight);
-        com.matthieu.planariumview.PlanariumFloor.render(tile, poseStack, buffers, packedLight);
-        if (tile.key != null && com.matthieu.planariumview.Config.enabled()) {
-            com.matthieu.planariumview.GiantSprites.markMini(PlanariumRenderer.structureRenderData.get(tile.key));
+        com.matthieu.planariumview.client.mini.MiniOutsideLight.check(tile);
+        com.matthieu.planariumview.client.mini.MiniParticles.seen(tile, packedLight);
+        com.matthieu.planariumview.client.mini.PlanariumFloor.render(tile, poseStack, buffers, packedLight);
+        if (tile.key != null && com.matthieu.planariumview.config.Config.enabled()) {
+            com.matthieu.planariumview.client.scenery.GiantSprites.markMini(PlanariumRenderer.structureRenderData.get(tile.key));
         }
     }
 
@@ -116,13 +117,13 @@ public abstract class PlanariumRendererMixin {
                                                 net.minecraft.world.level.block.entity.BlockEntity blockEntity, float partialTick,
                                                 PoseStack poseStack, net.minecraft.client.renderer.MultiBufferSource buffers,
                                                 int packedLight, int packedOverlay) {
-        if (com.matthieu.planariumview.Config.enabled()
-                && com.matthieu.planariumview.AmbersolCompat.render(blockEntity, partialTick, poseStack, buffers)) {
+        if (com.matthieu.planariumview.config.Config.enabled()
+                && com.matthieu.planariumview.compat.AmbersolCompat.render(blockEntity, partialTick, poseStack, buffers)) {
             return;
         }
         int light = packedLight;
-        if (com.matthieu.planariumview.Config.realLighting()
-                && planariumview$miniWorld instanceof com.matthieu.planariumview.LitRenderingWorld lit) {
+        if (com.matthieu.planariumview.config.Config.realLighting()
+                && planariumview$miniWorld instanceof com.matthieu.planariumview.client.scenery.LitRenderingWorld lit) {
             try {
                 light = PlanariumRenderer.getLightColor(lit, blockEntity.getBlockState(), blockEntity.getBlockPos());
             } catch (Exception e) {
@@ -143,6 +144,6 @@ public abstract class PlanariumRendererMixin {
     private static void planariumview$colorEnd(PlanariumRenderer.StructureRenderData data, Level level, BlockPos renderPos,
                                                Vec3 cameraPosition, CallbackInfo ci) {
         ColorCompat.end();
-        com.matthieu.planariumview.JarColor.clearMini();
+        com.matthieu.planariumview.client.jar.JarColor.clearMini();
     }
 }
