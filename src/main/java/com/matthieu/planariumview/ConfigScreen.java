@@ -79,6 +79,8 @@ public final class ConfigScreen {
         Option<Boolean> weather = bool("weather", Config.WEATHER.getDefault(), Config.WEATHER::get, Config.WEATHER::set);
         Option<Boolean> sceneryAmbience = bool("scenery_ambience", Config.SCENERY_AMBIENCE.getDefault(),
                 Config.SCENERY_AMBIENCE::get, Config.SCENERY_AMBIENCE::set);
+        Option<Boolean> sceneryParticles = bool("scenery_particles", Config.SCENERY_PARTICLES.getDefault(),
+                Config.SCENERY_PARTICLES::get, Config.SCENERY_PARTICLES::set);
         // Sons du monde exterieur : l'avertissement (zone active) est aussi dans le nom du groupe de detail.
         Option<Boolean> worldSounds = Option.<Boolean>createBuilder()
                 .name(Component.translatable(KEY + "world_sounds"))
@@ -136,6 +138,7 @@ public final class ConfigScreen {
         gated.add(new Gated(biome, () -> true));
         gated.add(new Gated(weather, () -> true));
         gated.add(new Gated(sceneryAmbience, () -> true));
+        gated.add(new Gated(sceneryParticles, () -> true));
         gated.add(new Gated(worldSounds, () -> true));
         gated.add(new Gated(mobSounds, Config::worldSounds));
         gated.add(new Gated(blockSounds, Config::worldSounds));
@@ -184,7 +187,7 @@ public final class ConfigScreen {
                 .build();
 
         dirty = false;
-        for (Option<?> option : List.of(master, lighting, radius, biome, weather, sceneryAmbience, worldSounds, mobSounds,
+        for (Option<?> option : List.of(master, lighting, radius, biome, weather, sceneryAmbience, sceneryParticles, worldSounds, mobSounds,
                 blockSounds, explosionSounds, clouds, fog, blockUpdates, refresh, color, ambience, ambientSounds, lunar, caveFog)) {
             autoSave(option);
         }
@@ -233,6 +236,7 @@ public final class ConfigScreen {
                                 .name(Component.translatable(KEY + "group.sounds"))
                                 .collapsed(false)
                                 .option(sceneryAmbience)
+                                .option(sceneryParticles)
                                 .option(worldSounds)
                                 .build())
                         // YACL ne permet pas de groupe dans un groupe : le detail des sons du monde exterieur suit juste apres.

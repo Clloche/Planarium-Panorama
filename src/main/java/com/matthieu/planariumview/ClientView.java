@@ -534,14 +534,17 @@ public final class ClientView {
      */
     private static void tickSceneryAmbience(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null || mc.isPaused() || renderData == null || currentDim == null || !Config.sceneryAmbience()
+        boolean sounds = Config.sceneryAmbience();
+        boolean particles = Config.sceneryParticles();
+        if (mc.level == null || mc.isPaused() || renderData == null || currentDim == null || (!sounds && !particles)
                 || !mc.level.dimension().location().equals(currentDim)
                 || !(renderData.fakeRenderingWorld instanceof LitRenderingWorld lit)) {
             return;
         }
         int radius = currentRadius;
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        LitRenderingWorld.captureAmbientSounds(true);
+        LitRenderingWorld.captureAmbientSounds(sounds);
+        LitRenderingWorld.captureSceneryParticles(particles);
         try {
             // Comme ClientLevel.animateTick : 667 tirages a 16 blocs et 667 a 32 blocs du point d'ecoute.
             for (int i = 0; i < 667; i++) {
@@ -550,6 +553,7 @@ public final class ClientView {
             }
         } finally {
             LitRenderingWorld.captureAmbientSounds(false);
+            LitRenderingWorld.captureSceneryParticles(false);
         }
     }
 
@@ -584,6 +588,42 @@ public final class ClientView {
      * Son d'ambiance d'un bloc du decor (positions du gabarit). On l'attenue comme si on l'ecoutait a la place du
      * Planarium, puis on le joue dans sa direction dans le decor geant.
      */
+    /**
+     * Particule d'ambiance d'un bloc du decor (positions du gabarit) : creee a sa place dans le decor geant, si elle est
+     * dans le rayon de vue (au-dela, le decor n'est pas dessine). Elle prend la lumiere du decor a cet endroit.
+     */
+    static void onSceneryParticle(net.minecraft.core.particles.ParticleOptions options, double x, double y, double z,
+                                  double vx, double vy, double vz) {
+        if (options == null || !SceneryParticles.allowed()) {
+            return;
+        }
+        int radius = currentRadius;
+        int view = viewRadius();
+        double dx = x - radius;
+        double dy = y - radius;
+        double dz = z - radius;
+        if (Math.abs(dx - 0.5) > view + 0.5 || Math.abs(dz - 0.5) > view + 0.5) {
+            return;
+        }
+        int light = net.minecraft.client.renderer.LightTexture.pack(15, 15);
+        if (renderData != null && renderData.fakeRenderingWorld instanceof LitRenderingWorld lit) {
+            BlockPos at = BlockPos.containing(x, y, z);
+            light = net.minecraft.client.renderer.LightTexture.pack(
+                    lit.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, at),
+                    lit.getBrightness(net.minecraft.world.level.LightLayer.SKY, at));
+        }
+        SceneryParticles.spawn(options, dx, dy, dz, vx, vy, vz, light);
+    }
+
+    /** Explosion du dehors (position par rapport au Planarium) : ses particules, si elle est dans le rayon de vue. */
+    static void onOutsideExplosion(double dx, double dy, double dz) {
+        int view = viewRadius();
+        if (!Config.sceneryParticles() || Math.abs(dx - 0.5) > view + 2 || Math.abs(dz - 0.5) > view + 2) {
+            return;
+        }
+        SceneryParticles.explosion(dx, dy, dz);
+    }
+
     static void onSceneryAmbientSound(double x, double y, double z, net.minecraft.sounds.SoundEvent sound,
                                       net.minecraft.sounds.SoundSource source, float volume, float pitch) {
         if (sound == null || volume <= 0.0F) {

@@ -14,6 +14,8 @@
   ],
   "client": [
     "ClientLevelMixin",
+    "ParticleAccessor",
+    "ParticleLightMixin",
     "DimensionTypeMixin",
     "DynamicTextureMixin",
     "EntityLightMixin",

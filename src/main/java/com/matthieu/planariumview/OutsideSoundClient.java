@@ -33,6 +33,9 @@ public final class OutsideSoundClient {
         }
 
         play(sound, sources[payload.source()], payload.volume(), payload.pitch(), payload.dx(), payload.dy(), payload.dz(), false);
+        if (payload.category() == OutsideSoundPayload.EXPLOSIONS) {
+            ClientView.onOutsideExplosion(payload.dx(), payload.dy(), payload.dz());
+        }
     }
 
     /** Options du client pour chaque categorie de son du monde exterieur (le serveur filtre deja de son cote). */

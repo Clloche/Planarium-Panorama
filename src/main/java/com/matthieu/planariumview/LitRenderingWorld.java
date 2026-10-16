@@ -157,6 +157,41 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
         ambientCapture = capture;
     }
 
+    /** Vrai pendant que ClientView fait jouer l'ambiance des blocs du decor et en veut les particules. */
+    private static boolean particleCapture;
+
+    static void captureSceneryParticles(boolean capture) {
+        particleCapture = capture;
+    }
+
+    /** Particules d'ambiance des blocs du decor (fumee, flammes, lave...) : voir SceneryParticles. */
+    @Override
+    public void addParticle(net.minecraft.core.particles.ParticleOptions options, double x, double y, double z,
+                            double vx, double vy, double vz) {
+        if (giant && particleCapture) {
+            ClientView.onSceneryParticle(options, x, y, z, vx, vy, vz);
+        }
+    }
+
+    @Override
+    public void addParticle(net.minecraft.core.particles.ParticleOptions options, boolean force, double x, double y,
+                            double z, double vx, double vy, double vz) {
+        addParticle(options, x, y, z, vx, vy, vz);
+    }
+
+    /** Fumee des feux de camp (Minecraft la fait voir de plus loin). */
+    @Override
+    public void addAlwaysVisibleParticle(net.minecraft.core.particles.ParticleOptions options, double x, double y, double z,
+                                         double vx, double vy, double vz) {
+        addParticle(options, x, y, z, vx, vy, vz);
+    }
+
+    @Override
+    public void addAlwaysVisibleParticle(net.minecraft.core.particles.ParticleOptions options, boolean ignoreRange,
+                                         double x, double y, double z, double vx, double vy, double vz) {
+        addParticle(options, x, y, z, vx, vy, vz);
+    }
+
     /**
      * Sons d'ambiance des blocs du decor (feu, lave, eau, portail...) : Minecraft les joue cote client avec ce point
      * d'entree. Dans le decor geant, on les fait entendre depuis leur direction dans le decor.

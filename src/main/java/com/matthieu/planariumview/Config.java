@@ -23,6 +23,7 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue WEATHER;
     public static final ModConfigSpec.BooleanValue CLOUDS;
     public static final ModConfigSpec.BooleanValue SCENERY_AMBIENCE;
+    public static final ModConfigSpec.BooleanValue SCENERY_PARTICLES;
     public static final ModConfigSpec.BooleanValue WORLD_SOUNDS;
     public static final ModConfigSpec.BooleanValue MOB_SOUNDS;
     public static final ModConfigSpec.BooleanValue BLOCK_SOUNDS;
@@ -96,6 +97,10 @@ public final class Config {
                 .comment("Ambient sounds of the scenery blocks (fire, lava, flowing water, portals, campfires...), from their direction",
                         "in the scenery. Made on your side, like Minecraft does around the player: works even when the outside world is paused.")
                 .define("sceneryAmbience", true);
+        SCENERY_PARTICLES = client
+                .comment("Particles of the scenery blocks (torch and campfire smoke, flames, lava...), 32 times bigger like the scenery,",
+                        "and the particles of outside explosions. Follows Minecraft's Particles setting.")
+                .define("sceneryParticles", true);
         WORLD_SOUNDS = client
                 .comment("Sounds from the outside world around the Planarium (mobs, redstone, explosions, jukeboxes...), from their direction",
                         "in the scenery. Sounds directly caused by a player are excluded.",
@@ -210,6 +215,10 @@ public final class Config {
 
     public static boolean sceneryAmbience() {
         return enabled() && SCENERY_AMBIENCE.get();
+    }
+
+    public static boolean sceneryParticles() {
+        return enabled() && SCENERY_PARTICLES.get();
     }
 
     public static boolean worldSounds() {
