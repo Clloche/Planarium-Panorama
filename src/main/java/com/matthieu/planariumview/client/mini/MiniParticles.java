@@ -138,6 +138,7 @@ public final class MiniParticles {
             }
             SceneryParticles.spawn(space, options, x, y, z, vx, vy, vz, tileLight);
         });
+        SceneryParticles.animatingMini(true);
         try {
             AABB bounds = mini.bounds();
             int sizeX = (int) bounds.getXsize();
@@ -157,6 +158,7 @@ public final class MiniParticles {
             }
         } finally {
             LitRenderingWorld.captureSceneryParticles(null);
+            SceneryParticles.animatingMini(false);
         }
     }
 

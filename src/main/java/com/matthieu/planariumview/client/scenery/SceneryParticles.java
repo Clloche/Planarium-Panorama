@@ -230,11 +230,13 @@ public final class SceneryParticles {
         if (particle == null || !adopt(particle, space, light)) {
             return null;
         }
-        // Particules creees en meme temps par celle-ci (un autre mod qui en ajoute une seconde directement) : aussi a
-        // l'echelle du faux monde.
-        for (Particle other : added) {
-            if (other != particle) {
-                adopt(other, space, light);
+        // Particules creees en meme temps par celle-ci (un autre mod qui en ajoute une seconde directement) : dans une
+        // miniature, elles apparaitraient a taille normale (geantes). Les mettre a l'echelle les deformait : on les enleve.
+        if (space.bounds() != null) {
+            for (Particle other : added) {
+                if (other != particle) {
+                    other.remove();
+                }
             }
         }
         return particle;
@@ -244,9 +246,9 @@ public final class SceneryParticles {
     private static List<Particle> creating;
 
     /**
-     * Chaque particule ajoutee au moteur de Minecraft (voir ParticleEngineTickMixin). Pendant qu'une particule du decor
-     * bouge, celles qu'elle ajoute directement au moteur (sans passer par le monde, comme le font certains mods) sont aussi
-     * des particules du decor : sinon elles apparaissent a taille normale, geantes dans une miniature.
+     * Chaque particule ajoutee au moteur de Minecraft (voir ParticleEngineTickMixin). Pendant qu'une particule de miniature
+     * bouge, celles qu'elle ajoute directement au moteur (sans passer par le monde, comme le font certains mods) seraient a
+     * taille normale, geantes dans la miniature : on les enleve.
      */
     public static void onEngineAdd(Particle particle) {
         if (particle == null) {
@@ -256,20 +258,35 @@ public final class SceneryParticles {
             creating.add(particle);
             return;
         }
+        if (miniAnimating) {
+            // Un bloc modde de la miniature qui ajoute sa particule directement au moteur, a sa position dans le
+            // gabarit : elle ne serait ni au bon endroit ni a la bonne taille.
+            particle.remove();
+            noteForeign(particle);
+            return;
+        }
         Particle parent = ticking;
         if (parent == null || SPACE.containsKey(particle)) {
             return;
         }
         Space space = SPACE.get(parent);
-        if (space == null) {
-            return;
+        if (space != null && space.bounds() != null) {
+            particle.remove();
         }
-        Integer light = LIGHT.get(parent);
-        if (adopt(particle, space, light != null ? light : LightTexture.pack(15, 15))) {
-            Integer hue = HUE.get(parent);
-            if (hue != null) {
-                HUE.put(particle, hue);
-            }
+    }
+
+    /** Vrai pendant que MiniParticles fait jouer l'ambiance des blocs d'une miniature. */
+    private static boolean miniAnimating;
+
+    public static void animatingMini(boolean animating) {
+        miniAnimating = animating;
+    }
+
+    /** Ecrit une fois dans le log chaque sorte de particule enlevee d'une miniature. */
+    private static void noteForeign(Particle particle) {
+        if (UNSCALED.add(particle.getClass())) {
+            LOGGER.info("[Planarium Panorama] Particule d'un autre mod ignoree dans la miniature : {}",
+                    particle.getClass().getName());
         }
     }
 
@@ -308,6 +325,12 @@ public final class SceneryParticles {
     private static boolean resized(Particle particle, float before, float scale) {
         if (scale >= 1.0F) {
             return true;
+        }
+        // Miniature : seulement les particules de Minecraft. Celles des autres mods se dessinent souvent a leur facon
+        // (flammes de Nether Experience sur les torches murales...) et restent geantes meme rapetissees.
+        if (!particle.getClass().getName().startsWith("net.minecraft.")) {
+            noteForeign(particle);
+            return false;
         }
         // La taille de base (quadSize) et pas getQuadSize : la fumee, par exemple, part d'une taille 0 et grossit.
         boolean ok = particle instanceof com.matthieu.planariumview.mixin.SingleQuadParticleAccessor quad && before > 0.0F
