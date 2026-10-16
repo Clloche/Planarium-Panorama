@@ -58,20 +58,26 @@ public final class JarLight {
      * l'eclaire de moins en moins en s'en eloignant. Null = pas encore calcule (toute la table).
      */
     private static volatile byte[] lit;
-    /** Blocs qui laissent passer la lumiere (lus chaque seconde), ou null si les chunks du bocal ne sont pas charges. */
+    /** Blocs qui laissent passer la lumiere, ou null si les chunks du bocal ne sont pas charges. */
     private static boolean[] passable;
-    /** Faces pleines de chaque bloc (voir faceMask), memes indices que passable. */
-    private static byte[] faces;
+    /** Formes des faces des blocs (voir faceShapes), memes indices que passable. */
+    private static net.minecraft.world.phys.shapes.VoxelShape[][] shapes;
+    /** Bloc de chaque case (lu chaque seconde) : on ne recalcule que si un bloc a change. */
+    private static int[] blockIds;
 
     /** Relit les blocs du bocal (chaque seconde) et recalcule la lumiere s'ils ont change. */
     public static void updateReach(ClientLevel level) {
-        boolean[] next = readPassable(level);
-        byte[] nextFaces = next == null ? null : readFaces(level);
-        if (java.util.Arrays.equals(next, passable) && java.util.Arrays.equals(nextFaces, faces)) {
+        int[] nextIds = readIds(level);
+        if (java.util.Arrays.equals(nextIds, blockIds)) {
             return;
         }
-        passable = next;
-        faces = nextFaces;
+        blockIds = nextIds;
+        if (nextIds == null) {
+            passable = null;
+            shapes = null;
+        } else {
+            readBlocks(level);
+        }
         relight();
         // Un bloc pose ou casse dans le bocal. On ne redessine tout le bocal que si de la lumiere du dehors y entre
         // (sinon rien ne change), et on ne fait recolorer Contraption Lights que si cette lumiere a une couleur :
@@ -94,7 +100,7 @@ public final class JarLight {
         return false;
     }
 
-    private static boolean[] readPassable(ClientLevel level) {
+    private static int[] readIds(ClientLevel level) {
         if (level == null) {
             return null;
         }
@@ -105,57 +111,64 @@ public final class JarLight {
                 }
             }
         }
-        boolean[] open = new boolean[SIZE * HEIGHT * SIZE];
+        int[] ids = new int[SIZE * HEIGHT * SIZE];
         net.minecraft.core.BlockPos.MutableBlockPos pos = new net.minecraft.core.BlockPos.MutableBlockPos();
         for (int x = 0; x < SIZE; x++) {
             for (int y = 0; y < HEIGHT; y++) {
                 for (int z = 0; z < SIZE; z++) {
                     pos.set(x, y, z);
-                    net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
-                    open[(x * HEIGHT + y) * SIZE + z] = state.getLightBlock(level, pos) < 15;
+                    ids[(x * HEIGHT + y) * SIZE + z] = net.minecraft.world.level.block.Block.getId(level.getBlockState(pos));
                 }
             }
         }
-        return open;
+        return ids;
     }
 
-    /** Faces pleines des blocs du bocal (escaliers, dalles...), memes indices que readPassable. */
-    private static byte[] readFaces(ClientLevel level) {
-        byte[] masks = new byte[SIZE * HEIGHT * SIZE];
+    /** Lit les blocs qui laissent passer la lumiere et les formes de leurs faces. */
+    private static void readBlocks(ClientLevel level) {
+        boolean[] open = new boolean[SIZE * HEIGHT * SIZE];
+        net.minecraft.world.phys.shapes.VoxelShape[][] faceShapes = new net.minecraft.world.phys.shapes.VoxelShape[open.length][];
         net.minecraft.core.BlockPos.MutableBlockPos pos = new net.minecraft.core.BlockPos.MutableBlockPos();
         for (int x = 0; x < SIZE; x++) {
             for (int y = 0; y < HEIGHT; y++) {
                 for (int z = 0; z < SIZE; z++) {
                     pos.set(x, y, z);
-                    masks[(x * HEIGHT + y) * SIZE + z] = faceMask(level.getBlockState(pos), level, pos);
+                    int index = (x * HEIGHT + y) * SIZE + z;
+                    net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
+                    open[index] = state.getLightBlock(level, pos) < 15;
+                    if (open[index]) {
+                        faceShapes[index] = faceShapes(state, level, pos);
+                    }
                 }
             }
         }
-        return masks;
+        passable = open;
+        shapes = faceShapes;
     }
 
     /**
-     * Faces d'un bloc qui arretent completement la lumiere, comme pour Minecraft : un escalier ou une dalle laisse passer
-     * la lumiere par ses cotes ouverts, mais pas a travers sa face pleine. Un bit par Direction (ordinal).
-     * 0 pour les blocs entierement transparents ou opaques (ceux-la sont deja geres par "passable").
+     * Formes des faces d'un bloc pour la lumiere (une par Direction, ordinal), comme Minecraft : une dalle ou un escalier
+     * laisse passer la lumiere par ses cotes ouverts, mais pas a travers sa face pleine, et deux demi-faces qui se
+     * touchent (dalle du haut contre dalle du bas) bouchent le passage ensemble. Null pour les blocs sans forme.
      */
-    static byte faceMask(net.minecraft.world.level.block.state.BlockState state, net.minecraft.world.level.BlockGetter level,
-                         net.minecraft.core.BlockPos pos) {
+    static net.minecraft.world.phys.shapes.VoxelShape[] faceShapes(net.minecraft.world.level.block.state.BlockState state,
+                                                                    net.minecraft.world.level.BlockGetter level,
+                                                                    net.minecraft.core.BlockPos pos) {
         if (!state.useShapeForLightOcclusion()) {
-            return 0;
+            return null;
         }
-        int mask = 0;
         try {
-            for (net.minecraft.core.Direction direction : net.minecraft.core.Direction.values()) {
-                net.minecraft.world.phys.shapes.VoxelShape face = state.getFaceOcclusionShape(level, pos, direction);
-                if (net.minecraft.world.phys.shapes.Shapes.faceShapeOccludes(net.minecraft.world.phys.shapes.Shapes.empty(), face)) {
-                    mask |= 1 << direction.ordinal();
-                }
+            net.minecraft.core.Direction[] directions = net.minecraft.core.Direction.values();
+            net.minecraft.world.phys.shapes.VoxelShape[] result = new net.minecraft.world.phys.shapes.VoxelShape[directions.length];
+            boolean any = false;
+            for (net.minecraft.core.Direction direction : directions) {
+                result[direction.ordinal()] = state.getFaceOcclusionShape(level, pos, direction);
+                any |= !result[direction.ordinal()].isEmpty();
             }
+            return any ? result : null;
         } catch (Exception e) {
-            return 0;
+            return null;
         }
-        return (byte) mask;
     }
 
     /** Recalcule la lumiere du dehors bloc par bloc (voir lit). */
@@ -166,7 +179,7 @@ public final class JarLight {
             lit = null;
             return;
         }
-        lit = occlude(source, open, faces);
+        lit = occlude(source, open, shapes);
     }
 
     /**
@@ -177,23 +190,36 @@ public final class JarLight {
         return occlude(source, open, null);
     }
 
-    /** Bits de faceMask par sens de propagation : x+1, x-1, y+1, y-1, z+1, z-1 (EAST, WEST, UP, DOWN, SOUTH, NORTH). */
+    /** Direction (ordinal) de la face de sortie pour chaque sens de propagation : x+1, x-1, y+1, y-1, z+1, z-1. */
     private static final int[] LEAVING = {
-            1 << net.minecraft.core.Direction.EAST.ordinal(), 1 << net.minecraft.core.Direction.WEST.ordinal(),
-            1 << net.minecraft.core.Direction.UP.ordinal(), 1 << net.minecraft.core.Direction.DOWN.ordinal(),
-            1 << net.minecraft.core.Direction.SOUTH.ordinal(), 1 << net.minecraft.core.Direction.NORTH.ordinal()};
+            net.minecraft.core.Direction.EAST.ordinal(), net.minecraft.core.Direction.WEST.ordinal(),
+            net.minecraft.core.Direction.UP.ordinal(), net.minecraft.core.Direction.DOWN.ordinal(),
+            net.minecraft.core.Direction.SOUTH.ordinal(), net.minecraft.core.Direction.NORTH.ordinal()};
     private static final int[] ENTERING = {LEAVING[1], LEAVING[0], LEAVING[3], LEAVING[2], LEAVING[5], LEAVING[4]};
 
-    /** La lumiere peut-elle passer du bloc {@code from} au bloc {@code to} dans le sens {@code d} (voir LEAVING) ? */
-    private static boolean crosses(byte[] faces, int from, int to, int d) {
-        return faces == null || ((from < 0 || (faces[from] & LEAVING[d]) == 0) && (faces[to] & ENTERING[d]) == 0);
+    /**
+     * La lumiere peut-elle passer du bloc {@code from} (-1 = la paroi de verre) au bloc {@code to} dans le sens
+     * {@code d} (voir LEAVING) ? Non si la face de sortie et la face d'entree couvrent ensemble toute la face.
+     */
+    private static boolean crosses(net.minecraft.world.phys.shapes.VoxelShape[][] shapes, int from, int to, int d) {
+        if (shapes == null) {
+            return true;
+        }
+        net.minecraft.world.phys.shapes.VoxelShape[] a = from < 0 ? null : shapes[from];
+        net.minecraft.world.phys.shapes.VoxelShape[] b = shapes[to];
+        if (a == null && b == null) {
+            return true;
+        }
+        net.minecraft.world.phys.shapes.VoxelShape leaving = a == null ? net.minecraft.world.phys.shapes.Shapes.empty() : a[LEAVING[d]];
+        net.minecraft.world.phys.shapes.VoxelShape entering = b == null ? net.minecraft.world.phys.shapes.Shapes.empty() : b[ENTERING[d]];
+        return !net.minecraft.world.phys.shapes.Shapes.faceShapeOccludes(leaving, entering);
     }
 
     /**
-     * Comme occlude(source, open), en tenant compte des faces pleines des blocs ({@code faces}, voir faceMask, ou null) :
-     * la lumiere ne traverse plus un toit d'escaliers ou de dalles comme s'il etait ouvert.
+     * Comme occlude(source, open), en tenant compte de la forme des faces des blocs ({@code faces}, voir faceShapes, ou
+     * null) : la lumiere ne traverse plus un toit d'escaliers ou de dalles comme s'il etait ouvert.
      */
-    static byte[] occlude(byte[] source, boolean[] open, byte[] faces) {
+    static byte[] occlude(byte[] source, boolean[] open, net.minecraft.world.phys.shapes.VoxelShape[][] faces) {
         int total = SIZE * HEIGHT * SIZE;
         boolean[] sees = new boolean[total];
         // Comme la lumiere du ciel de Minecraft : elle descend tout droit depuis le haut du bocal (verre) sans perdre
@@ -268,7 +294,7 @@ public final class JarLight {
         return next;
     }
 
-    private static void sweepY(boolean[] open, byte[] faces, boolean[] sees, int x, int z, int start, int step) {
+    private static void sweepY(boolean[] open, net.minecraft.world.phys.shapes.VoxelShape[][] faces, boolean[] sees, int x, int z, int start, int step) {
         int above = -1;
         for (int y = start; y >= 1 && y < HEIGHT; y += step) {
             int index = (x * HEIGHT + y) * SIZE + z;
@@ -406,6 +432,8 @@ public final class JarLight {
         table = null;
         lit = null;
         passable = null;
+        shapes = null;
+        blockIds = null;
         tableLevel = null;
         tableDim = null;
         lastFaces = null;

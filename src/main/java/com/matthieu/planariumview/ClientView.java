@@ -534,6 +534,9 @@ public final class ClientView {
      */
     private static void tickSceneryAmbience(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
+        if (!mc.isPaused()) {
+            SceneryParticles.tick();
+        }
         boolean sounds = Config.sceneryAmbience();
         boolean particles = Config.sceneryParticles();
         if (mc.level == null || mc.isPaused() || renderData == null || currentDim == null || (!sounds && !particles)
@@ -550,6 +553,9 @@ public final class ClientView {
             for (int i = 0; i < 667; i++) {
                 ambientTick(lit, radius, 16, pos);
                 ambientTick(lit, radius, 32, pos);
+            }
+            if (particles) {
+                campfireSmoke(lit, radius);
             }
         } finally {
             LitRenderingWorld.captureAmbientSounds(false);
@@ -576,12 +582,115 @@ public final class ClientView {
             FluidState fluid = state.getFluidState();
             if (!fluid.isEmpty()) {
                 fluid.animateTick(lit, at, AMBIENT_RANDOM);
+                // Gouttes sous un plafond de lave ou d'eau (ClientLevel.doAnimateTick, pas le bloc lui-meme).
+                net.minecraft.core.particles.ParticleOptions drip = fluid.getDripParticle();
+                if (drip != null && AMBIENT_RANDOM.nextInt(10) == 0) {
+                    boolean sturdy = state.isFaceSturdy(lit, at, net.minecraft.core.Direction.DOWN);
+                    BlockPos below = at.below();
+                    dripUnder(lit, below, lit.getBlockState(below), drip, sturdy);
+                }
             }
         } catch (Throwable t) {
             // Un bloc modde qui suppose un vrai monde : on l'ignore pour le reste de la session.
             AMBIENT_BROKEN.add(state.getBlock());
             LOGGER.debug("[Planarium Panorama] Ambiance du bloc {} ignoree dans le decor", state.getBlock(), t);
         }
+    }
+
+    /** Comme ClientLevel.trySpawnDripParticles : une goutte qui pend sous le bloc sous le liquide. */
+    private static void dripUnder(LitRenderingWorld lit, BlockPos pos, BlockState state,
+                                  net.minecraft.core.particles.ParticleOptions drip, boolean sturdy) {
+        if (!state.getFluidState().isEmpty()) {
+            return;
+        }
+        net.minecraft.world.phys.shapes.VoxelShape shape = state.getCollisionShape(lit, pos);
+        double top = shape.max(net.minecraft.core.Direction.Axis.Y);
+        if (top < 1.0) {
+            if (sturdy) {
+                dripAt(lit, pos.getX(), pos.getX() + 1, pos.getZ(), pos.getZ() + 1, pos.getY() + 1 - 0.05, drip);
+            }
+        } else if (!state.is(net.minecraft.tags.BlockTags.IMPERMEABLE)) {
+            double bottom = shape.min(net.minecraft.core.Direction.Axis.Y);
+            if (bottom > 0.0) {
+                dripUnder(lit, pos, shape, pos.getY() + bottom - 0.05, drip);
+            } else {
+                BlockPos below = pos.below();
+                BlockState under = lit.getBlockState(below);
+                if (under.getCollisionShape(lit, below).max(net.minecraft.core.Direction.Axis.Y) < 1.0
+                        && under.getFluidState().isEmpty()) {
+                    dripUnder(lit, pos, shape, pos.getY() - 0.05, drip);
+                }
+            }
+        }
+    }
+
+    private static void dripUnder(LitRenderingWorld lit, BlockPos pos, net.minecraft.world.phys.shapes.VoxelShape shape,
+                                  double y, net.minecraft.core.particles.ParticleOptions drip) {
+        dripAt(lit, pos.getX() + shape.min(net.minecraft.core.Direction.Axis.X),
+                pos.getX() + shape.max(net.minecraft.core.Direction.Axis.X),
+                pos.getZ() + shape.min(net.minecraft.core.Direction.Axis.Z),
+                pos.getZ() + shape.max(net.minecraft.core.Direction.Axis.Z), y, drip);
+    }
+
+    private static void dripAt(LitRenderingWorld lit, double x1, double x2, double z1, double z2, double y,
+                               net.minecraft.core.particles.ParticleOptions drip) {
+        lit.addParticle(drip, net.minecraft.util.Mth.lerp(AMBIENT_RANDOM.nextDouble(), x1, x2), y,
+                net.minecraft.util.Mth.lerp(AMBIENT_RANDOM.nextDouble(), z1, z2), 0.0, 0.0, 0.0);
+    }
+
+    /** Augmente a chaque changement du decor (les feux de camp sont alors recherches de nouveau). */
+    private static int sceneryVersion;
+    private static int campfireVersion = -1;
+    private static List<BlockPos> campfires = List.of();
+
+    /**
+     * Fumee des feux de camp allumes du decor. Minecraft la fait chaque tick depuis le feu de camp lui-meme
+     * (CampfireBlockEntity.particleTick), pas depuis les blocs tires au hasard : on refait la meme chose.
+     */
+    private static void campfireSmoke(LitRenderingWorld lit, int radius) {
+        if (campfireVersion != sceneryVersion) {
+            campfireVersion = sceneryVersion;
+            List<BlockPos> found = new ArrayList<>();
+            for (CulledStatePos statePos : statePosByPos.values()) {
+                BlockState state = statePos.state;
+                if (state != null && state.getBlock() instanceof net.minecraft.world.level.block.CampfireBlock
+                        && state.hasProperty(net.minecraft.world.level.block.CampfireBlock.LIT)) {
+                    found.add(statePos.pos.immutable());
+                }
+            }
+            campfires = found;
+        }
+        int view = viewRadius();
+        for (BlockPos at : campfires) {
+            if (Math.abs(at.getX() - radius) > view || Math.abs(at.getZ() - radius) > view) {
+                continue;
+            }
+            BlockState state = lit.getBlockState(at);
+            if (!(state.getBlock() instanceof net.minecraft.world.level.block.CampfireBlock)
+                    || !state.getValue(net.minecraft.world.level.block.CampfireBlock.LIT)) {
+                continue;
+            }
+            if (AMBIENT_RANDOM.nextFloat() < 0.11F) {
+                boolean signal = state.getValue(net.minecraft.world.level.block.CampfireBlock.SIGNAL_FIRE);
+                int count = AMBIENT_RANDOM.nextInt(2) + 2;
+                try {
+                    for (int i = 0; i < count; i++) {
+                        net.minecraft.world.level.block.CampfireBlock.makeParticles(lit, at, signal, false);
+                    }
+                } catch (Throwable t) {
+                    LOGGER.debug("[Planarium Panorama] Fumee de feu de camp ignoree dans le decor", t);
+                }
+            }
+        }
+    }
+
+    /** Faux monde du decor geant et rayon du Planarium (pour les particules du decor), ou null. */
+    static LitRenderingWorld sceneryWorld() {
+        return renderData != null && renderData.fakeRenderingWorld instanceof LitRenderingWorld lit ? lit : null;
+    }
+
+    static int sceneryRadius() {
+        return currentRadius;
     }
 
     /**
@@ -680,6 +789,7 @@ public final class ClientView {
         sentEnabled = null;
         sentSoundPrefs = null;
         OutsideRecordClient.clear();
+        SceneryParticles.clear();
         dispose();
         MiniLight.clear();
         LunarClient.clear();
@@ -891,6 +1001,7 @@ public final class ClientView {
         Map<BlockPos, CulledStatePos> byPos = new HashMap<>(data.statePosCache.size() * 2);
         for (CulledStatePos state : data.statePosCache) byPos.put(state.pos, state);
         statePosByPos = byPos;
+        sceneryVersion++;
         Set<SectionPos> carriedSections = new HashSet<>(pendingSectionSet);
         Set<SectionPos> dirtySections = changedSections(renderData, data, sectionStates, light, info, radius);
         dirtySections.addAll(carriedSections);
@@ -1078,6 +1189,7 @@ public final class ClientView {
     private static void applyPatch(StructureRenderData data, Map<BlockPos, BlockChange> patch, byte[] light,
                                    OutsideViewPayload info, int radius, long diffNanos) {
         long start = System.nanoTime();
+        sceneryVersion++;
         LitRenderingWorld lit = (LitRenderingWorld) data.fakeRenderingWorld;
         Set<SectionPos> dirty = new HashSet<>();
         BlockPos planarium = new BlockPos(radius, radius, radius);

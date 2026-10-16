@@ -81,17 +81,17 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
         return values[index];
     }
 
-    /** Faces pleines des blocs de la miniature (escaliers, dalles...), aux indices de la table du bocal. */
-    private byte[] facesMap() {
+    /** Formes des faces des blocs de la miniature (escaliers, dalles...), aux indices de la table du bocal. */
+    private net.minecraft.world.phys.shapes.VoxelShape[][] facesMap() {
         int size = JarLight.TABLE_SIZE;
         int height = JarLight.TABLE_HEIGHT;
-        byte[] masks = new byte[size * height * size];
+        net.minecraft.world.phys.shapes.VoxelShape[][] masks = new net.minecraft.world.phys.shapes.VoxelShape[size * height * size][];
         BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
         for (int x = 0; x < size; x++) {
             for (int y = 0; y < height; y++) {
                 for (int z = 0; z < size; z++) {
                     at.set(x, y - 1, z);
-                    masks[(x * height + y) * size + z] = JarLight.faceMask(getBlockState(at), this, at);
+                    masks[(x * height + y) * size + z] = JarLight.faceShapes(getBlockState(at), this, at);
                 }
             }
         }

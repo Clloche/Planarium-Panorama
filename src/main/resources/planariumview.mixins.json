@@ -16,6 +16,8 @@
     "ClientLevelMixin",
     "ParticleAccessor",
     "ParticleLightMixin",
+    "ParticleEngineTickMixin",
+    "ClientLevelParticleMixin",
     "DimensionTypeMixin",
     "DynamicTextureMixin",
     "EntityLightMixin",

@@ -5,6 +5,7 @@ import net.minecraft.client.particle.Particle;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
@@ -20,5 +21,11 @@ public abstract class ParticleLightMixin {
         if (light != null) {
             cir.setReturnValue(light);
         }
+    }
+
+    /** Les particules du decor s'arretent sur les blocs du decor (voir SceneryParticles.collide). */
+    @Inject(method = "move", at = @At("TAIL"), require = 0)
+    private void planariumview$sceneryGround(double dx, double dy, double dz, CallbackInfo ci) {
+        SceneryParticles.collide((Particle) (Object) this, dy);
     }
 }
