@@ -11,6 +11,7 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.util.RandomSource;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
@@ -216,14 +217,64 @@ public final class SceneryParticles {
                                     double vz, int light) {
         Minecraft mc = Minecraft.getInstance();
         Particle particle;
+        List<Particle> added = new java.util.ArrayList<>(1);
+        List<Particle> outer = creating;
+        creating = added;
         try {
             particle = mc.particleEngine.createParticle(options, x, y, z, vx, vy, vz);
         } catch (Exception e) {
             return null;
+        } finally {
+            creating = outer;
         }
-        if (particle == null) {
+        if (particle == null || !adopt(particle, space, light)) {
             return null;
         }
+        // Particules creees en meme temps par celle-ci (un autre mod qui en ajoute une seconde directement) : aussi a
+        // l'echelle du faux monde.
+        for (Particle other : added) {
+            if (other != particle) {
+                adopt(other, space, light);
+            }
+        }
+        return particle;
+    }
+
+    /** Particules ajoutees au moteur pendant que spawnAt en cree une (voir onEngineAdd), ou null. */
+    private static List<Particle> creating;
+
+    /**
+     * Chaque particule ajoutee au moteur de Minecraft (voir ParticleEngineTickMixin). Pendant qu'une particule du decor
+     * bouge, celles qu'elle ajoute directement au moteur (sans passer par le monde, comme le font certains mods) sont aussi
+     * des particules du decor : sinon elles apparaissent a taille normale, geantes dans une miniature.
+     */
+    public static void onEngineAdd(Particle particle) {
+        if (particle == null) {
+            return;
+        }
+        if (creating != null) {
+            creating.add(particle);
+            return;
+        }
+        Particle parent = ticking;
+        if (parent == null || SPACE.containsKey(particle)) {
+            return;
+        }
+        Space space = SPACE.get(parent);
+        if (space == null) {
+            return;
+        }
+        Integer light = LIGHT.get(parent);
+        if (adopt(particle, space, light != null ? light : LightTexture.pack(15, 15))) {
+            Integer hue = HUE.get(parent);
+            if (hue != null) {
+                HUE.put(particle, hue);
+            }
+        }
+    }
+
+    /** Met une particule deja creee a l'echelle du faux monde. Faux (et la particule est enlevee) si c'est impossible. */
+    private static boolean adopt(Particle particle, Space space, int light) {
         float scale = (float) space.scale();
         float before = particle instanceof com.matthieu.planariumview.mixin.SingleQuadParticleAccessor quad
                 ? quad.planariumview$getQuadSize() : -1.0F;
@@ -232,7 +283,7 @@ public final class SceneryParticles {
             // Particule d'un autre mod qui garde sa taille (ou se dessine a sa facon) : dans une miniature, elle
             // apparaitrait 32 fois trop grande. On l'enleve.
             particle.remove();
-            return null;
+            return false;
         }
         if (particle instanceof ParticleAccessor access) {
             // La vitesse (y compris la part au hasard ajoutee par la particule) et la gravite, a l'echelle du faux monde.
@@ -244,10 +295,10 @@ public final class SceneryParticles {
         }
         LIGHT.put(particle, light);
         SPACE.put(particle, space);
-        return particle;
+        return true;
     }
 
-    /** Classes de particules deja ecrites dans le log (voir resized). */
+    /** Classes de particules deja signalees dans le log (voir resized). */
     private static final java.util.Set<Class<?>> UNSCALED = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
 
     /**
@@ -261,10 +312,9 @@ public final class SceneryParticles {
         // La taille de base (quadSize) et pas getQuadSize : la fumee, par exemple, part d'une taille 0 et grossit.
         boolean ok = particle instanceof com.matthieu.planariumview.mixin.SingleQuadParticleAccessor quad && before > 0.0F
                 && quad.planariumview$getQuadSize() <= before * scale * 2.0F + 1.0E-4F;
-        if (UNSCALED.add(particle.getClass())) {
-            // TEMPORAIRE : chaque sorte de particule de miniature, une fois, pour trouver celles qui restent geantes.
-            LOGGER.info("[Planarium Panorama] Particule de miniature : {} ({})", particle.getClass().getName(),
-                    ok ? "rapetissee" : "ignoree, sa taille ne change pas");
+        if (!ok && UNSCALED.add(particle.getClass())) {
+            LOGGER.info("[Planarium Panorama] Particule ignoree dans la miniature (sa taille ne change pas) : {}",
+                    particle.getClass().getName());
         }
         return ok;
     }
@@ -465,5 +515,6 @@ public final class SceneryParticles {
         HUES.clear();
         EMITTERS.clear();
         ticking = null;
+        creating = null;
     }
 }

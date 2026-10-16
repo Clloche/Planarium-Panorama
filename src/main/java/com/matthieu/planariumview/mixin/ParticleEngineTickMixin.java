@@ -9,7 +9,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Retient quelle particule bouge, pour que celles creees par une particule du decor le soient aussi (gouttes). */
+/**
+ * Retient quelle particule bouge, pour que celles creees par une particule du decor le soient aussi (gouttes), et voit
+ * chaque particule ajoutee (celles que certains mods ajoutent directement au moteur).
+ */
 @Mixin(ParticleEngine.class)
 public abstract class ParticleEngineTickMixin {
 
@@ -21,5 +24,10 @@ public abstract class ParticleEngineTickMixin {
     @Inject(method = "tickParticle", at = @At("RETURN"), require = 0)
     private void planariumview$endTick(Particle particle, CallbackInfo ci) {
         SceneryParticles.endTick();
+    }
+
+    @Inject(method = "add(Lnet/minecraft/client/particle/Particle;)V", at = @At("HEAD"), require = 0)
+    private void planariumview$add(Particle particle, CallbackInfo ci) {
+        SceneryParticles.onEngineAdd(particle);
     }
 }
