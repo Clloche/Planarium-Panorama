@@ -674,6 +674,11 @@ public final class SkySync {
 
     private static ResourceLocation sourceTypeId;
 
+    /** Type de dimension du monde du Planarium (minecraft:overworld...), ou null si inconnu. */
+    public static ResourceLocation sourceDimensionType() {
+        return dim != null ? sourceTypeId : null;
+    }
+
     /** Le type de dimension du Planarium, ou null si inconnu. */
     private static net.minecraft.world.level.dimension.DimensionType sourceType(ClientLevel level) {
         ResourceLocation id = sourceTypeId;

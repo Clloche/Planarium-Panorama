@@ -557,6 +557,11 @@ public final class ClientView {
      */
     private static void tickSceneryAmbience(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
+        // Cascades du decor avec les sons de Dynamic Surroundings (integration DS et sons d'ambiance du decor).
+        boolean inJar = mc.level != null && currentDim != null && mc.level.dimension().location().equals(currentDim);
+        com.matthieu.planariumview.client.sound.SceneryWaterfalls.tick(
+                !mc.isPaused() && inJar && Config.sceneryAmbience() && Config.outsideAmbience() ? sceneryWorld() : null,
+                currentRadius, sceneryVersion);
         if (!mc.isPaused()) {
             SceneryParticles.tick();
             if (Config.sceneryParticles()) {
@@ -577,9 +582,14 @@ public final class ClientView {
                 ? (world, options, x, y, z, vx, vy, vz) -> onSceneryParticle(options, x, y, z, vx, vy, vz) : null);
         try {
             // Comme ClientLevel.animateTick : 667 tirages a 16 blocs et 667 a 32 blocs du point d'ecoute.
+            windChecks = particles;
             for (int i = 0; i < 667; i++) {
                 ambientTick(lit, radius, 16, pos);
                 ambientTick(lit, radius, 32, pos);
+            }
+            windChecks = false;
+            if (particles) {
+                SceneryBubbles.tick(lit, radius);
             }
             if (particles) {
                 campfireSmoke(lit, radius);
@@ -600,11 +610,24 @@ public final class ClientView {
         }
         pos.set(x, y, z);
         BlockState state = lit.getBlockState(pos);
+        // Rafales de Windy, comme Minecraft le lui permet autour du joueur : sur les blocs pas pleins (souvent de l'air).
+        if (windChecks && !state.isCollisionShapeFullBlock(lit, pos)) {
+            OutsideViewPayload info = lastInfo;
+            com.matthieu.planariumview.compat.WindyCompat.tryWind(lit, pos.immutable(), radius,
+                    info != null ? info.origin() : null, AMBIENT_RANDOM);
+        }
         if (state.isAir() || AMBIENT_BROKEN.contains(state.getBlock())) {
             return;
         }
+        // Jets de bulles de Dynamic Surroundings (integration DS).
+        if (windChecks && Config.outsideAmbience()) {
+            SceneryBubbles.tryStart(lit, pos, state);
+        }
         animateBlock(lit, pos.immutable(), state);
     }
+
+    /** Vrai pendant le tirage des blocs du decor si les particules du decor sont actives (vent de Windy). */
+    private static boolean windChecks;
 
     /**
      * Ambiance d'un bloc d'un faux monde (decor geant ou miniature), comme ClientLevel.doAnimateTick : celle du bloc,
@@ -846,6 +869,7 @@ public final class ClientView {
         sentSoundPrefs = null;
         OutsideRecordClient.clear();
         SceneryParticles.clear();
+        SceneryBubbles.clear();
         MiniParticles.clear();
         dispose();
         MiniLight.clear();

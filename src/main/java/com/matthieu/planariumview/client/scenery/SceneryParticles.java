@@ -171,6 +171,48 @@ public final class SceneryParticles {
         return new Space(world, giant, origin, origin - ClientView.Y_SHIFT, origin, null, true, null);
     }
 
+    /**
+     * Particule tres loin dans le decor (vent de Windy, a 40-70 blocs) : plus loin que le decor dessine, ou le
+     * brouillard la cacherait. On la rapproche du Planarium jusqu'au bord du decor en la rapetissant d'autant : vue du
+     * bocal, elle a la meme taille et la meme direction. Lumiere fixe ({@code light}).
+     */
+    public static void spawnFar(LitRenderingWorld world, int radius, ParticleOptions options, double x, double y, double z,
+                         int light) {
+        double center = radius + 0.5;
+        double dx = x - center;
+        double dy = y - center;
+        double dz = z - center;
+        double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        double reach = Math.max(8.0, ClientView.viewRadius() * 0.9);
+        double shrink = distance > reach ? reach / distance : 1.0;
+        Space giant = giantSpace(world, radius);
+        double scale = giant.scale() * shrink;
+        // Le Planarium reste au meme endroit : on rapproche tout autour de lui.
+        double ox = center * giant.scale() + giant.ox() - center * scale;
+        double oy = center * giant.scale() + giant.oy() - center * scale;
+        double oz = center * giant.scale() + giant.oz() - center * scale;
+        spawn(new Space(world, scale, ox, oy, oz, null, false, null), options, x, y, z, 0.0, 0.0, 0.0, light);
+    }
+
+    /**
+     * Liquide du faux monde la ou se trouve une particule du decor, ou null pour une particule normale. Les bulles de
+     * Minecraft disparaissent hors de l'eau : elles regardent l'eau du decor, pas le vrai monde (voir BubbleParticleMixin).
+     */
+    public static net.minecraft.world.level.material.FluidState fluidAt(Particle particle) {
+        if (SPACE.isEmpty()) {
+            return null;
+        }
+        Space space = SPACE.get(particle);
+        if (space == null || space.world() == null) {
+            return null;
+        }
+        net.minecraft.world.phys.AABB box = particle.getBoundingBox();
+        double scale = space.scale();
+        return space.world().getFluidState(net.minecraft.core.BlockPos.containing(
+                ((box.minX + box.maxX) * 0.5 - space.ox()) / scale, (box.minY - space.oy()) / scale,
+                ((box.minZ + box.maxZ) * 0.5 - space.oz()) / scale));
+    }
+
     /** Lumiere d'une particule du decor, ou null pour une particule normale. */
     public static Integer lightOf(Particle particle) {
         if (LIGHT.isEmpty()) {
