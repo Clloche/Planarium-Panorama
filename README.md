@@ -46,7 +46,7 @@ Planarium Panorama is made to be compatible with as many mods as possible. This 
 
 The version indicated is the version it has been tested with.
 
-`✅` means compatible, `⚠️` means partly compatible. Versions are the ones it was tested with.
+`✅` means compatible, `⚠️` means partly compatible. Versions shown are the ones that were tested.
 
 ## Known issues
 
