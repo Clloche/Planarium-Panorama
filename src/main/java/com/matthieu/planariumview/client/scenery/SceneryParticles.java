@@ -191,8 +191,16 @@ public final class SceneryParticles {
         double ox = center * giant.scale() + giant.ox() - center * scale;
         double oy = center * giant.scale() + giant.oy() - center * scale;
         double oz = center * giant.scale() + giant.oz() - center * scale;
-        spawn(new Space(world, scale, ox, oy, oz, null, false, null), options, x, y, z, 0.0, 0.0, 0.0, light);
+        Particle particle = spawnAt(new Space(world, scale, ox, oy, oz, null, false, null), options,
+                x * scale + ox, y * scale + oy, z * scale + oz, 0.0, 0.0, 0.0, light);
+        if (particle != null && FAR_SIZE != 1.0F) {
+            // Un peu plus large : vues de loin dans le decor, les rafales paraissaient fines.
+            particle.scale(FAR_SIZE);
+        }
     }
+
+    /** Agrandissement des particules lointaines (voir spawnFar). */
+    private static final float FAR_SIZE = 1.5F;
 
     /**
      * Liquide du faux monde la ou se trouve une particule du decor, ou null pour une particule normale. Les bulles de
