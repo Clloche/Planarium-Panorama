@@ -557,6 +557,9 @@ public final class SceneryParticles {
                 return;
             }
         }
+        if (jar(particle, space, dy)) {
+            return;
+        }
         if (dy == 0.0) {
             return;
         }
@@ -599,6 +602,53 @@ public final class SceneryParticles {
         } catch (Exception ignored) {
             // Bloc modde qui suppose un vrai monde : la particule continue sans sol.
         }
+    }
+
+    /**
+     * Decor geant : le Planarium lui-meme (le bocal ou se trouve le joueur) est vide dans le faux monde. Une particule
+     * qui y tombe (goutte de lave ou d'eau sous un bloc juste au-dessus) s'arrete sur son toit, une qui monte s'arrete
+     * sous son plancher, et une qui y entre par le cote disparait : rien du dehors n'entre dans le bocal. Vrai si la
+     * particule a ete arretee ou enlevee.
+     */
+    private static boolean jar(Particle particle, Space space, double dy) {
+        double scale = space.scale();
+        if (space.bounds() != null || scale != (double) ClientView.GIANT) {
+            return false;
+        }
+        int r = (int) Math.floor(-space.ox() / scale);
+        net.minecraft.world.phys.AABB box = particle.getBoundingBox();
+        double tx = ((box.minX + box.maxX) * 0.5 - space.ox()) / scale;
+        double tz = ((box.minZ + box.maxZ) * 0.5 - space.oz()) / scale;
+        if (tx < r || tx >= r + 1 || tz < r || tz >= r + 1) {
+            return false;
+        }
+        double lift = com.matthieu.planariumview.compat.FallingLeavesCompat.renderLift(particle);
+        double low = (box.minY + lift - space.oy()) / scale;
+        double high = (box.maxY - space.oy()) / scale;
+        double top = r + 1;
+        double bottom = r;
+        if (low >= top || high <= bottom) {
+            return false;
+        }
+        double wx = (box.minX + box.maxX) * 0.5;
+        double wz = (box.minZ + box.maxZ) * 0.5;
+        if (dy < 0.0 && low - dy / scale >= top - 1.0E-4) {
+            particle.setPos(wx, top * scale + space.oy() - lift, wz);
+            if (particle instanceof ParticleAccessor access) {
+                access.planariumview$setYd(0.0);
+                access.planariumview$setOnGround(true);
+            }
+            return true;
+        }
+        if (dy > 0.0 && high - dy / scale <= bottom + 1.0E-4) {
+            particle.setPos(wx, bottom * scale + space.oy() - (box.maxY - box.minY), wz);
+            if (particle instanceof ParticleAccessor access) {
+                access.planariumview$setYd(0.0);
+            }
+            return true;
+        }
+        particle.remove();
+        return true;
     }
 
     /** Plafond du faux monde : une particule qui monte (fumee) s'arrete sous le bloc, comme sous un vrai bloc. */
