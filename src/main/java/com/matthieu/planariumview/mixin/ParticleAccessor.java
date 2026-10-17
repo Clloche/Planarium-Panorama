@@ -36,4 +36,22 @@ public interface ParticleAccessor {
 
     @Accessor("onGround")
     void planariumview$setOnGround(boolean value);
+
+    @Accessor("x")
+    double planariumview$getX();
+
+    @Accessor("y")
+    double planariumview$getY();
+
+    @Accessor("z")
+    double planariumview$getZ();
+
+    @Accessor("xo")
+    void planariumview$setXo(double value);
+
+    @Accessor("yo")
+    void planariumview$setYo(double value);
+
+    @Accessor("zo")
+    void planariumview$setZo(double value);
 }

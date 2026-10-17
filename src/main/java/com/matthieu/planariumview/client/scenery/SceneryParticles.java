@@ -382,6 +382,21 @@ public final class SceneryParticles {
         float scale = (float) space.scale();
         float before = particle instanceof com.matthieu.planariumview.mixin.SingleQuadParticleAccessor quad
                 ? quad.planariumview$getQuadSize() : -1.0F;
+        if (particle instanceof ParticleAccessor nudge && scale != 1.0F) {
+            // Certaines particules se decalent un peu au hasard en naissant (flammes des torches : jusqu'a 0,05 bloc,
+            // sans deplacer leur boite) : dans une miniature, ce decalage faisait 1,5 bloc et la flamme sautait a cote
+            // de la torche pendant un tick. On le met a l'echelle du faux monde.
+            net.minecraft.world.phys.AABB box = particle.getBoundingBox();
+            double cx = (box.minX + box.maxX) * 0.5;
+            double cz = (box.minZ + box.maxZ) * 0.5;
+            double nx = cx + (nudge.planariumview$getX() - cx) * scale;
+            double ny = box.minY + (nudge.planariumview$getY() - box.minY) * scale;
+            double nz = cz + (nudge.planariumview$getZ() - cz) * scale;
+            particle.setPos(nx, ny, nz);
+            nudge.planariumview$setXo(nx);
+            nudge.planariumview$setYo(ny);
+            nudge.planariumview$setZo(nz);
+        }
         particle.scale(scale);
         if (!resized(particle, before, scale)) {
             // Particule d'un autre mod qui garde sa taille (ou se dessine a sa facon) : dans une miniature, elle
