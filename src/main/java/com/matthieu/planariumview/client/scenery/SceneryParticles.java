@@ -627,15 +627,19 @@ public final class SceneryParticles {
         if (wx < minX || wx >= maxX || wz < minX || wz >= maxX) {
             return false;
         }
+        // Partie dessinee sous sa position : la moitie d'une particule normale (son carre est centre sur elle, et une
+        // goutte du decor fait plusieurs blocs) ; rien pour une feuille de Falling Leaves, dessinee un peu plus haut.
         double lift = com.matthieu.planariumview.compat.FallingLeavesCompat.renderLift(particle);
-        double low = box.minY + lift;
+        double under = lift > 0.0 ? -lift
+                : particle instanceof net.minecraft.client.particle.SingleQuadParticle quad ? quad.getQuadSize(0.0F) : 0.0;
+        double low = box.minY - under;
         double high = box.maxY;
         if (low >= top || high <= bottom) {
             return false;
         }
         if (dy < 0.0 && low - dy >= top - 1.0E-4) {
             // Tombee sur le toit du bocal.
-            particle.setPos(wx, top - lift, wz);
+            particle.setPos(wx, top + under, wz);
             if (particle instanceof ParticleAccessor access) {
                 access.planariumview$setYd(0.0);
                 access.planariumview$setOnGround(true);
@@ -649,6 +653,10 @@ public final class SceneryParticles {
                 access.planariumview$setYd(0.0);
             }
             return true;
+        }
+        if (box.minY >= top) {
+            // Seul son dessin touche le toit (goutte qui pend sous un bloc juste au-dessus) : on la laisse.
+            return false;
         }
         particle.remove();
         return true;

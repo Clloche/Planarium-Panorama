@@ -213,6 +213,46 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
         }
     }
 
+    /**
+     * Pendant le dessin du decor geant : le Planarium et le bloc juste au-dessus (la ou est le bocal) comptent comme de
+     * l'air. Sinon, les blocs et les liquides autour cachaient leurs faces tournees vers eux : un Planarium submerge
+     * laissait des trous dans le liquide autour du bocal. Seulement pour le fil qui dessine.
+     */
+    private BlockPos hiddenLow;
+    private BlockPos hiddenHigh;
+    private Thread hidingThread;
+
+    public void hideJarCells(BlockPos planarium) {
+        hiddenLow = planarium.immutable();
+        hiddenHigh = planarium.above();
+        hidingThread = Thread.currentThread();
+    }
+
+    public void showJarCells() {
+        hidingThread = null;
+    }
+
+    private boolean hidden(BlockPos pos) {
+        return hidingThread != null && hidingThread == Thread.currentThread()
+                && (pos.equals(hiddenLow) || pos.equals(hiddenHigh));
+    }
+
+    @Override
+    public net.minecraft.world.level.block.state.BlockState getBlockState(BlockPos pos) {
+        if (hidden(pos)) {
+            return net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
+        }
+        return super.getBlockState(pos);
+    }
+
+    @Override
+    public net.minecraft.world.level.material.FluidState getFluidState(BlockPos pos) {
+        if (hidden(pos)) {
+            return net.minecraft.world.level.material.Fluids.EMPTY.defaultFluidState();
+        }
+        return super.getFluidState(pos);
+    }
+
     public static boolean isGiant(Object world) {
         return constructingGiant || (world instanceof LitRenderingWorld lit && lit.giant);
     }

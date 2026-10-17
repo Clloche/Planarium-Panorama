@@ -1678,7 +1678,22 @@ public final class ClientView {
         BlockRenderDispatcher dispatcher = Minecraft.getInstance().getBlockRenderer();
         ModelBlockRenderer modelRenderer = dispatcher.getModelRenderer();
         RandomSource random = RandomSource.create();
+        LitRenderingWorld hiding = data.fakeRenderingWorld instanceof LitRenderingWorld lit ? lit : null;
+        if (hiding != null) {
+            hiding.hideJarCells(new BlockPos(radius, radius, radius));
+        }
+        try {
+            tesselateStates(data, radius, statePositions, dispatcher, modelRenderer, random, matrix);
+        } finally {
+            if (hiding != null) {
+                hiding.showJarCells();
+            }
+        }
+    }
 
+    private static void tesselateStates(StructureRenderData data, int radius, List<CulledStatePos> statePositions,
+                                        BlockRenderDispatcher dispatcher, ModelBlockRenderer modelRenderer,
+                                        RandomSource random, PoseStack matrix) {
         for (CulledStatePos pos : statePositions) {
             BlockState renderState = data.fakeRenderingWorld.getBlockState(pos.pos);
             FluidState fluidState = pos.state.getFluidState();
