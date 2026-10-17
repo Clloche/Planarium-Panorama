@@ -607,7 +607,7 @@ public final class SceneryParticles {
     /**
      * Decor geant : le Planarium lui-meme (le bocal ou se trouve le joueur) est vide dans le faux monde. Une particule
      * qui y tombe (goutte de lave ou d'eau sous un bloc juste au-dessus) s'arrete sur son toit, une qui monte s'arrete
-     * sous son plancher, et une qui y entre par le cote disparait : rien du dehors n'entre dans le bocal. Vrai si la
+     * sous son pied (la fumee d'un feu de camp en dessous), et une qui y entre par le cote disparait : rien du dehors n'entre dans le bocal. Vrai si la
      * particule a ete arretee ou enlevee.
      */
     private static boolean jar(Particle particle, Space space, double dy) {
@@ -615,33 +615,36 @@ public final class SceneryParticles {
         if (space.bounds() != null || scale != (double) ClientView.GIANT) {
             return false;
         }
-        int r = (int) Math.floor(-space.ox() / scale);
+        // Le Planarium dans le vrai monde (la dimension d'Ars) : de son pied (le bas de son bloc dans le decor) au
+        // plafond du bocal, parois comprises.
+        double minX = com.matthieu.planariumview.client.jar.JarWalls.MIN;
+        double maxX = com.matthieu.planariumview.client.jar.JarWalls.MAX + 1;
+        double bottom = -ClientView.ARS_OFFSET * (double) ClientView.GIANT - ClientView.Y_SHIFT;
+        double top = com.matthieu.planariumview.client.jar.JarWalls.MAX_Y + 1;
         net.minecraft.world.phys.AABB box = particle.getBoundingBox();
-        double tx = ((box.minX + box.maxX) * 0.5 - space.ox()) / scale;
-        double tz = ((box.minZ + box.maxZ) * 0.5 - space.oz()) / scale;
-        if (tx < r || tx >= r + 1 || tz < r || tz >= r + 1) {
+        double wx = (box.minX + box.maxX) * 0.5;
+        double wz = (box.minZ + box.maxZ) * 0.5;
+        if (wx < minX || wx >= maxX || wz < minX || wz >= maxX) {
             return false;
         }
         double lift = com.matthieu.planariumview.compat.FallingLeavesCompat.renderLift(particle);
-        double low = (box.minY + lift - space.oy()) / scale;
-        double high = (box.maxY - space.oy()) / scale;
-        double top = r + 1;
-        double bottom = r;
+        double low = box.minY + lift;
+        double high = box.maxY;
         if (low >= top || high <= bottom) {
             return false;
         }
-        double wx = (box.minX + box.maxX) * 0.5;
-        double wz = (box.minZ + box.maxZ) * 0.5;
-        if (dy < 0.0 && low - dy / scale >= top - 1.0E-4) {
-            particle.setPos(wx, top * scale + space.oy() - lift, wz);
+        if (dy < 0.0 && low - dy >= top - 1.0E-4) {
+            // Tombee sur le toit du bocal.
+            particle.setPos(wx, top - lift, wz);
             if (particle instanceof ParticleAccessor access) {
                 access.planariumview$setYd(0.0);
                 access.planariumview$setOnGround(true);
             }
             return true;
         }
-        if (dy > 0.0 && high - dy / scale <= bottom + 1.0E-4) {
-            particle.setPos(wx, bottom * scale + space.oy() - (box.maxY - box.minY), wz);
+        if (dy > 0.0 && high - dy <= bottom + 1.0E-4) {
+            // Montee sous le pied du Planarium.
+            particle.setPos(wx, bottom - (box.maxY - box.minY), wz);
             if (particle instanceof ParticleAccessor access) {
                 access.planariumview$setYd(0.0);
             }
