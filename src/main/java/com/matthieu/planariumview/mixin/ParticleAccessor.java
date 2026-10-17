@@ -46,6 +46,9 @@ public interface ParticleAccessor {
     @Accessor("z")
     double planariumview$getZ();
 
+    @Accessor("yo")
+    double planariumview$getYo();
+
     @Accessor("xo")
     void planariumview$setXo(double value);
 

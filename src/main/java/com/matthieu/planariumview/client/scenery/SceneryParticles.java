@@ -262,11 +262,39 @@ public final class SceneryParticles {
         }
     }
 
+    /**
+     * Particule qu'un autre mod cree lui-meme, sans type de particule enregistre (feuilles de Falling Leaves) : passee au
+     * faux monde comme une particule normale, puis creee a sa place dans le vrai monde par {@code factory}.
+     */
+    public record Made(java.util.function.Function<net.minecraft.world.phys.Vec3, Particle> factory) implements ParticleOptions {
+        @Override
+        public net.minecraft.core.particles.ParticleType<?> getType() {
+            return ParticleTypes.CRIT;
+        }
+    }
+
     /** Comme spawn, mais a une position deja dans le vrai monde (la vitesse reste celle du gabarit). */
     private static Particle spawnAt(Space space, ParticleOptions options, double x, double y, double z, double vx, double vy,
                                     double vz, int light) {
         Minecraft mc = Minecraft.getInstance();
         Particle particle;
+        if (options instanceof Made made) {
+            try {
+                particle = made.factory().apply(new net.minecraft.world.phys.Vec3(x, y, z));
+            } catch (Exception e) {
+                return null;
+            }
+            if (particle == null || !adopt(particle, space, light)) {
+                return null;
+            }
+            adding = true;
+            try {
+                mc.particleEngine.add(particle);
+            } finally {
+                adding = false;
+            }
+            return particle;
+        }
         boolean mini = space.bounds() != null;
         List<Particle> added = new java.util.ArrayList<>(1);
         List<Particle> outer = creating;
@@ -430,7 +458,8 @@ public final class SceneryParticles {
         }
         // Miniature : seulement les particules de Minecraft. Celles des autres mods se dessinent souvent a leur facon
         // (flammes de Nether Experience sur les torches murales...) et restent geantes meme rapetissees.
-        if (!particle.getClass().getName().startsWith("net.minecraft.")) {
+        if (!particle.getClass().getName().startsWith("net.minecraft.")
+                && !com.matthieu.planariumview.compat.FallingLeavesCompat.isLeaf(particle)) {
             noteForeign(particle);
             return false;
         }
@@ -447,12 +476,37 @@ public final class SceneryParticles {
     /** Particule du decor en train de bouger (voir ParticleEngineTickMixin), ou null. */
     private static Particle ticking;
 
+    /** Vrai si collide a ete appele pendant ce tick (voir endTick). */
+    private static boolean collided;
+    /** Vent de Falling Leaves avant sa mise a l'echelle pour la feuille qui bouge, ou null. */
+    private static float[] savedWind;
+
     public static void beginTick(Particle particle) {
         ticking = SPACE.isEmpty() || !SPACE.containsKey(particle) ? null : particle;
+        collided = false;
+        savedWind = null;
+        if (ticking != null) {
+            // Le vent de Falling Leaves souffle en blocs du vrai monde : a l'echelle du faux monde pour ses feuilles.
+            Space space = SPACE.get(particle);
+            if (space != null) {
+                savedWind = com.matthieu.planariumview.compat.FallingLeavesCompat.scaleWind(particle, space.scale());
+            }
+        }
     }
 
-    public static void endTick() {
+    public static void endTick(Particle particle) {
+        Particle was = ticking;
         ticking = null;
+        if (savedWind != null) {
+            com.matthieu.planariumview.compat.FallingLeavesCompat.restoreWind(savedWind);
+            savedWind = null;
+        }
+        // Une particule qui bouge a sa facon (sans le move de Minecraft, comme les feuilles de Falling Leaves) : le
+        // sol et les bords du faux monde quand meme.
+        if (was != null && was == particle && !collided && particle.isAlive()
+                && com.matthieu.planariumview.compat.FallingLeavesCompat.isLeaf(particle) && particle instanceof ParticleAccessor access) {
+            collide(particle, access.planariumview$getY() - access.planariumview$getYo());
+        }
     }
 
     /**
@@ -485,6 +539,7 @@ public final class SceneryParticles {
      * sur les blocs), au lieu de le traverser. {@code dy} : deplacement vertical de ce tick.
      */
     public static void collide(Particle particle, double dy) {
+        collided = true;
         if (SPACE.isEmpty()) {
             return;
         }
@@ -514,8 +569,10 @@ public final class SceneryParticles {
         net.minecraft.world.phys.AABB box = particle.getBoundingBox();
         double wx = (box.minX + box.maxX) * 0.5;
         double wz = (box.minZ + box.maxZ) * 0.5;
+        // Feuilles de Falling Leaves : dessinees un peu plus haut que leur position.
+        double lift = com.matthieu.planariumview.compat.FallingLeavesCompat.renderLift(particle);
         double tx = (wx - space.ox()) / scale;
-        double ty = (box.minY - space.oy()) / scale;
+        double ty = (box.minY + lift - space.oy()) / scale;
         double tz = (wz - space.oz()) / scale;
         net.minecraft.core.BlockPos pos = net.minecraft.core.BlockPos.containing(tx, ty, tz);
         try {
@@ -534,7 +591,7 @@ public final class SceneryParticles {
             if (Double.isNaN(top) || ty - dy / scale < top - 1.0E-4) {
                 return;
             }
-            particle.setPos(wx, top * scale + space.oy(), wz);
+            particle.setPos(wx, top * scale + space.oy() - lift, wz);
             if (particle instanceof ParticleAccessor access) {
                 access.planariumview$setYd(0.0);
                 access.planariumview$setOnGround(true);
@@ -640,6 +697,7 @@ public final class SceneryParticles {
         HUES.clear();
         EMITTERS.clear();
         ticking = null;
+        savedWind = null;
         creating = null;
         holding = false;
         adding = false;

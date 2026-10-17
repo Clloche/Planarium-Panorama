@@ -18,6 +18,7 @@
     "SingleQuadParticleAccessor",
     "ParticleLightMixin",
     "BubbleParticleMixin",
+    "LeavesBlockMixin",
     "ParticleEngineTickMixin",
     "ClientLevelParticleMixin",
     "DimensionTypeMixin",

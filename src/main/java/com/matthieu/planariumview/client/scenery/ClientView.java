@@ -637,7 +637,10 @@ public final class ClientView {
         if (state.isAir() || AMBIENT_BROKEN.contains(state.getBlock())) {
             return;
         }
+        boolean leaves = false;
         try {
+            // Feuilles de Falling Leaves (integration).
+            leaves = com.matthieu.planariumview.compat.FallingLeavesCompat.animate(lit, at, state, AMBIENT_RANDOM);
             state.getBlock().animateTick(state, lit, at, AMBIENT_RANDOM);
             FluidState fluid = state.getFluidState();
             if (!fluid.isEmpty()) {
@@ -651,6 +654,10 @@ public final class ClientView {
                 }
             }
         } catch (Throwable t) {
+            if (leaves && t instanceof ClassCastException) {
+                // Falling Leaves sur un feuillage (voir LeavesBlockMixin) : ses feuilles sont deja faites.
+                return;
+            }
             // Un bloc modde qui suppose un vrai monde : on l'ignore pour le reste de la session.
             AMBIENT_BROKEN.add(state.getBlock());
             LOGGER.debug("[Planarium Panorama] Ambiance du bloc {} ignoree dans le decor", state.getBlock(), t);

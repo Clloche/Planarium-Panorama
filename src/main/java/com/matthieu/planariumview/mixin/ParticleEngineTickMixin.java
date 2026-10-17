@@ -23,7 +23,7 @@ public abstract class ParticleEngineTickMixin {
 
     @Inject(method = "tickParticle", at = @At("RETURN"), require = 0)
     private void planariumview$endTick(Particle particle, CallbackInfo ci) {
-        SceneryParticles.endTick();
+        SceneryParticles.endTick(particle);
     }
 
     @Inject(method = "add(Lnet/minecraft/client/particle/Particle;)V", at = @At("HEAD"), cancellable = true, require = 0)
