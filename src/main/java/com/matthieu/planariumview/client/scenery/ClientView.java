@@ -1464,7 +1464,13 @@ public final class ClientView {
         blockEntityLight.clear();
         for (BlockPos pos : data.fakeRenderingWorld.blockEntityMap.keySet()) {
             try {
-                blockEntityLight.put(pos, LevelRenderer.getLightColor(data.fakeRenderingWorld, pos));
+                int light = LevelRenderer.getLightColor(data.fakeRenderingWorld, pos);
+                if (com.matthieu.planariumview.compat.ColorCompat.building() && (light & 0xF0) != 0
+                        && (light & ~0x00F000F0) == 0) {
+                    // Pas de couleur dans la case du bloc (boite a outils de Create...) : celle d'une case voisine.
+                    light |= FaceHueConsumer.hueAround(data.fakeRenderingWorld, pos);
+                }
+                blockEntityLight.put(pos, light);
             } catch (Exception e) {
                 LOGGER.debug("[Planarium View] Lumiere de bloc special ignoree", e);
             }
@@ -1758,8 +1764,11 @@ public final class ClientView {
                 }
                 if (renderState.getFluidState().isEmpty() && isModel) {
                     try {
+                        // Couleur de Contraption Lights prise devant chaque face (voir FaceHueConsumer).
+                        com.mojang.blaze3d.vertex.VertexConsumer faces = com.matthieu.planariumview.compat.ColorCompat.building()
+                                ? new FaceHueConsumer(builder, data.fakeRenderingWorld, pos.pos) : builder;
                         PlanariumRenderer.tesselateBlock(pos, modelRenderer, data.fakeRenderingWorld, model, renderState,
-                                pos.pos, matrix, builder, random, renderState.getSeed(pos.pos),
+                                pos.pos, matrix, faces, random, renderState.getSeed(pos.pos),
                                 OverlayTexture.NO_OVERLAY, ModelData.EMPTY, renderType);
                     } catch (Exception e) {
                         LOGGER.debug("[Planarium View] Bloc ignore", e);
@@ -2134,7 +2143,9 @@ public final class ClientView {
                 int light = stored != null ? stored : LevelRenderer.getLightColor(data.fakeRenderingWorld, pos);
                 try {
                     if (!AmbersolCompat.render(blockEntity, partialTick, poseStack, blockEntityBuffers)) {
-                        renderer.render(blockEntity, partialTick, poseStack, blockEntityBuffers, light, OverlayTexture.NO_OVERLAY);
+                        // Couleur de Contraption Lights gardee meme si le rendu recalcule la lumiere (voir HueKeepingBuffers).
+                        renderer.render(blockEntity, partialTick, poseStack, HueKeepingBuffers.of(blockEntityBuffers, light),
+                                light, OverlayTexture.NO_OVERLAY);
                     }
                 } catch (Exception e) {
                     LOGGER.debug("[Planarium View] Bloc special ignore", e);
