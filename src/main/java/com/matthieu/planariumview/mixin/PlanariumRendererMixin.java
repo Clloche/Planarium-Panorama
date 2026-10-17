@@ -118,6 +118,10 @@ public abstract class PlanariumRendererMixin {
                                                 net.minecraft.world.level.block.entity.BlockEntity blockEntity, float partialTick,
                                                 PoseStack poseStack, net.minecraft.client.renderer.MultiBufferSource buffers,
                                                 int packedLight, int packedOverlay) {
+        if (com.matthieu.planariumview.compat.SwingingLanternsCompat.skip(renderer)) {
+            // Lanterne de Swinging Lanterns : immobile dans la miniature (voir SwingingLanternsCompat).
+            return;
+        }
         if (com.matthieu.planariumview.config.Config.enabled()
                 && com.matthieu.planariumview.compat.AmbersolCompat.render(blockEntity, partialTick, poseStack, buffers)) {
             return;

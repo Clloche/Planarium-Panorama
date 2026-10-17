@@ -2131,7 +2131,8 @@ public final class ClientView {
                     planariumTile.key = null;
                 }
                 BlockEntityRenderer<BlockEntity> renderer = dispatcher.getRenderer(blockEntity);
-                if (renderer == null) {
+                // Lanterne de Swinging Lanterns : immobile dans le decor (voir SwingingLanternsCompat).
+                if (renderer == null || com.matthieu.planariumview.compat.SwingingLanternsCompat.skip(renderer)) {
                     continue;
                 }
                 poseStack.pushPose();
