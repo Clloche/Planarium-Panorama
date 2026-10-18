@@ -11,14 +11,14 @@ Planarium as a giant world, 32 times bigger, under the real sky, with real light
 
 ## Features
 
-Include : 
+Includes : 
 - **Giant view:** the blocks around the Planarium, drawn 32 times bigger around the jar.
 - **Synced sky and weather:** the outside time, sun, moon, rain, snow, clouds and lightning.
 - **Real lighting:** the giant view, the miniature and the jar interior are lit like the Planarium's real spot.
 - **Live scenery:** block changes outside (redstone, pistons, doors...) show up in the giant view within seconds.
 - **Outside sounds:** explosions, blocks, mobs and jukebox music from around the Planarium, heard from their direction.
 
-Everything can be changed in game: **Mods** > **Planarium Panorama** > **Config**.
+Everything can be changed in game: **Mods** > **Planarium Panorama** > **Config** or in the config files.
 
 ## Optional integrations
 
@@ -44,6 +44,7 @@ Planarium Panorama is made to be compatible with as many mods as possible. This 
 | [Windy: Configurable](https://www.curseforge.com/minecraft/mc-mods/windy-configurable)<br>v1.2.1 | ✅ | The ambiant winds can be viewed in the Planarium (follows the Windy config) |
 | [Distant Horizons](https://modrinth.com/mod/distanthorizons)<br>v3.3.3 | ⚠️ | Doesn't work inside a jar: turned off automatically there (it would draw the void around it), unchanged everywhere else |
 | [Jaden's Nether Expansion](https://www.curseforge.com/minecraft/mc-mods/jadens-nether-expansion)<br>v2.4.1 | ⚠️ | Its custom particles (flames, smoke...) are not shown in the giant scenery and the miniature, instead the vanilla particles are |
+| [Shaders (Iris)](https://modrinth.com/mod/iris)<br>v1.8.14-beta.1 | ⚠️ | The shaders inside the Planarium will not follow the shaders of the outside |
 | [Swinging Lanterns](https://modrinth.com/mod/swinging-lanterns)<br>v2.0.4 | ⚠️ | Swinging lanterns are disabled when viewing them through either the miniature or the giant scenery |
 
 The version indicated is the version it has been tested with.
