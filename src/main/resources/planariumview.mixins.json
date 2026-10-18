@@ -15,6 +15,7 @@
   "client": [
     "ClientLevelMixin",
     "ParticleAccessor",
+    "ParticleEngineAccessor",
     "SingleQuadParticleAccessor",
     "ParticleLightMixin",
     "BubbleParticleMixin",

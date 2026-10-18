@@ -60,7 +60,7 @@ public final class SceneryParticles {
      * colonnes de {@code center - view} a {@code center + view} (decor geant).
      */
     public static void readHues(LitRenderingWorld world, Iterable<com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos> states,
-                         boolean columns, int center, int view) {
+                                boolean columns, int center, int view) {
         if (world == null) {
             return;
         }
@@ -177,7 +177,7 @@ public final class SceneryParticles {
      * bocal, elle a la meme taille et la meme direction. Lumiere fixe ({@code light}).
      */
     public static void spawnFar(LitRenderingWorld world, int radius, ParticleOptions options, double x, double y, double z,
-                         int light) {
+                                int light) {
         double center = radius + 0.5;
         double dx = x - center;
         double dy = y - center;
@@ -251,7 +251,7 @@ public final class SceneryParticles {
      * d'origine (en blocs du gabarit par tick), {@code light} : lumiere au format lightmap.
      */
     public static void spawn(Space space, ParticleOptions options, double x, double y, double z, double vx, double vy, double vz,
-                      int light) {
+                             int light) {
         Particle particle = spawnAt(space, options, x * space.scale() + space.ox(), y * space.scale() + space.oy(),
                 z * space.scale() + space.oz(), vx, vy, vz, light);
         if (particle != null && space.liveLight()) {
@@ -296,6 +296,19 @@ public final class SceneryParticles {
             return particle;
         }
         boolean mini = space.bounds() != null;
+        Particle flame = vanillaFlame(options, x, y, z, vx, vy, vz);
+        if (flame != null) {
+            if (!adopt(flame, space, light)) {
+                return null;
+            }
+            adding = true;
+            try {
+                mc.particleEngine.add(flame);
+            } finally {
+                adding = false;
+            }
+            return flame;
+        }
         List<Particle> added = new java.util.ArrayList<>(1);
         List<Particle> outer = creating;
         boolean outerHold = holding;
@@ -310,6 +323,33 @@ public final class SceneryParticles {
         } finally {
             creating = outer;
             holding = outerHold;
+        }
+        if (particle != null && particle.getClass().getName().endsWith("FlameToBurnDummyParticle")) {
+            // Flamme de Jaden's Nether Expansion venue par un autre chemin (son propre type de particule) : une flamme
+            // de Minecraft a la place, et rien de ce qu'elle a cree.
+            for (Particle other : added) {
+                other.remove();
+            }
+            particle.remove();
+            net.minecraft.resources.ResourceLocation key = net.minecraft.core.registries.BuiltInRegistries.PARTICLE_TYPE
+                    .getKey(options.getType());
+            String path = key == null ? "" : key.getPath();
+            if (!dummyLogged) {
+                dummyLogged = true;
+                LOGGER.info("[Planarium Panorama] Flamme de Jaden's Nether Expansion ({}) remplacee par celle de Minecraft", key);
+            }
+            Particle flame2 = vanillaFlame(path.contains("soul") ? ParticleTypes.SOUL_FIRE_FLAME
+                    : path.contains("small") ? ParticleTypes.SMALL_FLAME : ParticleTypes.FLAME, x, y, z, vx, vy, vz);
+            if (flame2 == null || !adopt(flame2, space, light)) {
+                return null;
+            }
+            adding = true;
+            try {
+                mc.particleEngine.add(flame2);
+            } finally {
+                adding = false;
+            }
+            return flame2;
         }
         // Particules creees en meme temps par celle-ci (un autre mod qui en ajoute une seconde directement, comme Nether
         // Experience pour la flamme des torches) : dans une miniature, elles apparaitraient a taille normale (geantes).
@@ -334,6 +374,94 @@ public final class SceneryParticles {
             }
         }
         return particle;
+    }
+
+    /**
+     * Flammes des torches, bougies et feux (normales, petites et des ames) : toujours celles de Minecraft dans le decor et
+     * les miniatures. Un autre mod peut les remplacer par les siennes (Jaden's Nether Expansion : une particule vide qui
+     * en cree d'autres plus tard, a sa facon) qui ne se mettent pas a l'echelle du decor : minuscules ou absentes. Null
+     * pour les autres particules, ou si la texture de Minecraft manque.
+     */
+    private static boolean flameWarned;
+    private static boolean dummyLogged;
+    private static java.lang.reflect.Constructor<net.minecraft.client.particle.FlameParticle> flameConstructor;
+
+    private static Particle vanillaFlame(ParticleOptions options, double x, double y, double z, double vx, double vy, double vz) {
+        net.minecraft.core.particles.ParticleType<?> type = options.getType();
+        if (type != ParticleTypes.SMALL_FLAME && type != ParticleTypes.FLAME && type != ParticleTypes.SOUL_FIRE_FLAME) {
+            return null;
+        }
+        return vanillaFlame((net.minecraft.core.particles.SimpleParticleType) type, x, y, z, vx, vy, vz);
+    }
+
+    private static Particle vanillaFlame(net.minecraft.core.particles.SimpleParticleType simple, double x, double y, double z,
+                                         double vx, double vy, double vz) {
+        boolean small = simple == ParticleTypes.SMALL_FLAME;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) {
+            return null;
+        }
+        net.minecraft.resources.ResourceLocation key = net.minecraft.core.registries.BuiltInRegistries.PARTICLE_TYPE.getKey(simple);
+        Object sprites = key == null || !(mc.particleEngine instanceof com.matthieu.planariumview.mixin.ParticleEngineAccessor engine)
+                ? null : engine.planariumview$spriteSets().get(key);
+        net.minecraft.client.particle.SpriteSet set = sprites instanceof net.minecraft.client.particle.SpriteSet known ? known
+                : atlasSprite(simple == ParticleTypes.SOUL_FIRE_FLAME ? "soul_fire_flame" : "flame");
+        if (set == null) {
+            if (!flameWarned) {
+                flameWarned = true;
+                LOGGER.info("[Planarium Panorama] Texture de flamme introuvable pour {} : flamme du mod qui la remplace", key);
+            }
+            return null;
+        }
+        try {
+            // Directement, sans le "Provider" de Minecraft : Jaden's Nether Expansion le detourne vers sa particule vide.
+            if (flameConstructor == null) {
+                flameConstructor = net.minecraft.client.particle.FlameParticle.class.getDeclaredConstructor(
+                        net.minecraft.client.multiplayer.ClientLevel.class, double.class, double.class, double.class,
+                        double.class, double.class, double.class);
+                flameConstructor.setAccessible(true);
+            }
+            net.minecraft.client.particle.FlameParticle flame = flameConstructor.newInstance(mc.level, x, y, z, vx, vy, vz);
+            flame.pickSprite(set);
+            if (small) {
+                flame.scale(0.5F);
+            }
+            return flame;
+        } catch (Throwable e) {
+            if (!flameWarned) {
+                flameWarned = true;
+                LOGGER.info("[Planarium Panorama] Flamme de Minecraft impossible a creer", e);
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Texture de Minecraft prise directement dans l'atlas des particules : un mod qui remplace la flamme sans texture
+     * (Jaden's Nether Expansion) retire aussi son jeu de textures du moteur. Null si elle manque.
+     */
+    private static net.minecraft.client.particle.SpriteSet atlasSprite(String name) {
+        try {
+            net.minecraft.client.renderer.texture.TextureAtlasSprite sprite = Minecraft.getInstance()
+                    .getTextureAtlas(net.minecraft.client.renderer.texture.TextureAtlas.LOCATION_PARTICLES)
+                    .apply(net.minecraft.resources.ResourceLocation.withDefaultNamespace(name));
+            if (sprite == null || sprite.contents().name().getPath().equals("missingno")) {
+                return null;
+            }
+            return new net.minecraft.client.particle.SpriteSet() {
+                @Override
+                public net.minecraft.client.renderer.texture.TextureAtlasSprite get(int age, int lifetime) {
+                    return sprite;
+                }
+
+                @Override
+                public net.minecraft.client.renderer.texture.TextureAtlasSprite get(net.minecraft.util.RandomSource random) {
+                    return sprite;
+                }
+            };
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** Vrai pendant la creation d'une particule de miniature : ce qui est ajoute au moteur est retenu (voir spawnAt). */
