@@ -35,14 +35,16 @@ Planarium Panorama is made to be compatible with as many mods as possible. This 
 | Mod and version | Status | Details |
 |---|:---:|---|
 | [Create](https://www.curseforge.com/minecraft/mc-mods/create) / [Flywheel](https://modrinth.com/mod/flywheel)<br>Create v6.0.10 + Flywheel v1.0.6 | ✅ | |
+| [Falling Leaves](https://www.curseforge.com/minecraft/mc-mods/falling-leaves-forge)<br>v2.6.0| ✅ | |
 | [NeoVoxy (JohnSnow)](https://github.com/NHblock-Johnsnow/neo-voxy-multiversion)<br>v0.5.0-alpha.12 | ✅ | The giant scenery can go past the render distance |
 | [Sable](https://www.curseforge.com/minecraft/mc-mods/sable)<br>v2.0.6 | ✅ | |
 | [Serene Seasons](https://modrinth.com/mod/serene-seasons)<br>v10.1.0.3 | ✅ | Grass and leaves in the jar take the season colors of the Planarium's world |
 | [Sodium](https://modrinth.com/mod/sodium)<br>v0.8.13 | ✅ | |
 | [Traveler's Titles](https://modrinth.com/mod/travelers-titles)<br>v5.1.3 | ✅ | Shows the Planarium's name when entering a jar, instead of "???" |
-| [Windy: Configurable](https://www.curseforge.com/minecraft/mc-mods/windy-configurable)<br>v1.2.1 | ✅ | The ambiant winds can be viewed in the Planarium (Follows the Windy config) |
+| [Windy: Configurable](https://www.curseforge.com/minecraft/mc-mods/windy-configurable)<br>v1.2.1 | ✅ | The ambiant winds can be viewed in the Planarium (follows the Windy config) |
 | [Distant Horizons](https://modrinth.com/mod/distanthorizons)<br>v3.3.3 | ⚠️ | Doesn't work inside a jar: turned off automatically there (it would draw the void around it), unchanged everywhere else |
-| [Jaden's Nether Expansion](https://www.curseforge.com/minecraft/mc-mods/jadens-nether-expansion)<br>v2.4.1 | ⚠️ | Its custom particles (flames, smoke...) are not shown in the giant scenery and the miniature; vanilla particles are |
+| [Jaden's Nether Expansion](https://www.curseforge.com/minecraft/mc-mods/jadens-nether-expansion)<br>v2.4.1 | ⚠️ | Its custom particles (flames, smoke...) are not shown in the giant scenery and the miniature, instead the vanilla particles are |
+| [Swinging Lanterns](https://modrinth.com/mod/swinging-lanterns)<br>v2.0.4 | ⚠️ | Swinging lanterns are disabled when viewing them through either the miniature or the giant scenery |
 
 The version indicated is the version it has been tested with.
 
