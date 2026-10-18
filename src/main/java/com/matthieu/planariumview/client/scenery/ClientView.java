@@ -1779,7 +1779,24 @@ public final class ClientView {
         }
     }
 
+    /** Moment du dernier dessin du decor geant (voir particleFog). */
+    private static volatile long lastDrawNanos;
+
+    /**
+     * Particules : quand le decor geant est dessine, elles prennent son brouillard. Avec celui du jeu, une particule du
+     * decor un peu loin (fumee d'un feu de camp) prenait la couleur du brouillard alors que le decor autour restait net.
+     * Les particules du bocal sont tout pres : ce brouillard plus lointain ne les touche pas. Faux si rien n'a change.
+     */
+    public static boolean particleFog() {
+        if (renderData == null || System.nanoTime() - lastDrawNanos > 250_000_000L) {
+            return false;
+        }
+        applySceneryFog();
+        return true;
+    }
+
     private static void draw(StructureRenderData data, RenderLevelStageEvent event) {
+        lastDrawNanos = System.nanoTime();
         if (++sortCounter > 20) {
             sortCounter = 0;
             Vec3 camera = event.getCamera().getPosition();
