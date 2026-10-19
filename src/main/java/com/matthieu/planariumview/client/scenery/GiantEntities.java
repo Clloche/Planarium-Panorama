@@ -1,5 +1,7 @@
 package com.matthieu.planariumview.client.scenery;
 
+import com.matthieu.planariumview.compat.ClTag;
+import com.matthieu.planariumview.compat.ColorCompat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
@@ -15,6 +17,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.decoration.HangingEntity;
+import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -156,10 +159,27 @@ public final class GiantEntities {
         }
         Vec3 offset = renderer.getRenderOffset(entity, partialTick);
         int packed = light != null ? light
-                : LevelRenderer.getLightColor(fakeWorld, BlockPos.containing(entity.getLightProbePosition(partialTick)));
+                : packedLight(fakeWorld, entity, partialTick);
         poseStack.pushPose();
         poseStack.translate(entity.getX() + offset.x, entity.getY() + offset.y, entity.getZ() + offset.z);
         renderer.render(entity, entity.getYRot(), partialTick, poseStack, buffers, packed);
         poseStack.popPose();
+    }
+
+    /**
+     * Lumiere d'une entite du decor, a precalculer pendant que ColorCompat pointe vers le faux monde.
+     * EntityRenderDispatcher ajoute normalement la couleur de Contraption Lights; le rendu direct ci-dessus ne passe
+     * pas par cette etape. Le resultat est donc calcule pendant la preparation et reutilise par image.
+     */
+    public static int packedLight(BlockAndTintGetter fakeWorld, Entity entity, float partialTick) {
+        BlockPos pos = BlockPos.containing(entity.getLightProbePosition(partialTick));
+        int light = LevelRenderer.getLightColor(fakeWorld, pos) & 0x00F000F0;
+        if (ColorCompat.building()) {
+            light = ClTag.retag(light, fakeWorld, pos);
+            if ((light & 0xF0) != 0 && (light & ~0x00F000F0) == 0) {
+                light |= FaceHueConsumer.hueAround(fakeWorld, pos);
+            }
+        }
+        return light;
     }
 }

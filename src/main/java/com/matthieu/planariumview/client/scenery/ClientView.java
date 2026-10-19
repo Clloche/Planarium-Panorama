@@ -156,6 +156,8 @@ public final class ClientView {
     private static boolean forcePendingBuild;
     private static int sortCounter;
     private static final Map<BlockPos, Integer> blockEntityLight = new java.util.HashMap<>();
+    /** Lumiere des entites du decor, calculee avec la source CL du faux monde et reutilisee pendant le rendu. */
+    private static final Map<net.minecraft.world.entity.Entity, Integer> sceneryEntityLight = new java.util.IdentityHashMap<>();
 
     private record SectionPos(int x, int y, int z) {
         public static SectionPos of(BlockPos pos) {
@@ -561,7 +563,7 @@ public final class ClientView {
         boolean inJar = mc.level != null && currentDim != null && mc.level.dimension().location().equals(currentDim);
         com.matthieu.planariumview.client.sound.SceneryWaterfalls.tick(
                 !mc.isPaused() && inJar && Config.sceneryAmbience() && Config.outsideAmbience() ? sceneryWorld() : null,
-                currentRadius, sceneryVersion);
+                currentRadius);
         if (!mc.isPaused()) {
             SceneryParticles.tick();
             if (Config.sceneryParticles()) {
@@ -900,6 +902,7 @@ public final class ClientView {
 
     private static void disposeRender() {
         GiantEntities.clear();
+        sceneryEntityLight.clear();
         releaseRenderData(renderData);
         for (SectionMesh mesh : sectionMeshes.values()) mesh.close();
         sectionMeshes.clear();
@@ -1079,7 +1082,7 @@ public final class ClientView {
         ColorCompat.begin(data.fakeRenderingWorld);
         try {
             stageStart = System.nanoTime();
-            computeBlockEntityLight(data);
+            computeBlockEntityLight(data, info);
             specialLightNanos = System.nanoTime() - stageStart;
         } finally {
             ColorCompat.end();
@@ -1387,7 +1390,7 @@ public final class ClientView {
         if (lightChanged || blockEntitiesChanged) {
             ColorCompat.begin(lit);
             try {
-                computeBlockEntityLight(data);
+                computeBlockEntityLight(data, info);
             } finally {
                 ColorCompat.end();
             }
@@ -1407,6 +1410,7 @@ public final class ClientView {
             pendingSectionData = data;
             pendingSectionStates = currentSectionStates;
         }
+        com.matthieu.planariumview.client.sound.SceneryWaterfalls.blocksChanged(lit, radius, patch.keySet());
         LOGGER.info("[Planarium Panorama] Correction du decor : {} blocs changes, lumiere={}, comparaison (hors rendu)={} ms, " +
                         "correction={} ms (ciel={} ms{}, blocs speciaux et textures={} ms), sections a retesseler={}",
                 patch.size(), lightChanged, String.format(java.util.Locale.ROOT, "%.1f", diffNanos / 1e6),
@@ -1456,12 +1460,13 @@ public final class ClientView {
     }
 
     /** Lumiere des blocs speciaux, calculee pendant que Contraption Lights lit notre faux monde (ColorCompat actif). */
-    private static void computeBlockEntityLight(StructureRenderData data) {
+    private static void computeBlockEntityLight(StructureRenderData data, OutsideViewPayload info) {
         // Couleur de Contraption Lights pour les particules, la pluie et la neige du decor (voir SceneryParticles.readHues).
         if (data.fakeRenderingWorld instanceof LitRenderingWorld lit) {
             SceneryParticles.readHues(lit, data.statePosCache, true, currentRadius, viewRadius());
         }
         blockEntityLight.clear();
+        sceneryEntityLight.clear();
         for (BlockPos pos : data.fakeRenderingWorld.blockEntityMap.keySet()) {
             try {
                 int light = LevelRenderer.getLightColor(data.fakeRenderingWorld, pos);
@@ -1473,6 +1478,15 @@ public final class ClientView {
                 blockEntityLight.put(pos, light);
             } catch (Exception e) {
                 LOGGER.debug("[Planarium View] Lumiere de bloc special ignoree", e);
+            }
+        }
+        if (info != null && data.fakeRenderingWorld instanceof net.minecraft.world.level.Level fakeWorld) {
+            for (net.minecraft.world.entity.Entity entity : GiantEntities.entities(data, fakeWorld, info.template(), info.origin())) {
+                try {
+                    sceneryEntityLight.put(entity, GiantEntities.packedLight(fakeWorld, entity, 0.0F));
+                } catch (Exception e) {
+                    LOGGER.debug("[Planarium View] Lumiere d'entite du decor ignoree", e);
+                }
             }
         }
     }
@@ -2098,7 +2112,8 @@ public final class ClientView {
             poseStack.scale(GIANT, GIANT, GIANT);
             poseStack.translate(-radius, -radius, -radius);
             try {
-                GiantEntities.render(entity, fake, partialTick, poseStack, blockEntityBuffers);
+                GiantEntities.render(entity, fake, partialTick, poseStack, blockEntityBuffers,
+                        sceneryEntityLight.get(entity));
             } catch (Exception e) {
                 LOGGER.debug("[Planarium Panorama] Entite du decor ignoree", e);
             }

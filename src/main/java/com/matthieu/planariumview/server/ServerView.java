@@ -138,6 +138,8 @@ public final class ServerView {
         int entitySoundsInWindow;
         /** Mode des tickets de chargement actuels : vrai = la zone tourne, faux = chargee mais en pause. */
         boolean ticketActive;
+        /** Synchronisation des jukebox en attente du rechargement des chunks apres reactiver les sons du monde. */
+        boolean jukeboxSyncPending;
 
         Track(ResourceKey<Level> pocket, GlobalPos source) {
             this.pocket = pocket;
@@ -284,7 +286,24 @@ public final class ServerView {
 
     /** Options des sons du client ; la zone autour du Planarium passe en pause ou tourne a la prochaine mise a jour. */
     public static void setSoundPrefs(ServerPlayer player, SoundPrefsPayload prefs) {
-        SOUND_PREFS.put(player.getUUID(), prefs);
+        UUID id = player.getUUID();
+        SoundPrefsPayload previous = SOUND_PREFS.put(id, prefs);
+        if (previous == null) {
+            previous = SoundPrefsPayload.DEFAULT;
+        }
+        if (previous.world() == prefs.world()) {
+            return;
+        }
+        Track track = TRACKS.get(id);
+        if (track == null || DISABLED.contains(id) || !track.pocket.equals(player.serverLevel().dimension())) {
+            return;
+        }
+        track.jukeboxSyncPending = prefs.world();
+        int radius = Config.RADIUS.get();
+        keepLoaded(player.server, id, track, radius);
+        if (prefs.world() && track.hasFull) {
+            trySendPendingJukeboxes(player, track, radius);
+        }
     }
 
     /** Distance (en blocs) a laquelle on entend le tonnerre d'un eclair du monde d'origine. */
@@ -533,6 +552,31 @@ public final class ServerView {
         }
     }
 
+    /** Attend que les chunks du decor soient de nouveau charges avant de resynchroniser les disques en cours. */
+    private static void trySendPendingJukeboxes(ServerPlayer player, Track track, int radius) {
+        if (!track.jukeboxSyncPending) {
+            return;
+        }
+        UUID id = player.getUUID();
+        if (DISABLED.contains(id) || !prefsOf(id).world()
+                || !player.connection.hasChannel(OutsideRecordPayload.TYPE)) {
+            track.jukeboxSyncPending = false;
+            return;
+        }
+        ServerLevel source = player.server.getLevel(track.source.dimension());
+        if (source == null) {
+            return;
+        }
+        BlockPos center = track.source.pos();
+        BlockPos min = center.offset(-radius, -radius, -radius);
+        BlockPos max = center.offset(radius, radius, radius);
+        if (!source.hasChunksAt(min, max)) {
+            return;
+        }
+        sendPlayingJukeboxes(player, track);
+        track.jukeboxSyncPending = false;
+    }
+
     /** Minecraft emits explosion audio locally, outside PlayLevelSoundEvent, so forward this event separately. */
     @SubscribeEvent
     public static void onExplosion(ExplosionEvent.Detonate event) {
@@ -723,6 +767,9 @@ public final class ServerView {
             force = true;
         }
         keepLoaded(player.server, player.getUUID(), track, radius);
+        if (track.hasFull) {
+            trySendPendingJukeboxes(player, track, radius);
+        }
 
         long now = player.server.getTickCount();
         int refresh = Config.REFRESH_SECONDS.get() * 20;
@@ -804,6 +851,7 @@ public final class ServerView {
                         snap.origin(), snap.biomePalette(), snap.biomes(), snap.rainTops(), snap.precip()));
         if (firstSend) {
             sendPlayingJukeboxes(player, track);
+            track.jukeboxSyncPending = false;
         }
     }
 

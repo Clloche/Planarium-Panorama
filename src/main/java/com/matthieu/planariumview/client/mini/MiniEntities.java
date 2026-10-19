@@ -5,6 +5,7 @@ import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer.Struc
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
 import com.matthieu.planariumview.client.scenery.GiantEntities;
 import com.matthieu.planariumview.client.scenery.LitRenderingWorld;
+import com.matthieu.planariumview.compat.ColorCompat;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.MiniEntitiesPayload;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -18,6 +19,7 @@ import net.minecraft.world.entity.Entity;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -34,7 +36,8 @@ public final class MiniEntities {
     /** Entites recreees pour chaque miniature (refaites quand Ars refait la miniature ou que la liste change). */
     private static final Map<StructureRenderData, Built> BUILT = Collections.synchronizedMap(new WeakHashMap<>());
 
-    private record Built(ListTag source, List<Entity> entities) {
+    private record Built(ListTag source, Object world, boolean fakeLighting, boolean coloredLighting,
+                         List<Entity> entities, Map<Entity, Integer> lights) {
     }
 
     private MiniEntities() {
@@ -61,10 +64,25 @@ public final class MiniEntities {
             return;
         }
         Built built = BUILT.get(data);
-        if (built == null || built.source() != list) {
+        boolean fakeLighting = Config.realLighting() && data.fakeRenderingWorld instanceof LitRenderingWorld;
+        boolean coloredLighting = fakeLighting && Config.coloredLight();
+        if (built == null || built.source() != list || built.world() != data.fakeRenderingWorld
+                || built.fakeLighting() != fakeLighting || built.coloredLighting() != coloredLighting) {
             CompoundTag tag = new CompoundTag();
             tag.put(GiantEntities.KEY, list);
-            built = new Built(list, GiantEntities.create(data.fakeRenderingWorld, tag, ORIGIN));
+            List<Entity> entities = GiantEntities.create(data.fakeRenderingWorld, tag, ORIGIN);
+            Map<Entity, Integer> lights = new IdentityHashMap<>();
+            if (fakeLighting) {
+                ColorCompat.begin(data.fakeRenderingWorld);
+                try {
+                    for (Entity entity : entities) {
+                        lights.put(entity, GiantEntities.packedLight(data.fakeRenderingWorld, entity, 0.0F));
+                    }
+                } finally {
+                    ColorCompat.end();
+                }
+            }
+            built = new Built(list, data.fakeRenderingWorld, fakeLighting, coloredLighting, entities, lights);
             BUILT.put(data, built);
         }
         if (built.entities().isEmpty()) {
@@ -75,13 +93,14 @@ public final class MiniEntities {
         float scale = (1.0F - 2.0F * pad) / 32.0F;
         float offset = pad + ((1.0F - 2.0F * pad) - 32 * scale) * 0.5F;
         // Lumiere : celle du bocal si la vraie lumiere de la miniature est connue, sinon celle de l'endroit du Planarium.
-        Integer light = Config.realLighting() && data.fakeRenderingWorld instanceof LitRenderingWorld ? null : packedLight;
+        boolean useFakeLighting = Config.realLighting() && data.fakeRenderingWorld instanceof LitRenderingWorld;
         poseStack.pushPose();
         poseStack.translate(offset, offset, offset);
         poseStack.scale(scale, scale, scale);
         poseStack.translate(0.0F, 26.0F, 0.0F);
         for (Entity entity : built.entities()) {
             try {
+                Integer light = useFakeLighting ? built.lights().get(entity) : packedLight;
                 GiantEntities.render(entity, data.fakeRenderingWorld, partialTick, poseStack, buffers, light);
             } catch (Exception ignored) {
                 // une entite moddee qui suppose un vrai monde : on la saute

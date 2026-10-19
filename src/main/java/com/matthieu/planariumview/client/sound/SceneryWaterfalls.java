@@ -18,21 +18,27 @@ import net.minecraft.world.level.material.FlowingFluid;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.Set;
 
 /**
  * Cascades du decor geant avec les sons de Dynamic Surroundings. DS remplace le bruit de l'eau qui coule de Minecraft par
  * ses propres sons de cascade, mais seulement pour les vraies cascades autour du joueur : on refait la meme chose pour les
  * cascades du decor, comme si on ecoutait a la place du Planarium. Memes regles que DS (WaterfallColumn) : de l'eau qui
- * tombe arrive sur un bloc d'eau source ou un bloc plein, avec de la place sur un cote ; la hauteur de la chute choisit
- * le son, et seules les cascades qui comptent le plus jouent. Recherchees seulement quand le decor change.
+ * tombe arrive sur un bloc d'eau source ou un bloc plein, avec de la place sur un cote ; la hauteur de la chute choisit le
+ * son, et seules les cascades qui comptent le plus jouent.
  */
 public final class SceneryWaterfalls {
     /** Portee des sons de cascade de DS (attenuation_distance de ses sons). */
     private static final double RANGE = 22.0;
+    private static final double RANGE_SQR = RANGE * RANGE;
     /** Nombre de cascades entendues en meme temps. */
     private static final int MAX_SOUNDS = 8;
     private static final int MAX_STRENGTH = 10;
@@ -41,37 +47,183 @@ public final class SceneryWaterfalls {
     private static final String[] TIERS = {"waterfall.0", "waterfall.1", "waterfall.2", "waterfall.3", "waterfall.3",
             "waterfall.4", "waterfall.4", "waterfall.5", "waterfall.5", "waterfall.5", "waterfall.5"};
 
+    /** Le scan initial est partage entre les ticks pour ne pas bloquer une image. */
+    private static final long WORK_BUDGET_NANOS = 1_000_000L;
+    private static final int MAX_SCAN_STEPS_PER_TICK = 2048;
+    private static final int MAX_DIRTY_STEPS_PER_TICK = 512;
+    private static final List<Offset> SCAN_OFFSETS = buildScanOffsets();
+
     private static final Map<Long, Loop> PLAYING = new HashMap<>();
-    /** Decor deja parcouru (voir tick). */
-    private static Object scannedWorld;
-    private static int scannedVersion = Integer.MIN_VALUE;
-    private static int scannedRadius;
+    /** Cascades trouvees, indexees par leur position dans le faux monde. */
+    private static final Map<Long, Waterfall> FOUND = new HashMap<>();
+    /** Positions a reevaluer apres les changements partiels du decor, dedoublonnees. */
+    private static final ArrayDeque<Long> DIRTY_QUEUE = new ArrayDeque<>();
+    private static final Set<Long> DIRTY_SET = new HashSet<>();
+
+    private static LitRenderingWorld activeWorld;
+    private static int activeRadius;
+    private static int scanCursor;
+    private static boolean scanInProgress;
+    private static boolean reconcilePending;
 
     private SceneryWaterfalls() {
     }
 
     /**
-     * Chaque tick client. {@code world} : le decor geant, ou null pour tout arreter. {@code version} change a chaque
-     * changement du decor : les cascades ne sont recherchees qu'a ce moment-la (le decor ne bouge pas entre deux).
+     * Chaque tick client. Un nouveau faux monde ou rayon demande un scan complet time-slice; les deltas de blocs
+     * actualisent ensuite seulement les cascades voisines (voir blocksChanged).
      */
-    public static void tick(LitRenderingWorld world, int radius, int version) {
+    public static void tick(LitRenderingWorld world, int radius) {
         if (world == null) {
             stopAll();
-            scannedWorld = null;
             return;
         }
-        if (world == scannedWorld && version == scannedVersion && radius == scannedRadius) {
+        if (world != activeWorld || radius != activeRadius) {
+            boolean radiusChanged = activeWorld != null && radius != activeRadius;
+            beginScan(world, radius, radiusChanged);
+        }
+
+        if (scanInProgress) {
+            processScan();
+        }
+        if (!scanInProgress) {
+            processDirtyCandidates();
+            if (reconcilePending && DIRTY_QUEUE.isEmpty()) {
+                reconcilePending = false;
+                reconcilePlayingSounds();
+            }
+        }
+    }
+
+    /**
+     * Signale un delta apres sa pleine application au faux monde. Une cascade peut dependre du bloc modifie, de ses
+     * voisins horizontaux, du bloc de support et d'une colonne d'eau de 10 blocs au-dessus.
+     */
+    public static void blocksChanged(LitRenderingWorld world, int radius, Iterable<BlockPos> changedBlocks) {
+        if (world == null || world != activeWorld || radius != activeRadius || changedBlocks == null) {
             return;
         }
-        scannedWorld = world;
-        scannedVersion = version;
-        scannedRadius = radius;
-        List<Waterfall> found = scan(world, radius);
-        found.sort((a, b) -> Double.compare(b.weight(), a.weight()));
+        boolean added = false;
+        for (BlockPos changed : changedBlocks) {
+            if (changed == null) {
+                continue;
+            }
+            added |= enqueueCandidate(changed);
+            added |= enqueueCandidate(changed.below());
+            added |= enqueueCandidate(changed.above());
+            for (Direction direction : Direction.Plane.HORIZONTAL) {
+                added |= enqueueCandidate(changed.relative(direction));
+            }
+            for (int y = 1; y <= MAX_STRENGTH; y++) {
+                added |= enqueueCandidate(changed.below(y));
+            }
+        }
+        reconcilePending |= added;
+    }
+
+    public static void stopAll() {
+        stopPlayingSounds();
+        FOUND.clear();
+        DIRTY_QUEUE.clear();
+        DIRTY_SET.clear();
+        activeWorld = null;
+        activeRadius = 0;
+        scanCursor = 0;
+        scanInProgress = false;
+        reconcilePending = false;
+    }
+
+    private static void beginScan(LitRenderingWorld world, int radius, boolean radiusChanged) {
+        // Un changement de rayon deplace toutes les sources relatives au Planarium; ne gardons pas les anciennes directions.
+        if (radiusChanged) {
+            stopPlayingSounds();
+        }
+        activeWorld = world;
+        activeRadius = radius;
+        scanCursor = 0;
+        scanInProgress = true;
+        reconcilePending = true;
+        FOUND.clear();
+        DIRTY_QUEUE.clear();
+        DIRTY_SET.clear();
+    }
+
+    private static void processScan() {
+        long start = System.nanoTime();
+        int processed = 0;
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        while (scanCursor < SCAN_OFFSETS.size() && processed < MAX_SCAN_STEPS_PER_TICK
+                && (processed == 0 || System.nanoTime() - start < WORK_BUDGET_NANOS)) {
+            Offset offset = SCAN_OFFSETS.get(scanCursor++);
+            int x = activeRadius + offset.x();
+            int y = activeRadius + offset.y();
+            int z = activeRadius + offset.z();
+            pos.set(x, y, z);
+            Waterfall waterfall = findAt(activeWorld, activeRadius, pos, offset.distance());
+            if (waterfall != null) {
+                FOUND.put(waterfall.key(), waterfall);
+            }
+            processed++;
+        }
+        scanInProgress = scanCursor < SCAN_OFFSETS.size();
+    }
+
+    private static void processDirtyCandidates() {
+        long start = System.nanoTime();
+        int processed = 0;
+        while (!DIRTY_QUEUE.isEmpty() && processed < MAX_DIRTY_STEPS_PER_TICK
+                && (processed == 0 || System.nanoTime() - start < WORK_BUDGET_NANOS)) {
+            long key = DIRTY_QUEUE.removeFirst();
+            DIRTY_SET.remove(key);
+            BlockPos pos = BlockPos.of(key);
+            double dx = pos.getX() - activeRadius;
+            double dy = pos.getY() - activeRadius;
+            double dz = pos.getZ() - activeRadius;
+            double distanceSqr = dx * dx + dy * dy + dz * dz;
+            if (distanceSqr >= RANGE_SQR) {
+                FOUND.remove(key);
+            } else {
+                Waterfall waterfall = findAt(activeWorld, activeRadius, pos, Math.sqrt(distanceSqr));
+                if (waterfall == null) {
+                    FOUND.remove(key);
+                } else {
+                    FOUND.put(key, waterfall);
+                }
+            }
+            processed++;
+        }
+    }
+
+    private static boolean enqueueCandidate(BlockPos pos) {
+        double dx = pos.getX() - activeRadius;
+        double dy = pos.getY() - activeRadius;
+        double dz = pos.getZ() - activeRadius;
+        if (dx * dx + dy * dy + dz * dz >= RANGE_SQR) {
+            return false;
+        }
+        long key = pos.asLong();
+        if (!DIRTY_SET.add(key)) {
+            return false;
+        }
+        DIRTY_QUEUE.addLast(key);
+        return true;
+    }
+
+    private static void reconcilePlayingSounds() {
+        PriorityQueue<Waterfall> top = new PriorityQueue<>(Comparator.comparingDouble(Waterfall::weight));
+        for (Waterfall waterfall : FOUND.values()) {
+            if (top.size() < MAX_SOUNDS) {
+                top.add(waterfall);
+            } else if (waterfall.weight() > top.peek().weight()) {
+                top.poll();
+                top.add(waterfall);
+            }
+        }
         Map<Long, Waterfall> wanted = new HashMap<>();
-        for (int i = 0; i < Math.min(MAX_SOUNDS, found.size()); i++) {
-            wanted.put(found.get(i).key(), found.get(i));
+        for (Waterfall waterfall : top) {
+            wanted.put(waterfall.key(), waterfall);
         }
+
         PLAYING.entrySet().removeIf(entry -> {
             Waterfall waterfall = wanted.get(entry.getKey());
             Loop loop = entry.getValue();
@@ -91,13 +243,28 @@ public final class SceneryWaterfalls {
         }
     }
 
-    public static void stopAll() {
-        if (PLAYING.isEmpty()) {
-            return;
-        }
+    private static void stopPlayingSounds() {
         PLAYING.values().forEach(Loop::end);
         PLAYING.clear();
-        scannedWorld = null;
+    }
+
+    private static List<Offset> buildScanOffsets() {
+        List<Offset> offsets = new ArrayList<>();
+        int reach = (int) Math.ceil(RANGE);
+        for (int x = -reach; x <= reach; x++) {
+            for (int z = -reach; z <= reach; z++) {
+                for (int y = -reach; y <= reach; y++) {
+                    double distanceSqr = (double) x * x + (double) y * y + (double) z * z;
+                    if (distanceSqr < RANGE_SQR) {
+                        offsets.add(new Offset(x, y, z, Math.sqrt(distanceSqr)));
+                    }
+                }
+            }
+        }
+        return List.copyOf(offsets);
+    }
+
+    private record Offset(int x, int y, int z, double distance) {
     }
 
     private record Waterfall(long key, double dx, double dy, double dz, int strength, double distance) {
@@ -107,38 +274,22 @@ public final class SceneryWaterfalls {
         }
     }
 
-    /** Cascades a portee du Planarium dans le decor (positions du gabarit, Planarium au rayon {@code radius}). */
-    private static List<Waterfall> scan(LitRenderingWorld world, int radius) {
-        List<Waterfall> found = new ArrayList<>();
-        int reach = (int) Math.ceil(RANGE);
-        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        for (int x = radius - reach; x <= radius + reach; x++) {
-            for (int z = radius - reach; z <= radius + reach; z++) {
-                for (int y = radius - reach; y <= radius + reach; y++) {
-                    double dx = x - radius;
-                    double dy = y - radius;
-                    double dz = z - radius;
-                    double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                    if (distance >= RANGE) {
-                        continue;
-                    }
-                    pos.set(x, y, z);
-                    try {
-                        BlockState state = world.getBlockState(pos);
-                        if (!state.getFluidState().is(FluidTags.WATER) || !isLandingSite(world, pos)) {
-                            continue;
-                        }
-                        int strength = strength(world, pos);
-                        if (strength > 0) {
-                            found.add(new Waterfall(pos.asLong(), dx, dy, dz, strength, distance));
-                        }
-                    } catch (Exception ignored) {
-                        // bloc particulier : ignore
-                    }
-                }
+    private static Waterfall findAt(LitRenderingWorld world, int radius, BlockPos pos, double distance) {
+        try {
+            BlockState state = world.getBlockState(pos);
+            if (!state.getFluidState().is(FluidTags.WATER) || !isLandingSite(world, pos)) {
+                return null;
             }
+            int strength = strength(world, pos);
+            if (strength <= 0) {
+                return null;
+            }
+            return new Waterfall(pos.asLong(), pos.getX() - radius, pos.getY() - radius, pos.getZ() - radius,
+                    strength, distance);
+        } catch (Exception ignored) {
+            // bloc particulier : ignore
+            return null;
         }
-        return found;
     }
 
     private static boolean isFalling(FluidState fluid) {
