@@ -44,16 +44,17 @@ Planarium Panorama is made to be compatible with as many mods as possible. This 
 | [Windy: Configurable](https://www.curseforge.com/minecraft/mc-mods/windy-configurable)<br>v1.2.1 | ✅ | The ambiant winds can be viewed in the Planarium (follows the Windy config) |
 | [Distant Horizons](https://modrinth.com/mod/distanthorizons)<br>v3.3.3 | ⚠️ | Doesn't work inside a jar: turned off automatically there (it would draw the void around it), unchanged everywhere else |
 | [Jaden's Nether Expansion](https://www.curseforge.com/minecraft/mc-mods/jadens-nether-expansion)<br>v2.4.1 | ⚠️ | Its custom particles (flames, smoke...) are not shown in the giant scenery and the miniature, instead the vanilla particles are |
-| [Shaders (Iris)](https://modrinth.com/mod/iris)<br>v1.8.14-beta.1 | ⚠️ | The shaders inside the Planarium will not follow the shaders of the outside |
 | [Swinging Lanterns](https://modrinth.com/mod/swinging-lanterns)<br>v2.0.4 | ⚠️ | Swinging lanterns are disabled when viewing them through either the miniature or the giant scenery |
 
 The version indicated is the version it has been tested with.
 
-`✅` means compatible, `⚠️` means partly compatible. Versions shown are the ones that were tested.
+`✅` means compatible, `⚠️` means partly compatible.
 
 ## Known issues
 
 Modonomicon (singleplayer): very rarely, entering a jar fails halfway. Loading takes a long time, then you float in the void without the jar. This comes from a timing bug with Modonomicon. To fix it, just Save and Quit then rejoin the world.
+| [Shaders (Iris)](https://modrinth.com/mod/iris)<br>v1.8.14-beta.1 | ⚠️ | The shaders inside the Planarium will not follow the shaders of the outside |
+
 
 ## Requirements
 
