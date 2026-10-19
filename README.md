@@ -52,8 +52,9 @@ The version indicated is the version it has been tested with.
 
 ## Known issues
 
-Modonomicon (singleplayer): very rarely, entering a jar fails halfway. Loading takes a long time, then you float in the void without the jar. This comes from a timing bug with Modonomicon. To fix it, just Save and Quit then rejoin the world.
-| [Shaders (Iris)](https://modrinth.com/mod/iris)<br>v1.8.14-beta.1 | ⚠️ | The shaders inside the Planarium will not follow the shaders of the outside |
+- [Modonomicon](https://www.curseforge.com/minecraft/mc-mods/modonomicon) (singleplayer): very rarely, entering a jar fails halfway. Loading takes a long time, then you float in the void without the jar. This comes from a timing bug with Modonomicon. To fix it, just Save and Quit then rejoin the world.
+- Mobs: mobs and players around the Planarium are deliberately not shown in the giant scenery or the miniature (paintings, item frames and armor stands are).
+- [Shaders (Iris)](https://modrinth.com/mod/iris): The shaders inside the Planarium will not follow the shaders of the outside.
 
 
 ## Requirements
