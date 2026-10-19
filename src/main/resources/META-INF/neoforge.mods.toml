@@ -6,6 +6,7 @@ license="LGPL-3.0"
 modId="planariumview"
 version="${mod_version}"
 displayName="Planarium Panorama"
+logoFile="planarium_panorama_logo.png"
 authors="Matthieu"
 description='''
 Ars Nouveau addon: inside a Planarium's dimension, see the Planarium's surroundings as a giant world, with synced sky and real lighting.
