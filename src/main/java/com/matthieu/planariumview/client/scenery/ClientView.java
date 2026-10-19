@@ -153,7 +153,6 @@ public final class ClientView {
     /** Coin du gabarit dans le monde au dernier rendu : s'il bouge, les biomes et leurs couleurs changent partout. */
     private static BlockPos renderedOrigin;
     private static List<ResourceLocation> renderedBiomePalette;
-    private static boolean forcePendingBuild;
     private static int sortCounter;
     private static final Map<BlockPos, Integer> blockEntityLight = new java.util.HashMap<>();
     /** Lumiere des entites du decor, calculee avec la source CL du faux monde et reutilisee pendant le rendu. */
@@ -165,10 +164,11 @@ public final class ClientView {
                     Math.floorDiv(pos.getY(), SECTION_SIZE), Math.floorDiv(pos.getZ(), SECTION_SIZE));
         }
 
-        public Vec3 center(int radius) {
-            return new Vec3((x * SECTION_SIZE + SECTION_SIZE / 2.0 - radius - ARS_OFFSET) * GIANT,
-                    (y * SECTION_SIZE + SECTION_SIZE / 2.0 - radius - ARS_OFFSET) * GIANT - Y_SHIFT,
-                    (z * SECTION_SIZE + SECTION_SIZE / 2.0 - radius - ARS_OFFSET) * GIANT);
+        double distanceToSqr(int radius, Vec3 camera) {
+            double dx = (x * SECTION_SIZE + SECTION_SIZE / 2.0 - radius - ARS_OFFSET) * GIANT - camera.x;
+            double dy = (y * SECTION_SIZE + SECTION_SIZE / 2.0 - radius - ARS_OFFSET) * GIANT - Y_SHIFT - camera.y;
+            double dz = (z * SECTION_SIZE + SECTION_SIZE / 2.0 - radius - ARS_OFFSET) * GIANT - camera.z;
+            return dx * dx + dy * dy + dz * dz;
         }
 
         double distanceFromPlanariumSqr(int radius) {
@@ -183,6 +183,7 @@ public final class ClientView {
         final Map<RenderType, VertexBuffer> buffers = new HashMap<>();
         final Map<RenderType, MeshData.SortState> sortStates = new HashMap<>();
         final Map<RenderType, com.mojang.blaze3d.vertex.ByteBufferBuilder> sortBuffers = new HashMap<>();
+        double cameraDistanceSqr;
 
         public void sort(Vec3 camera) {
             for (Map.Entry<RenderType, MeshData.SortState> entry : sortStates.entrySet()) {
@@ -538,7 +539,6 @@ public final class ClientView {
             pendingTemplate = lastTemplate;
             pendingLight = lastLight;
             pendingInfo = latestInfo;
-            forcePendingBuild = true;
             forceAllSections = true;
         }
         MiniLight.rebuildAll();
@@ -925,7 +925,6 @@ public final class ClientView {
         currentSectionStates = new HashMap<>();
         builtViewRadius = -1;
         pendingTemplate = null;
-        forcePendingBuild = false;
         forceAllSections = false;
         currentDim = null;
     }
@@ -989,7 +988,6 @@ public final class ClientView {
                 OutsideViewPayload info = pendingInfo;
                 int radius = currentRadius;
                 pendingTemplate = null;
-                forcePendingBuild = false;
                 StructureRenderData oldRender = renderData;
                 try {
                     StructureRenderData newRender = build(template, light, info, radius, event.getCamera().getPosition());
@@ -1834,13 +1832,16 @@ public final class ClientView {
             RenderSystem.setShaderFogColor(cave[0], cave[1], cave[2], fogColor[3]);
         }
         try {
+            List<Map.Entry<SectionPos, SectionMesh>> translucentSections = new ArrayList<>(sectionMeshes.entrySet());
+            for (Map.Entry<SectionPos, SectionMesh> entry : translucentSections) {
+                entry.getValue().cameraDistanceSqr = entry.getKey().distanceToSqr(currentRadius, camera);
+            }
+            translucentSections.sort(Comparator.comparingDouble(entry -> entry.getValue().cameraDistanceSqr));
+            java.util.Collections.reverse(translucentSections);
+            Matrix4f projectionMatrix = new Matrix4f(event.getProjectionMatrix());
             for (RenderType renderType : DRAW_ORDER) {
-                List<Map.Entry<SectionPos, SectionMesh>> sections = new ArrayList<>(sectionMeshes.entrySet());
-                if (renderType == RenderType.translucent()) {
-                    sections.sort(Comparator.comparingDouble(entry ->
-                            entry.getKey().center(currentRadius).distanceToSqr(event.getCamera().getPosition())));
-                    java.util.Collections.reverse(sections);
-                }
+                Iterable<Map.Entry<SectionPos, SectionMesh>> sections = renderType == RenderType.translucent()
+                        ? translucentSections : sectionMeshes.entrySet();
                 renderType.setupRenderState();
                 try {
                     for (Map.Entry<SectionPos, SectionMesh> entry : sections) {
@@ -1848,7 +1849,7 @@ public final class ClientView {
                         if (vertexBuffer == null || vertexBuffer.getFormat() == null) continue;
                         vertexBuffer.bind();
                         vertexBuffer.drawWithShader(poseStack.last().pose(),
-                                new Matrix4f(event.getProjectionMatrix()), RenderSystem.getShader());
+                                projectionMatrix, RenderSystem.getShader());
                         VertexBuffer.unbind();
                     }
                 } finally {
@@ -1856,10 +1857,10 @@ public final class ClientView {
                     renderType.clearRenderState();
                 }
             }
-            drawFogWall(poseStack, new Matrix4f(event.getProjectionMatrix()), camera);
-            drawCaveDome(poseStack, new Matrix4f(event.getProjectionMatrix()));
+            drawFogWall(poseStack, projectionMatrix, camera);
+            drawCaveDome(poseStack, projectionMatrix);
             try {
-                CloudView.draw(poseStack.last().pose(), new Matrix4f(event.getProjectionMatrix()), camera,
+                CloudView.draw(poseStack.last().pose(), projectionMatrix, camera,
                         event.getPartialTick().getGameTimeDeltaPartialTick(false), lastInfo, currentRadius);
             } catch (Exception e) {
                 LOGGER.debug("[Planarium View] Nuages ignores", e);
@@ -2140,6 +2141,7 @@ public final class ClientView {
         float partialTick = event.getPartialTick().getGameTimeDeltaPartialTick(false);
         Vec3 camera = event.getCamera().getPosition();
         int radius = currentRadius;
+        int view = viewRadius();
         BlockPos planarium = new BlockPos(radius, radius, radius);
         BlockPos above = planarium.above();
 
@@ -2154,7 +2156,6 @@ public final class ClientView {
                 if (pos.equals(planarium) || pos.equals(above)) {
                     continue;
                 }
-                int view = viewRadius();
                 if (Math.abs(pos.getX() - radius) > view || Math.abs(pos.getZ() - radius) > view) {
                     continue;
                 }
