@@ -719,6 +719,14 @@ public final class SceneryParticles {
         net.minecraft.core.BlockPos pos = net.minecraft.core.BlockPos.containing(tx, ty, tz);
         try {
             net.minecraft.world.level.block.state.BlockState state = world.getBlockState(pos);
+            // Les eclaboussures de pluie retombent dans l'eau du decor, absente du vrai monde du client.
+            if (particle instanceof net.minecraft.client.particle.WaterDropParticle) {
+                var fluid = world.getFluidState(pos);
+                if (!fluid.isEmpty() && ty < pos.getY() + fluid.getHeight(world, pos)) {
+                    particle.remove();
+                    return;
+                }
+            }
             if (state.isAir()) {
                 return;
             }

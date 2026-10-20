@@ -787,7 +787,7 @@ public final class ClientView {
      * Particule d'ambiance d'un bloc du decor (positions du gabarit) : creee a sa place dans le decor geant, si elle est
      * dans le rayon de vue (au-dela, le decor n'est pas dessine). Elle prend la lumiere du decor a cet endroit.
      */
-    static void onSceneryParticle(net.minecraft.core.particles.ParticleOptions options, double x, double y, double z,
+    public static void onSceneryParticle(net.minecraft.core.particles.ParticleOptions options, double x, double y, double z,
                                   double vx, double vy, double vz) {
         if (options == null || !SceneryParticles.allowed()) {
             return;

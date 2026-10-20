@@ -5,6 +5,7 @@ import com.matthieu.planariumview.client.scenery.ClientView;
 import com.matthieu.planariumview.client.scenery.LitRenderingWorld;
 import com.matthieu.planariumview.client.scenery.SceneryParticles;
 import com.matthieu.planariumview.client.sound.OutsideSoundClient;
+import com.matthieu.planariumview.compat.DsRipplesCompat;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.OutsideViewPayload;
 
@@ -18,15 +19,22 @@ import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.ParticleStatus;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CampfireBlock;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
@@ -113,6 +121,9 @@ public final class WeatherView {
         return current == null || index < 0 || index >= current.length ? -1 : current[index];
     }
     private static int rainSoundTime;
+    /** Travail borne par tick : quelques impacts visibles, sans reparcourir toutes les colonnes du decor. */
+    private static final int MAX_RAIN_IMPACTS = 8;
+    private static final int RAIN_IMPACT_ATTEMPTS = 24;
 
     private WeatherView() {
     }
@@ -319,6 +330,66 @@ public final class WeatherView {
         }
     }
 
+    // ------------------------------------------------------------------ impacts de pluie
+
+    /** Eclaboussures de Minecraft au sommet des blocs et de l'eau; vapeur sur les blocs chauds. */
+    private static void rainImpacts(Minecraft mc, float rain, RandomSource random) {
+        if (!Config.sceneryParticles() || mc.options.particles().get() == ParticleStatus.MINIMAL) return;
+        LitRenderingWorld world = ClientView.sceneryWorld();
+        if (world == null) return;
+        Vec3 camera = mc.gameRenderer.getMainCamera().getPosition();
+        double scale = ClientView.GIANT;
+        double cameraX = radius + ClientView.ARS_OFFSET + camera.x / scale;
+        double cameraZ = radius + ClientView.ARS_OFFSET + camera.z / scale;
+        double reach = mc.options.getEffectiveRenderDistance() * 16.0 / scale;
+        int minX = Math.max(0, Mth.floor(cameraX - reach));
+        int maxX = Math.min(size - 1, Mth.floor(cameraX + reach));
+        int minZ = Math.max(0, Mth.floor(cameraZ - reach));
+        int maxZ = Math.min(size - 1, Mth.floor(cameraZ + reach));
+        if (minX > maxX || minZ > maxZ) return;
+        int view = ClientView.viewRadius();
+        float intensity = Mth.clamp(rain, 0.0F, 1.0F) / (Minecraft.useFancyGraphics() ? 1.0F : 2.0F);
+        int attempts = (int) (RAIN_IMPACT_ATTEMPTS * intensity * intensity);
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+        int spawned = 0;
+        for (int attempt = 0; attempt < attempts && spawned < MAX_RAIN_IMPACTS; attempt++) {
+            int x = minX + random.nextInt(maxX - minX + 1);
+            int z = minZ + random.nextInt(maxZ - minZ + 1);
+            int index = x * size + z;
+            if (precip[index] != 1 || (x == radius && z == radius)
+                    || Math.abs(x - radius) > view || Math.abs(z - radius) > view) continue;
+            int y = tops[index] - originY - 1;
+            if (y < 0 || y >= size) continue;
+            double rx = random.nextDouble();
+            double rz = random.nextDouble();
+            double dx = x + rx - cameraX;
+            double dz = z + rz - cameraZ;
+            if (dx * dx + dz * dz > reach * reach) continue;
+            at.set(x, y, z);
+            try {
+                var state = world.getBlockState(at);
+                var fluid = world.getFluidState(at);
+                double height = Math.max(state.getCollisionShape(world, at).max(Direction.Axis.Y, rx, rz),
+                        fluid.getHeight(world, at));
+                if (!Double.isFinite(height) || height <= 0.0) continue;
+                double impactY = y + height + 0.001;
+                double giantY = (impactY - radius - ClientView.ARS_OFFSET) * scale - ClientView.Y_SHIFT;
+                if (Math.abs(giantY - camera.y) > HEIGHT) continue;
+                boolean hot = fluid.is(FluidTags.LAVA) || state.is(Blocks.MAGMA_BLOCK) || CampfireBlock.isLitCampfire(state);
+                ParticleOptions options = hot ? ParticleTypes.SMOKE : ParticleTypes.RAIN;
+                // Un bloc qui recouvre le fluide recoit une eclaboussure, pas un cercle sous sa face pleine.
+                if (!hot && height <= fluid.getHeight(world, at) + 0.0001) {
+                    ParticleOptions ripple = DsRipplesCompat.ripple(world, at, fluid);
+                    if (ripple != null) options = ripple;
+                }
+                ClientView.onSceneryParticle(options, x + rx, impactY, z + rz, 0.0, 0.0, 0.0);
+                spawned++;
+            } catch (Exception ignored) {
+                // Forme moddee qui ne fonctionne pas dans un faux monde : ignorer cet impact.
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ son
 
     /**
@@ -360,6 +431,7 @@ public final class WeatherView {
             return;
         }
         RandomSource random = level.getRandom();
+        rainImpacts(mc, rain, random);
         // Le Planarium est a l'abri dehors (un toit au-dessus de lui) : comme un joueur a sa place, on entend la pluie
         // tomber autour de l'abri, dans le decor.
         if (tops[radius * size + radius] > planarium.getY() + 1) {
