@@ -87,11 +87,10 @@ public final class DsFirefliesCompat {
     /** environment : coin d'origine du gabarit (geant), ou position du Planarium (miniature). */
     public static void animate(LitRenderingWorld world, BlockPos pos, BlockState state, RandomSource random,
                                BlockPos environment) {
-        if (!Config.sceneryParticles() || !Config.outsideAmbience() || random.nextDouble() >= CHANCE || !ready()) return;
+        if (!Config.sceneryParticles() || !Config.outsideAmbience() || random.nextDouble() >= CHANCE) return;
         ClientLevel level = Minecraft.getInstance().level;
         if (level == null) return;
         try {
-            if (!enabled.getBoolean(options) || !(boolean) matchesBlock.invoke(tags, flowers, state)) return;
             boolean giant = LitRenderingWorld.isGiant(world);
             var type = giant && SkySync.sourceDimensionType() != null ? level.registryAccess()
                     .registryOrThrow(Registries.DIMENSION_TYPE).get(SkySync.sourceDimensionType()) : level.dimensionType();
@@ -100,6 +99,7 @@ public final class DsFirefliesCompat {
             float angle = (giant ? SkySync.timeOfDay(level) : level.getTimeOfDay(0.0F)) * 360.0F;
             if (angle <= 79.0F || angle > 259.0F
                     || (giant ? SkySync.rainLevel(level) : level.getRainLevel(1.0F)) > 0.2F) return;
+            if (!ready() || !enabled.getBoolean(options) || !(boolean) matchesBlock.invoke(tags, flowers, state)) return;
             BlockPos climatePos = giant ? pos.offset(environment) : environment;
             var outside = giant ? OutsideAmbience.knownBiomeHolder() : null;
             var biome = giant && world.hasBiomes() ? world.getBiome(pos)

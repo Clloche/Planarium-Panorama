@@ -563,6 +563,7 @@ public final class ClientView {
         Minecraft mc = Minecraft.getInstance();
         // Cascades du decor avec les sons de Dynamic Surroundings (integration DS et sons d'ambiance du decor).
         boolean inJar = mc.level != null && currentDim != null && mc.level.dimension().location().equals(currentDim);
+        reportSectionBuilds(inJar && Config.enabled() && !mc.isPaused());
         if (!mc.isPaused()) {
             PuddlesCompat.tick(inJar && Config.enabled() ? sceneryWorld() : null, lastInfo);
         }
@@ -918,6 +919,8 @@ public final class ClientView {
         pendingSections.clear();
         pendingSectionSet.clear();
         pendingSectionStates = Map.of();
+        sectionBuildCounts.clear();
+        sectionBuildWindowStart = 0;
         pendingSectionData = null;
         renderedLight = null;
         renderedBiomes = null;
@@ -1712,6 +1715,37 @@ public final class ClientView {
      */
     private static final long SECTION_BUDGET_NANOS = 3_000_000L;
 
+    /** Diagnostic DEBUG : compter les reconstructions reelles, apres la deduplication de la file d'attente. */
+    private static final Map<SectionPos, Integer> sectionBuildCounts = new HashMap<>();
+    private static long sectionBuildWindowStart;
+
+    /** Toutes les causes sont comptees (flaques, photos et blocs) : observer une pluie forte dans un decor stable. */
+    private static void reportSectionBuilds(boolean active) {
+        if (!active || !LOGGER.isDebugEnabled()) {
+            sectionBuildCounts.clear();
+            sectionBuildWindowStart = 0;
+            return;
+        }
+        if (sectionBuildWindowStart == 0) return;
+        long elapsed = System.nanoTime() - sectionBuildWindowStart;
+        if (elapsed < 1_000_000_000L) return;
+        int total = 0, repeated = 0, maximum = 0;
+        SectionPos busiest = null;
+        for (Map.Entry<SectionPos, Integer> entry : sectionBuildCounts.entrySet()) {
+            int count = entry.getValue();
+            total += count;
+            if (count > 1) repeated++;
+            if (count > maximum) {
+                maximum = count;
+                busiest = entry.getKey();
+            }
+        }
+        LOGGER.debug("[Planarium Panorama] Retesselages sur {} ms : total={}, sections={}, sections repetees={}, maximum={} pour {}",
+                elapsed / 1_000_000L, total, sectionBuildCounts.size(), repeated, maximum, busiest);
+        sectionBuildCounts.clear();
+        sectionBuildWindowStart = 0;
+    }
+
     /** Construit des sections tant que le budget de l'image le permet; les meshes precedents restent visibles jusque-la. */
     private static void buildPendingSections(Vec3 camera) {
         long start = System.nanoTime();
@@ -1737,6 +1771,10 @@ public final class ClientView {
                 SectionMesh replacement = buildSection(pendingSectionData, currentRadius, states, camera);
                 sectionMeshes.put(key, replacement);
                 if (old != null) old.close();
+                if (LOGGER.isDebugEnabled()) {
+                    if (sectionBuildWindowStart == 0) sectionBuildWindowStart = System.nanoTime();
+                    sectionBuildCounts.merge(key, 1, Integer::sum);
+                }
             } catch (Exception e) {
                 if (old != null) sectionMeshes.put(key, old);
                 LOGGER.warn("[Planarium View] Echec du retesselage de la section {}; ancienne vue conservee", key, e);
@@ -1797,7 +1835,7 @@ public final class ClientView {
             matrix.translate(pos.pos.getX() - radius, pos.pos.getY() - radius, pos.pos.getZ() - radius);
 
             if (!fluidState.isEmpty()) {
-                RenderType fluidType = RenderType.translucent();
+                RenderType fluidType = net.minecraft.client.renderer.ItemBlockRenderTypes.getRenderLayer(fluidState);
                 BufferBuilder fluidBuilder = data.bufferBuilders.computeIfAbsent(fluidType,
                         rt -> new BufferBuilder(data.getByteBuffer(rt), rt.mode(), rt.format()));
                 try {

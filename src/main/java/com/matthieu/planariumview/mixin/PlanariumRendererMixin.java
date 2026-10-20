@@ -32,6 +32,10 @@ import net.minecraft.world.phys.Vec3;
 @Mixin(value = PlanariumRenderer.class, remap = false)
 public abstract class PlanariumRendererMixin {
 
+    /** Les couches d'un meme bloc se suivent dans generateRender et reutilisent le meme BlockPos. */
+    @org.spongepowered.asm.mixin.Unique
+    private static BlockPos planariumview$lastFluidPos;
+
     /** Les sommets de la miniature sont locaux au bloc du Planarium, et doivent se trier du plus loin au plus pres. */
     @Redirect(method = "generateRender", at = @At(value = "INVOKE", target =
             "Lcom/mojang/blaze3d/vertex/VertexSorting;byDistance(Lcom/mojang/blaze3d/vertex/VertexSorting$DistanceFunction;)Lcom/mojang/blaze3d/vertex/VertexSorting;"),
@@ -81,7 +85,11 @@ public abstract class PlanariumRendererMixin {
             BlockPos pos, BlockAndTintGetter world, VertexConsumer consumer, BlockState state,
             net.minecraft.world.level.material.FluidState fluid, PlanariumRenderer.StructureRenderData data,
             Level level, BlockPos renderPos, Vec3 cameraPosition) {
-        if (com.matthieu.planariumview.config.Config.enabled()
+        boolean enabled = com.matthieu.planariumview.config.Config.enabled();
+        if (enabled && planariumview$lastFluidPos == pos) {
+            return;
+        }
+        if (enabled
                 && consumer instanceof com.hollingsworth.arsnouveau.client.renderer.LiquidBlockVertexConsumer liquid) {
             // Ars utilise la couche du modele du bloc, meme pour son fluide : l'eau libre peut finir en solid,
             // et celle des plantes en cutout. Choisir la couche du fluide pour les deux (eau translucide, lave solid).
@@ -91,6 +99,9 @@ public abstract class PlanariumRendererMixin {
             consumer = new com.hollingsworth.arsnouveau.client.renderer.LiquidBlockVertexConsumer(builder, liquid.pose(), liquid.pos());
         }
         dispatcher.renderLiquid(pos, world, consumer, state, fluid);
+        if (enabled) {
+            planariumview$lastFluidPos = pos;
+        }
     }
 
     @Redirect(method = "generateRender",
@@ -128,6 +139,7 @@ public abstract class PlanariumRendererMixin {
     @Inject(method = "generateRender", at = @At("HEAD"), require = 0)
     private static void planariumview$colorBegin(PlanariumRenderer.StructureRenderData data, Level level, BlockPos renderPos,
                                                  Vec3 cameraPosition, CallbackInfo ci) {
+        planariumview$lastFluidPos = null;
         if (data != null) {
             com.matthieu.planariumview.client.mini.MiniOutsideLight.apply(data, level, renderPos);
             ColorCompat.begin(data.fakeRenderingWorld);
