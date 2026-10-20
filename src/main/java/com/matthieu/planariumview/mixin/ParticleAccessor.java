@@ -32,6 +32,9 @@ public interface ParticleAccessor {
     void planariumview$setGravity(float value);
 
     @Accessor("hasPhysics")
+    boolean planariumview$getHasPhysics();
+
+    @Accessor("hasPhysics")
     void planariumview$setHasPhysics(boolean value);
 
     @Accessor("onGround")

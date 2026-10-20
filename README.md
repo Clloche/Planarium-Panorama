@@ -28,6 +28,12 @@ The mods are detected automatically and their integration can be turned on or of
 - [Dynamic Surroundings](https://www.curseforge.com/minecraft/mc-mods/dynamic-surroundings)
 - [Enhanced Celestials 2](https://www.curseforge.com/minecraft/mc-mods/enhanced-celestials-2-default-lunar-events)
 
+[Puddles & Floods](https://modrinth.com/mod/puddles-floods) is also detected automatically. Its rain puddles and
+visual floods are recreated in the giant scenery using the outside weather, terrain, biomes and sea level.
+This follows the **Weather** option and Puddles & Floods' own settings. Client-created puddles develop locally;
+they do not reproduce the exact age of puddles left outside before entering the jar. Puddles created by the server
+are included in the normal scenery snapshots.
+
 ## Compatible mods
 
 Planarium Panorama is made to be compatible with as many mods as possible. This list does not include every compatible mod, just the most popular ones or some that require additional information.

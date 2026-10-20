@@ -237,10 +237,29 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
                 && (pos.equals(hiddenLow) || pos.equals(hiddenHigh));
     }
 
+    /** Blocs visuels crees cote client (Puddles & Floods), separes des donnees recues du serveur. */
+    private java.util.Map<BlockPos, net.minecraft.world.level.block.state.BlockState> visualBlocks = java.util.Map.of();
+    private net.minecraft.world.level.block.Block visualBlock;
+
+    public void setVisualBlocks(java.util.Map<BlockPos, net.minecraft.world.level.block.state.BlockState> blocks,
+                                net.minecraft.world.level.block.Block block) {
+        visualBlocks = blocks;
+        visualBlock = block;
+    }
+
+    public net.minecraft.world.level.block.state.BlockState getCapturedBlockState(BlockPos pos) {
+        return super.getBlockState(pos);
+    }
+
     @Override
     public net.minecraft.world.level.block.state.BlockState getBlockState(BlockPos pos) {
         if (hidden(pos)) {
             return net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
+        }
+        net.minecraft.world.level.block.state.BlockState visual = visualBlocks.get(pos);
+        if (visual != null) {
+            net.minecraft.world.level.block.state.BlockState captured = super.getBlockState(pos);
+            return captured.isAir() || captured.is(visualBlock) ? visual : captured;
         }
         return super.getBlockState(pos);
     }

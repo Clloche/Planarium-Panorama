@@ -30,7 +30,8 @@
     "TravelersTitlesMixin",
     "EcForecastMixin",
     "DhClientApiMixin",
-    "DsSoundBlockMixin"
+    "DsSoundBlockMixin",
+    "PfPlacementMixin"
   ],
   "injectors": {
     "defaultRequire": 0

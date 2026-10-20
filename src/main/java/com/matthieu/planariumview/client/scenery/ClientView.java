@@ -14,6 +14,7 @@ import com.matthieu.planariumview.client.sound.OutsideRecordClient;
 import com.matthieu.planariumview.client.sound.OutsideSoundClient;
 import com.matthieu.planariumview.compat.AmbersolCompat;
 import com.matthieu.planariumview.compat.ColorCompat;
+import com.matthieu.planariumview.compat.PuddlesCompat;
 import com.matthieu.planariumview.compat.SeasonColors;
 import com.matthieu.planariumview.compat.SnowRealMagicCompat;
 import com.matthieu.planariumview.config.Config;
@@ -68,6 +69,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -561,6 +563,9 @@ public final class ClientView {
         Minecraft mc = Minecraft.getInstance();
         // Cascades du decor avec les sons de Dynamic Surroundings (integration DS et sons d'ambiance du decor).
         boolean inJar = mc.level != null && currentDim != null && mc.level.dimension().location().equals(currentDim);
+        if (!mc.isPaused()) {
+            PuddlesCompat.tick(inJar && Config.enabled() ? sceneryWorld() : null, lastInfo);
+        }
         com.matthieu.planariumview.client.sound.SceneryWaterfalls.tick(
                 !mc.isPaused() && inJar && Config.sceneryAmbience() && Config.outsideAmbience() ? sceneryWorld() : null,
                 currentRadius);
@@ -901,6 +906,7 @@ public final class ClientView {
     }
 
     private static void disposeRender() {
+        PuddlesCompat.clear();
         GiantEntities.clear();
         sceneryEntityLight.clear();
         releaseRenderData(renderData);
@@ -1075,6 +1081,7 @@ public final class ClientView {
         if (view < radius) {
             data.statePosCache.removeIf(p -> Math.abs(p.pos.getX() - radius) > view || Math.abs(p.pos.getZ() - radius) > view);
         }
+        PuddlesCompat.prepare(lit, info);
 
         long specialLightNanos;
         ColorCompat.begin(data.fakeRenderingWorld);
@@ -1087,6 +1094,9 @@ public final class ClientView {
         }
 
         Map<SectionPos, List<CulledStatePos>> sectionStates = groupSections(data.statePosCache);
+        for (BlockPos pos : PuddlesCompat.extraPositions(lit)) {
+            if (visibleSceneryPos(pos, radius, view)) sectionStates.computeIfAbsent(SectionPos.of(pos), ignored -> new ArrayList<>());
+        }
         currentSectionStates = sectionStates;
         Map<BlockPos, CulledStatePos> byPos = new HashMap<>(data.statePosCache.size() * 2);
         for (CulledStatePos state : data.statePosCache) byPos.put(state.pos, state);
@@ -1120,6 +1130,7 @@ public final class ClientView {
         forceAllSections = false;
         stageStart = System.nanoTime();
         GiantSprites.collect(data);
+        PuddlesCompat.collectSprites(lit);
         long spritesNanos = System.nanoTime() - stageStart;
         LOGGER.info("[Planarium Panorama] Preparation de {} blocs : total={} ms, gabarit={} ms, donnees={} ms, " +
                         "lumiere speciale={} ms, sections a retesseler={}, sprites={} ms",
@@ -1356,6 +1367,7 @@ public final class ClientView {
         if (!removedStates.isEmpty()) {
             data.statePosCache.removeIf(removedStates::contains);
         }
+        PuddlesCompat.blocksChanged(lit, patch.keySet());
 
         // 3. Lumiere : seules les sections proches des cases qui ont change.
         boolean lightChanged = !java.util.Arrays.equals(light, renderedLight);
@@ -1495,6 +1507,45 @@ public final class ClientView {
             sections.computeIfAbsent(SectionPos.of(state.pos), ignored -> new ArrayList<>()).add(state);
         }
         return sections;
+    }
+
+    private static boolean visibleSceneryPos(BlockPos pos, int radius, int view) {
+        return !(pos.getX() == radius && pos.getZ() == radius
+                && (pos.getY() == radius || pos.getY() == radius + 1))
+                && (view < 0 || (Math.abs(pos.getX() - radius) <= view && Math.abs(pos.getZ() - radius) <= view));
+    }
+
+    /** Une flaque change : retesseler son voisinage avec le meme budget que les mises a jour du serveur. */
+    public static void visualBlocksChanged(LitRenderingWorld world, Collection<BlockPos> positions) {
+        if (renderData == null || renderData.fakeRenderingWorld != world || positions.isEmpty()) return;
+        Set<SectionPos> dirty = new HashSet<>();
+        for (BlockPos pos : positions) {
+            if (!visibleSceneryPos(pos, currentRadius, builtViewRadius)) continue;
+            if (PuddlesCompat.extraPositions(world).contains(pos)) {
+                currentSectionStates.computeIfAbsent(SectionPos.of(pos), ignored -> new ArrayList<>());
+            }
+            markAffectedSections(dirty, pos);
+            CulledStatePos state = statePosByPos.get(pos);
+            if (state != null) {
+                state.setNeedsUpdate(true);
+                state.setSkipRender(false);
+            }
+            for (net.minecraft.core.Direction direction : net.minecraft.core.Direction.values()) {
+                CulledStatePos neighbour = statePosByPos.get(pos.relative(direction));
+                if (neighbour != null) {
+                    neighbour.setNeedsUpdate(true);
+                    neighbour.setSkipRender(false);
+                }
+            }
+        }
+        for (SectionPos section : dirty) {
+            if ((currentSectionStates.containsKey(section) || sectionMeshes.containsKey(section))
+                    && pendingSectionSet.add(section)) pendingSections.addLast(section);
+        }
+        if (!pendingSections.isEmpty()) {
+            pendingSectionData = renderData;
+            pendingSectionStates = currentSectionStates;
+        }
     }
 
     private static Set<SectionPos> changedSections(StructureRenderData previous, StructureRenderData current,
@@ -1672,6 +1723,9 @@ public final class ClientView {
         SectionPos key = pendingSections.removeFirst();
         pendingSectionSet.remove(key);
         List<CulledStatePos> states = pendingSectionStates.get(key);
+        if (pendingSectionData.fakeRenderingWorld instanceof LitRenderingWorld lit) {
+            states = PuddlesCompat.sectionStates(lit, key.x(), key.y(), key.z(), states, currentRadius, builtViewRadius);
+        }
         SectionMesh old = sectionMeshes.remove(key);
         if (states == null || states.isEmpty()) {
             if (old != null) old.close();

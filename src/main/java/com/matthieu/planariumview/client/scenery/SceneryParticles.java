@@ -27,6 +27,8 @@ public final class SceneryParticles {
     /** Particules du decor ou d'une miniature, avec leur lumiere (format de la lightmap) et leur espace. */
     private static final Map<Particle, Integer> LIGHT = Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<Particle, Space> SPACE = Collections.synchronizedMap(new WeakHashMap<>());
+    /** Particules qui traversent deja les blocs en vanilla (notamment SPORE_BLOSSOM_AIR). */
+    private static final Map<Particle, Boolean> NO_COLLISION = Collections.synchronizedMap(new WeakHashMap<>());
 
     private SceneryParticles() {
     }
@@ -566,6 +568,12 @@ public final class SceneryParticles {
             access.planariumview$setYd(access.planariumview$getYd() * scale);
             access.planariumview$setZd(access.planariumview$getZd() * scale);
             access.planariumview$setGravity(access.planariumview$getGravity() * scale);
+            // Sauver ce choix avant de couper les collisions avec les vrais blocs du bocal.
+            // Falling Leaves deplace ses feuilles lui-meme : son sol est gere par endTick.
+            if (!access.planariumview$getHasPhysics()
+                    && !com.matthieu.planariumview.compat.FallingLeavesCompat.isLeaf(particle)) {
+                NO_COLLISION.put(particle, Boolean.TRUE);
+            }
             access.planariumview$setHasPhysics(false);
         }
         LIGHT.put(particle, light);
@@ -663,8 +671,8 @@ public final class SceneryParticles {
     }
 
     /**
-     * Sol du faux monde : une particule qui descend dans un de ses blocs s'arrete dessus (comme les vraies particules
-     * sur les blocs), au lieu de le traverser. {@code dy} : deplacement vertical de ce tick.
+     * Sol du faux monde : une particule physique qui descend dans un de ses blocs s'arrete dessus, comme en vanilla.
+     * Celles qui ignorent les collisions (spores ambiantes) continuent leur mouvement. {@code dy} : deplacement vertical.
      */
     public static void collide(Particle particle, double dy) {
         collided = true;
@@ -686,6 +694,9 @@ public final class SceneryParticles {
             }
         }
         if (jar(particle, space, dy)) {
+            return;
+        }
+        if (NO_COLLISION.containsKey(particle)) {
             return;
         }
         if (dy == 0.0) {
@@ -764,6 +775,11 @@ public final class SceneryParticles {
         double high = box.maxY;
         if (low >= top || high <= bottom) {
             return false;
+        }
+        if (NO_COLLISION.containsKey(particle) && box.minY < top) {
+            // Une particule d'ambiance traverse le terrain, mais ne doit ni entrer dans le bocal ni s'entasser sur son toit.
+            particle.remove();
+            return true;
         }
         if (dy < 0.0 && low - dy >= top - 1.0E-4) {
             // Tombee sur le toit du bocal.
@@ -882,6 +898,7 @@ public final class SceneryParticles {
     public static void clear() {
         LIGHT.clear();
         SPACE.clear();
+        NO_COLLISION.clear();
         HUE.clear();
         HUES.clear();
         EMITTERS.clear();
