@@ -629,6 +629,9 @@ public final class ClientView {
         // Jets de bulles de Dynamic Surroundings (integration DS).
         if (windChecks && Config.outsideAmbience()) {
             SceneryBubbles.tryStart(lit, pos, state);
+            OutsideViewPayload info = lastInfo;
+            com.matthieu.planariumview.compat.DsFirefliesCompat.animate(lit, pos, state, AMBIENT_RANDOM,
+                    info != null ? info.origin() : BlockPos.ZERO);
         }
         animateBlock(lit, pos.immutable(), state);
     }
@@ -1828,7 +1831,8 @@ public final class ClientView {
                         continue;
                     }
                 }
-                if (renderState.getFluidState().isEmpty() && isModel) {
+                // Un bloc aquatique ou waterlogged a aussi un modele, en plus de son liquide.
+                if (isModel) {
                     try {
                         // Couleur de Contraption Lights prise devant chaque face (voir FaceHueConsumer).
                         com.mojang.blaze3d.vertex.VertexConsumer faces = com.matthieu.planariumview.compat.ColorCompat.building()

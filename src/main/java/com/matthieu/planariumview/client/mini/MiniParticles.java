@@ -151,6 +151,7 @@ public final class MiniParticles {
                 BlockState state = mini.world().getBlockState(pos);
                 if (!state.isAir()) {
                     ClientView.animateBlock(mini.world(), pos.immutable(), state);
+                    com.matthieu.planariumview.compat.DsFirefliesCompat.animate(mini.world(), pos, state, RANDOM, tile);
                 }
             }
             for (BlockPos at : mini.campfires()) {

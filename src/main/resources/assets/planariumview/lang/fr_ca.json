@@ -19,7 +19,7 @@
   "planariumview.pack.real_light": "Planarium Panorama - vraie lumière",
   "planariumview.config.default": "Par défaut : %s",
   "planariumview.config.ambience": "Dynamic Surroundings - Ambiance extérieure",
-  "planariumview.config.ambience.tooltip": "Dynamic Surroundings joue les sons des alentours du Planarium, et ses couleurs de brouillard des biomes s'affichent dans le bocal. L'eau qui coule dans le décor reste audible (DS la remplace normalement par ses propres sons de cascades, qui ne peuvent pas jouer pour le décor).",
+  "planariumview.config.ambience.tooltip": "Dynamic Surroundings joue les sons des alentours du Planarium, et ses couleurs de brouillard des biomes s'affichent dans le bocal. Ses lucioles apparaissent aussi autour des fleurs dans la miniature et le décor géant, si les particules du décor sont activées.",
   "planariumview.config.server_controlled": "Réglé par le serveur sur lequel tu joues.",
   "planariumview.config.section.general": "Général",
   "planariumview.config.enabled": "Planarium Panorama",

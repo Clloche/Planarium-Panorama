@@ -562,6 +562,11 @@ public final class SceneryParticles {
             particle.remove();
             return false;
         }
+        if (particle instanceof com.matthieu.planariumview.compat.SceneryFirefly firefly) {
+            firefly.planariumview$space(space);
+            // Le vol de DS evite deja les blocs : ici, garder seulement les limites du bocal.
+            NO_COLLISION.put(particle, Boolean.TRUE);
+        }
         if (particle instanceof ParticleAccessor access) {
             // La vitesse (y compris la part au hasard ajoutee par la particule) et la gravite, a l'echelle du faux monde.
             access.planariumview$setXd(access.planariumview$getXd() * scale);
@@ -592,10 +597,11 @@ public final class SceneryParticles {
         if (scale >= 1.0F) {
             return true;
         }
-        // Miniature : seulement les particules de Minecraft. Celles des autres mods se dessinent souvent a leur facon
-        // (flammes de Nether Experience sur les torches murales...) et restent geantes meme rapetissees.
+        // Miniature : particules de Minecraft et integrations dont la mise a l'echelle est geree ici. Les autres
+        // se dessinent souvent a leur facon et restent geantes meme rapetissees.
         if (!particle.getClass().getName().startsWith("net.minecraft.")
-                && !com.matthieu.planariumview.compat.FallingLeavesCompat.isLeaf(particle)) {
+                && !com.matthieu.planariumview.compat.FallingLeavesCompat.isLeaf(particle)
+                && !(particle instanceof com.matthieu.planariumview.compat.SceneryFirefly)) {
             noteForeign(particle);
             return false;
         }
@@ -904,6 +910,7 @@ public final class SceneryParticles {
     }
 
     public static void clear() {
+        com.matthieu.planariumview.compat.DsFirefliesCompat.clear();
         LIGHT.clear();
         SPACE.clear();
         NO_COLLISION.clear();

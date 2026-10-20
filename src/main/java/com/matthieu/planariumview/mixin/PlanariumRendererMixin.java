@@ -18,6 +18,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.Slice;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
@@ -29,6 +30,36 @@ import net.minecraft.world.phys.Vec3;
  */
 @Mixin(value = PlanariumRenderer.class, remap = false)
 public abstract class PlanariumRendererMixin {
+
+    /** Ars saute le modele des blocs qui contiennent de l'eau (herbes marines, cornichons, blocs waterlogged). */
+    @Redirect(method = "generateRender",
+            slice = @Slice(from = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/world/level/block/state/BlockState;getRenderShape()Lnet/minecraft/world/level/block/RenderShape;")),
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/material/FluidState;isEmpty()Z"),
+            require = 0)
+    private static boolean planariumview$includeWaterloggedModel(net.minecraft.world.level.material.FluidState fluid) {
+        // Cette condition decide seulement si le modele sera dessine ; l'eau a deja ete dessinee juste avant.
+        return com.matthieu.planariumview.config.Config.enabled() || fluid.isEmpty();
+    }
+
+    /** L'eau des plantes reste translucide ; leur modele conserve sa propre couche (cutout, solid...). */
+    @Redirect(method = "generateRender", at = @At(value = "INVOKE", target =
+            "Lnet/minecraft/client/renderer/block/BlockRenderDispatcher;renderLiquid(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/BlockAndTintGetter;Lcom/mojang/blaze3d/vertex/VertexConsumer;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/material/FluidState;)V"),
+            require = 0)
+    private static void planariumview$translucentWater(net.minecraft.client.renderer.block.BlockRenderDispatcher dispatcher,
+            BlockPos pos, BlockAndTintGetter world, VertexConsumer consumer, BlockState state,
+            net.minecraft.world.level.material.FluidState fluid, PlanariumRenderer.StructureRenderData data,
+            Level level, BlockPos renderPos, Vec3 cameraPosition) {
+        if (com.matthieu.planariumview.config.Config.enabled()
+                && state.getRenderShape() == net.minecraft.world.level.block.RenderShape.MODEL
+                && consumer instanceof com.hollingsworth.arsnouveau.client.renderer.LiquidBlockVertexConsumer liquid) {
+            RenderType translucent = RenderType.translucent();
+            var builder = data.bufferBuilders.computeIfAbsent(translucent,
+                    type -> new com.mojang.blaze3d.vertex.BufferBuilder(data.getByteBuffer(type), type.mode(), type.format()));
+            consumer = new com.hollingsworth.arsnouveau.client.renderer.LiquidBlockVertexConsumer(builder, liquid.pose(), liquid.pos());
+        }
+        dispatcher.renderLiquid(pos, world, consumer, state, fluid);
+    }
 
     @Redirect(method = "generateRender",
             at = @At(value = "INVOKE",

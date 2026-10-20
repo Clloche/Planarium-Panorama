@@ -13,6 +13,8 @@
     "DsDimensionLibraryMixin",
     "DsBiomeVariablesMixin",
     "DsWeatherVariablesMixin",
+    "DsFireflyParticleMixin",
+    "DsFireflyLightsMixin",
     "AsEngineMixin",
     "AsEnvironmentMixin",
     "AsTerrainMixin",
