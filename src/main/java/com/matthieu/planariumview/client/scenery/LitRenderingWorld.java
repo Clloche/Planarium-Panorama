@@ -5,6 +5,7 @@ import com.matthieu.planariumview.client.jar.JarLight;
 import com.hollingsworth.arsnouveau.client.renderer.PlanariumRenderingWorld;
 import com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LightLayer;
 
@@ -15,6 +16,12 @@ import java.util.List;
  * au lieu de 15 partout.
  */
 public class LitRenderingWorld extends PlanariumRenderingWorld {
+    /** Les collisions natives doivent lire les blocs captures, pas les chunks du vrai monde delegues par Ars. */
+    @Override
+    public BlockGetter getChunkForCollisions(int chunkX, int chunkZ) {
+        return this;
+    }
+
     private byte[] light;
     /** Lumiere du dehors qui entre dans le bocal (voir JarLight.computeTable), ou null. */
     private byte[] outsideLight;

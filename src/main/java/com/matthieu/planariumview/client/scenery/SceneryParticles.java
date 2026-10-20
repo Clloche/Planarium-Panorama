@@ -6,10 +6,17 @@ import com.matthieu.planariumview.mixin.ParticleAccessor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.BlockCollisions;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +36,7 @@ public final class SceneryParticles {
     private static final Map<Particle, Space> SPACE = Collections.synchronizedMap(new WeakHashMap<>());
     /** Particules qui traversent deja les blocs en vanilla (notamment SPORE_BLOSSOM_AIR). */
     private static final Map<Particle, Boolean> NO_COLLISION = Collections.synchronizedMap(new WeakHashMap<>());
+    private static boolean collisionWarned;
 
     private SceneryParticles() {
     }
@@ -537,6 +545,7 @@ public final class SceneryParticles {
     /** Met une particule deja creee a l'echelle du faux monde. Faux (et la particule est enlevee) si c'est impossible. */
     private static boolean adopt(Particle particle, Space space, int light) {
         float scale = (float) space.scale();
+        AABB nativeBox = particle.getBoundingBox();
         float before = particle instanceof com.matthieu.planariumview.mixin.SingleQuadParticleAccessor quad
                 ? quad.planariumview$getQuadSize() : -1.0F;
         if (particle instanceof ParticleAccessor nudge && scale != 1.0F) {
@@ -555,6 +564,11 @@ public final class SceneryParticles {
             nudge.planariumview$setZo(nz);
         }
         particle.scale(scale);
+        if (space.bounds() != null && particle instanceof ParticleAccessor access) {
+            // Particle.scale remplace la boite par 0,2 x 0,2, meme pour la fumee de feu de camp (0,25 x 0,25).
+            // Garder ses dimensions natives a l'echelle pour les collisions avec les bords des blocs.
+            access.planariumview$setSize((float) nativeBox.getXsize() * scale, (float) nativeBox.getYsize() * scale);
+        }
         if (!resized(particle, before, scale)) {
             // Particule d'un autre mod qui garde sa taille (ou se dessine a sa facon) : dans une miniature, elle
             // apparaitrait 32 fois trop grande. On l'enleve.
@@ -572,13 +586,17 @@ public final class SceneryParticles {
             access.planariumview$setYd(access.planariumview$getYd() * scale);
             access.planariumview$setZd(access.planariumview$getZd() * scale);
             access.planariumview$setGravity(access.planariumview$getGravity() * scale);
-            // Sauver ce choix avant de couper les collisions avec les vrais blocs du bocal.
+            // Sauver le choix natif avant de couper les collisions avec les vrais blocs.
             // Falling Leaves deplace ses feuilles lui-meme : son sol est gere par endTick.
-            if (!access.planariumview$getHasPhysics()
-                    && !com.matthieu.planariumview.compat.FallingLeavesCompat.isLeaf(particle)) {
+            boolean leaf = com.matthieu.planariumview.compat.FallingLeavesCompat.isLeaf(particle);
+            if (!access.planariumview$getHasPhysics() && !leaf) {
                 NO_COLLISION.put(particle, Boolean.TRUE);
             }
-            access.planariumview$setHasPhysics(false);
+            // La miniature garde la physique de Particle.move ; son calcul de collision est redirige vers le faux monde.
+            // Le decor geant et les particules au mouvement personnalise gardent les collisions gerees ci-dessous.
+            if (space.bounds() == null || leaf || NO_COLLISION.containsKey(particle)) {
+                access.planariumview$setHasPhysics(false);
+            }
         }
         LIGHT.put(particle, light);
         SPACE.put(particle, space);
@@ -675,6 +693,63 @@ public final class SceneryParticles {
         return true;
     }
 
+    /** Collision native de la boite entiere, dans les coordonnees du gabarit ; null pour une particule normale. */
+    public static Vec3 miniCollision(Particle particle, Vec3 motion, AABB box) {
+        Space space = SPACE.isEmpty() ? null : SPACE.get(particle);
+        if (space == null || space.bounds() == null || space.world() == null) {
+            return null;
+        }
+        double scale = space.scale();
+        AABB localBox = new AABB((box.minX - space.ox()) / scale, (box.minY - space.oy()) / scale,
+                (box.minZ - space.oz()) / scale, (box.maxX - space.ox()) / scale,
+                (box.maxY - space.oy()) / scale, (box.maxZ - space.oz()) / scale);
+        try {
+            Vec3 localMotion = motion.scale(1.0 / scale);
+            // Ne pas appeler Entity.collideBoundingBox : Lithium le remplace et lit directement les vrais chunks.
+            // L'iterateur vanilla passe par notre getChunkForCollisions, qui renvoie les blocs de la capture.
+            List<VoxelShape> shapes = new ArrayList<>();
+            new BlockCollisions<VoxelShape>(space.world(), null, localBox.expandTowards(localMotion), false,
+                    (pos, shape) -> shape).forEachRemaining(shapes::add);
+            return collideWithShapes(localMotion, localBox, shapes).scale(scale);
+        } catch (Exception error) {
+            // Un bloc modde ne supporte pas le faux monde : laisser la particule continuer.
+            if (!collisionWarned) {
+                collisionWarned = true;
+                LOGGER.warn("[Planarium Panorama] Collision d'une particule de miniature impossible", error);
+            }
+            return motion;
+        }
+    }
+
+    /** Meme ordre d'axes que Minecraft, avec les formes deja lues dans le faux monde. */
+    private static Vec3 collideWithShapes(Vec3 motion, AABB box, List<VoxelShape> shapes) {
+        if (shapes.isEmpty()) return motion;
+        double dx = motion.x, dy = motion.y, dz = motion.z;
+        if (dy != 0.0) {
+            dy = Shapes.collide(Direction.Axis.Y, box, shapes, dy);
+            if (dy != 0.0) box = box.move(0.0, dy, 0.0);
+        }
+        boolean zFirst = Math.abs(dx) < Math.abs(dz);
+        if (zFirst && dz != 0.0) {
+            dz = Shapes.collide(Direction.Axis.Z, box, shapes, dz);
+            if (dz != 0.0) box = box.move(0.0, 0.0, dz);
+        }
+        if (dx != 0.0) {
+            dx = Shapes.collide(Direction.Axis.X, box, shapes, dx);
+            if (!zFirst && dx != 0.0) box = box.move(dx, 0.0, 0.0);
+        }
+        if (!zFirst && dz != 0.0) {
+            dz = Shapes.collide(Direction.Axis.Z, box, shapes, dz);
+        }
+        return new Vec3(dx, dy, dz);
+    }
+
+    /** Echelle du mouvement, y compris les accelerations ajoutees par une particule apres sa creation. */
+    public static float motionScale(Particle particle) {
+        Space space = SPACE.isEmpty() ? null : SPACE.get(particle);
+        return space != null ? (float) space.scale() : 1.0F;
+    }
+
     /**
      * Sol du faux monde : une particule physique qui descend dans un de ses blocs s'arrete dessus, comme en vanilla.
      * Celles qui ignorent les collisions (spores ambiantes) continuent leur mouvement. {@code dy} : deplacement vertical.
@@ -704,11 +779,13 @@ public final class SceneryParticles {
         if (NO_COLLISION.containsKey(particle)) {
             return;
         }
+        boolean nativeMini = space.bounds() != null && particle instanceof ParticleAccessor access
+                && access.planariumview$getHasPhysics();
         if (dy == 0.0) {
             return;
         }
         if (dy > 0.0) {
-            ceiling(particle, space, dy);
+            if (!nativeMini) ceiling(particle, space, dy);
             return;
         }
         LitRenderingWorld world = space.world();
@@ -732,6 +809,8 @@ public final class SceneryParticles {
                     return;
                 }
             }
+            // Particle.move a deja traite le sol et les vitesses de la miniature.
+            if (nativeMini) return;
             if (state.isAir()) {
                 return;
             }

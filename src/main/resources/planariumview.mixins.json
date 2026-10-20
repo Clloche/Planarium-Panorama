@@ -18,6 +18,7 @@
     "ParticleEngineAccessor",
     "SingleQuadParticleAccessor",
     "ParticleLightMixin",
+    "CampfireSmokeParticleMixin",
     "BubbleParticleMixin",
     "LeavesBlockMixin",
     "ParticleEngineTickMixin",

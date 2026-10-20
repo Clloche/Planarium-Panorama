@@ -1,5 +1,6 @@
 package com.matthieu.planariumview.client.mini;
 
+import com.matthieu.planariumview.client.jar.JarWalls;
 import com.matthieu.planariumview.client.scenery.ClientView;
 import com.matthieu.planariumview.client.scenery.LitRenderingWorld;
 import com.matthieu.planariumview.client.scenery.SceneryParticles;
@@ -13,7 +14,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 
@@ -34,8 +34,19 @@ public final class MiniParticles {
     private static final Map<BlockPos, Seen> SEEN = new HashMap<>();
     /** Faux monde de chaque miniature, pour y faire jouer l'ambiance des blocs. */
     private static final Map<StructureRenderData, Mini> MINIS = Collections.synchronizedMap(new WeakHashMap<>());
-    /** Blocs tires au hasard par miniature et par tick (Minecraft en tire 2 x 667 autour du joueur). */
-    private static final int PICKS = 667;
+    /**
+     * Densite approximative des animations pres d'un joueur vanilla. Le nombre de tirages depend du volume occupe,
+     * pour ne pas faire jouer une torche seule des centaines de fois par tick dans un bocal presque vide.
+     */
+    private static final double PICKS_PER_BLOCK = 0.1;
+    /** Budget historique par miniature : ne pas le doubler quand le bocal est plein. Ce n'est pas un quota de particules. */
+    private static final int MAX_PICKS = 667;
+    /**
+     * Interieur entier du bocal, dans le gabarit d'Ars qui commence en (0, 1, 0). La fumee doit pouvoir monter dans
+     * l'air au-dessus des blocs presents ; la boite utilisee pour les tirages n'est pas une limite de deplacement.
+     */
+    private static final AABB PARTICLE_BOUNDS = new AABB(JarWalls.MIN + 1, JarWalls.MIN_Y + 1, JarWalls.MIN + 1,
+            JarWalls.MAX, JarWalls.MAX_Y, JarWalls.MAX).move(0.0, -1.0, 0.0);
     /** Distance maximale entre le joueur et le Planarium. */
     private static final double RANGE = 24.0;
     private static final int MAX_MINIS = 4;
@@ -44,7 +55,7 @@ public final class MiniParticles {
     private record Seen(net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> key, int light, long tick) {
     }
 
-    private record Mini(LitRenderingWorld world, AABB bounds, List<BlockPos> campfires) {
+    private record Mini(LitRenderingWorld world, AABB sampleBounds, List<BlockPos> campfires) {
     }
 
     private MiniParticles() {
@@ -131,7 +142,7 @@ public final class MiniParticles {
         };
         SceneryParticles.Space space = new SceneryParticles.Space(lit != null ? lit : mini.world(), scale,
                 tile.getX() + ClientView.ARS_OFFSET, tile.getY() + ClientView.ARS_OFFSET + 26 * scale,
-                tile.getZ() + ClientView.ARS_OFFSET, mini.bounds(), lit != null, adjust);
+                tile.getZ() + ClientView.ARS_OFFSET, PARTICLE_BOUNDS, lit != null, adjust);
         LitRenderingWorld.captureSceneryParticles((world, options, x, y, z, vx, vy, vz) -> {
             if (options == null || !SceneryParticles.allowed()) {
                 return;
@@ -140,12 +151,15 @@ public final class MiniParticles {
         });
         SceneryParticles.animatingMini(true);
         try {
-            AABB bounds = mini.bounds();
+            AABB bounds = mini.sampleBounds();
             int sizeX = (int) bounds.getXsize();
             int sizeY = (int) bounds.getYsize();
             int sizeZ = (int) bounds.getZsize();
             BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-            for (int i = 0; i < PICKS; i++) {
+            // Densite stable dans les petites boites, plafonnee au budget de la miniature.
+            double expected = PICKS_PER_BLOCK * sizeX * sizeY * sizeZ;
+            int picks = Math.min(MAX_PICKS, (int) expected + (RANDOM.nextDouble() < expected - (int) expected ? 1 : 0));
+            for (int i = 0; i < picks; i++) {
                 pos.set((int) bounds.minX + RANDOM.nextInt(sizeX), (int) bounds.minY + RANDOM.nextInt(sizeY),
                         (int) bounds.minZ + RANDOM.nextInt(sizeZ));
                 BlockState state = mini.world().getBlockState(pos);

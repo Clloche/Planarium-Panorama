@@ -3,10 +3,14 @@ package com.matthieu.planariumview.mixin;
 import net.minecraft.client.particle.Particle;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
+import org.spongepowered.asm.mixin.gen.Invoker;
 
 /** Particules du decor geant (SceneryParticles) : vitesse, gravite et collisions ajustees apres leur creation. */
 @Mixin(Particle.class)
 public interface ParticleAccessor {
+    @Invoker("setSize")
+    void planariumview$setSize(float width, float height);
+
     @Accessor("xd")
     double planariumview$getXd();
 
