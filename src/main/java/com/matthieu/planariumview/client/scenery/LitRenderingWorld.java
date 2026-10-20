@@ -256,7 +256,8 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
         if (hidden(pos)) {
             return net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
         }
-        net.minecraft.world.level.block.state.BlockState visual = visualBlocks.get(pos);
+        // Le constructeur d'Ars appelle getBlockState avant l'initialisation des champs de cette sous-classe.
+        net.minecraft.world.level.block.state.BlockState visual = visualBlocks != null ? visualBlocks.get(pos) : null;
         if (visual != null) {
             net.minecraft.world.level.block.state.BlockState captured = super.getBlockState(pos);
             return captured.isAir() || captured.is(visualBlock) ? visual : captured;
