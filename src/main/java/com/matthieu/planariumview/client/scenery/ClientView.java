@@ -196,7 +196,7 @@ public final class ClientView {
                 if (buffer == null) continue;
                 builder.clear();
                 var sorted = entry.getValue().buildSortedIndexBuffer(builder,
-                        VertexSorting.byDistance(v -> -v.distanceSquared((float) camera.x, (float) camera.y, (float) camera.z)));
+                        VertexSorting.byDistance((float) camera.x, (float) camera.y, (float) camera.z));
                 buffer.bind();
                 buffer.uploadIndexBuffer(sorted);
                 VertexBuffer.unbind();
@@ -1687,7 +1687,7 @@ public final class ClientView {
                 if (mesh == null) continue;
                 if (type == RenderType.translucent()) {
                     section.sortStates.put(type, mesh.sortQuads(data.getByteBuffer(type),
-                            VertexSorting.byDistance(v -> -sortPos.distanceSquared(v))));
+                            VertexSorting.byDistance(sortPos)));
                 }
                 VertexBuffer buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
                 buffer.bind();

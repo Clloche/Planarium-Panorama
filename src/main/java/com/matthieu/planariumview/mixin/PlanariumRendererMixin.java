@@ -6,6 +6,7 @@ import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer;
 import com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.VertexSorting;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.ModelBlockRenderer;
 import net.minecraft.client.resources.model.BakedModel;
@@ -31,6 +32,36 @@ import net.minecraft.world.phys.Vec3;
 @Mixin(value = PlanariumRenderer.class, remap = false)
 public abstract class PlanariumRendererMixin {
 
+    /** Les sommets de la miniature sont locaux au bloc du Planarium, et doivent se trier du plus loin au plus pres. */
+    @Redirect(method = "generateRender", at = @At(value = "INVOKE", target =
+            "Lcom/mojang/blaze3d/vertex/VertexSorting;byDistance(Lcom/mojang/blaze3d/vertex/VertexSorting$DistanceFunction;)Lcom/mojang/blaze3d/vertex/VertexSorting;"),
+            require = 0)
+    private static VertexSorting planariumview$initialTransparencySort(VertexSorting.DistanceFunction original,
+            PlanariumRenderer.StructureRenderData data, Level level, BlockPos renderPos, Vec3 cameraPosition) {
+        return planariumview$miniSort(original, renderPos, cameraPosition);
+    }
+
+    /** Ars oublie de soustraire la position du Planarium lors des tris suivants (sortAll -> sort). */
+    @Redirect(method = "sort", at = @At(value = "INVOKE", target =
+            "Lcom/mojang/blaze3d/vertex/VertexSorting;byDistance(Lcom/mojang/blaze3d/vertex/VertexSorting$DistanceFunction;)Lcom/mojang/blaze3d/vertex/VertexSorting;"),
+            require = 0)
+    private static VertexSorting planariumview$updatedTransparencySort(VertexSorting.DistanceFunction original,
+            PlanariumRenderer.StructureRenderData data, BlockPos renderPos, RenderType renderType) {
+        return planariumview$miniSort(original, renderPos,
+                net.minecraft.client.Minecraft.getInstance().gameRenderer.getMainCamera().getPosition());
+    }
+
+    @org.spongepowered.asm.mixin.Unique
+    private static VertexSorting planariumview$miniSort(VertexSorting.DistanceFunction original,
+                                                        BlockPos renderPos, Vec3 camera) {
+        if (!com.matthieu.planariumview.config.Config.enabled()) {
+            return VertexSorting.byDistance(original);
+        }
+        // byDistance trie deja par distance decroissante : la distance negative d'Ars inversait cet ordre.
+        return VertexSorting.byDistance((float) (camera.x - renderPos.getX()),
+                (float) (camera.y - renderPos.getY()), (float) (camera.z - renderPos.getZ()));
+    }
+
     /** Ars saute le modele des blocs qui contiennent de l'eau (herbes marines, cornichons, blocs waterlogged). */
     @Redirect(method = "generateRender",
             slice = @Slice(from = @At(value = "INVOKE",
@@ -42,19 +73,20 @@ public abstract class PlanariumRendererMixin {
         return com.matthieu.planariumview.config.Config.enabled() || fluid.isEmpty();
     }
 
-    /** L'eau des plantes reste translucide ; leur modele conserve sa propre couche (cutout, solid...). */
+    /** Meme couche pour toute l'eau, libre ou dans un bloc ; les modeles gardent leur propre couche. */
     @Redirect(method = "generateRender", at = @At(value = "INVOKE", target =
             "Lnet/minecraft/client/renderer/block/BlockRenderDispatcher;renderLiquid(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/BlockAndTintGetter;Lcom/mojang/blaze3d/vertex/VertexConsumer;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/material/FluidState;)V"),
             require = 0)
-    private static void planariumview$translucentWater(net.minecraft.client.renderer.block.BlockRenderDispatcher dispatcher,
+    private static void planariumview$fluidLayer(net.minecraft.client.renderer.block.BlockRenderDispatcher dispatcher,
             BlockPos pos, BlockAndTintGetter world, VertexConsumer consumer, BlockState state,
             net.minecraft.world.level.material.FluidState fluid, PlanariumRenderer.StructureRenderData data,
             Level level, BlockPos renderPos, Vec3 cameraPosition) {
         if (com.matthieu.planariumview.config.Config.enabled()
-                && state.getRenderShape() == net.minecraft.world.level.block.RenderShape.MODEL
                 && consumer instanceof com.hollingsworth.arsnouveau.client.renderer.LiquidBlockVertexConsumer liquid) {
-            RenderType translucent = RenderType.translucent();
-            var builder = data.bufferBuilders.computeIfAbsent(translucent,
+            // Ars utilise la couche du modele du bloc, meme pour son fluide : l'eau libre peut finir en solid,
+            // et celle des plantes en cutout. Choisir la couche du fluide pour les deux (eau translucide, lave solid).
+            RenderType fluidLayer = net.minecraft.client.renderer.ItemBlockRenderTypes.getRenderLayer(fluid);
+            var builder = data.bufferBuilders.computeIfAbsent(fluidLayer,
                     type -> new com.mojang.blaze3d.vertex.BufferBuilder(data.getByteBuffer(type), type.mode(), type.format()));
             consumer = new com.hollingsworth.arsnouveau.client.renderer.LiquidBlockVertexConsumer(builder, liquid.pose(), liquid.pos());
         }
