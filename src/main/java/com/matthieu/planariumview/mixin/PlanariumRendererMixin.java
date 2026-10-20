@@ -2,6 +2,8 @@ package com.matthieu.planariumview.mixin;
 
 import com.matthieu.planariumview.compat.ColorCompat;
 
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer;
 import com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -135,15 +137,23 @@ public abstract class PlanariumRendererMixin {
         }
     }
 
-    /** Pendant la construction de la miniature, Contraption Lights lit la couleur dans le faux monde de la miniature. */
-    @Inject(method = "generateRender", at = @At("HEAD"), require = 0)
-    private static void planariumview$colorBegin(PlanariumRenderer.StructureRenderData data, Level level, BlockPos renderPos,
-                                                 Vec3 cameraPosition, CallbackInfo ci) {
+    /** Le contexte de couleur doit etre ferme meme si un modele modde echoue pendant la construction. */
+    @WrapMethod(method = "generateRender", require = 0)
+    private static void planariumview$colorScope(PlanariumRenderer.StructureRenderData data, Level level, BlockPos renderPos,
+                                                 Vec3 cameraPosition, Operation<Void> original) {
         planariumview$lastFluidPos = null;
         if (data != null) {
             com.matthieu.planariumview.client.mini.MiniOutsideLight.apply(data, level, renderPos);
-            ColorCompat.begin(data.fakeRenderingWorld);
-            com.matthieu.planariumview.client.mini.MiniParticles.readHues(data);
+        }
+        ColorCompat.begin(data != null ? data.fakeRenderingWorld : null);
+        try {
+            if (data != null) {
+                com.matthieu.planariumview.client.mini.MiniParticles.readHues(data);
+            }
+            original.call(data, level, renderPos, cameraPosition);
+        } finally {
+            ColorCompat.end();
+            com.matthieu.planariumview.client.jar.JarColor.clearMini();
         }
     }
 
@@ -220,10 +230,4 @@ public abstract class PlanariumRendererMixin {
         renderer.render(blockEntity, partialTick, poseStack, buffers, light, packedOverlay);
     }
 
-    @Inject(method = "generateRender", at = @At("RETURN"), require = 0)
-    private static void planariumview$colorEnd(PlanariumRenderer.StructureRenderData data, Level level, BlockPos renderPos,
-                                               Vec3 cameraPosition, CallbackInfo ci) {
-        ColorCompat.end();
-        com.matthieu.planariumview.client.jar.JarColor.clearMini();
-    }
 }

@@ -43,10 +43,9 @@ public final class SceneryParticles {
 
     /**
      * Couleur de Contraption Lights dans un faux monde (seulement les bits de couleur, sans les niveaux de lumiere).
-     * Contraption Lights ne sait lire qu'un monde a la fois, et changer de monde vide tout son cache : le faire pendant
-     * le jeu faisait clignoter la lumiere. On la lit donc seulement pendant la construction du decor ou de la miniature
-     * (quand Contraption Lights lit deja le faux monde), aux endroits ou naissent les particules : les blocs lumineux et
-     * celui au-dessus, et le sol de chaque colonne (pour la pluie et la neige).
+     * On la lit pendant la construction du decor ou de la miniature, dans le contexte isole de ColorCompat,
+     * pour ne pas recalculer des sections de couleur a chaque naissance de particule. Les positions gardees sont
+     * les blocs lumineux et celui au-dessus, et le sol de chaque colonne (pour la pluie et la neige).
      */
     private static final class Hues {
         final Map<Long, Integer> cells = new java.util.HashMap<>();
