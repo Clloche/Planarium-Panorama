@@ -9,8 +9,11 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.TickRateManager;
 import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -21,6 +24,20 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(value = PlanariumRenderingWorld.class, remap = false)
 public abstract class PlanariumRenderingWorldMixin {
     private static BlockState planariumview$glass;
+    @Shadow private Level realWorld;
+
+    /** Create consults the tick rate even for virtual client animations; Ars returns null here. */
+    @Inject(method = "tickRateManager", at = @At("HEAD"), cancellable = true)
+    private void planariumview$tickRate(CallbackInfoReturnable<TickRateManager> cir) {
+        if (com.matthieu.planariumview.config.Config.enabled()) cir.setReturnValue(realWorld.tickRateManager());
+    }
+
+    @WrapOperation(method = "cacheBlockEntity", at = @At(value = "INVOKE", target =
+            "Lnet/minecraft/world/level/block/entity/BlockEntity;setLevel(Lnet/minecraft/world/level/Level;)V"), require = 0)
+    private void planariumview$createPreview(net.minecraft.world.level.block.entity.BlockEntity entity,
+            net.minecraft.world.level.Level level, Operation<Void> original) {
+        com.matthieu.planariumview.compat.CreateCopies.attach(entity, (PlanariumRenderingWorld) (Object) this, level);
+    }
 
     /**
      * Les etats recus decrivent deja les blocs et leurs voisins. Les recalculer ici peut supprimer les cultures :

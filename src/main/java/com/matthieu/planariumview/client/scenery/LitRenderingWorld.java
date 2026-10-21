@@ -216,6 +216,7 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
     @Override
     public void playLocalSound(double x, double y, double z, net.minecraft.sounds.SoundEvent sound,
                                net.minecraft.sounds.SoundSource source, float volume, float pitch, boolean distanceDelay) {
+        if (com.matthieu.planariumview.client.sound.MachineSounds.local(x, y, z, sound, source, volume, pitch)) return;
         if (giant && ambientCapture) {
             ClientView.onSceneryAmbientSound(x, y, z, sound, source, volume, pitch);
         }

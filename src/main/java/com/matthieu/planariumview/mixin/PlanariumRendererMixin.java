@@ -228,7 +228,10 @@ public abstract class PlanariumRendererMixin {
                         net.minecraft.client.renderer.LightTexture.sky(light), net.minecraft.client.renderer.LightTexture.block(light));
             }
         }
-        renderer.render(blockEntity, partialTick, poseStack, buffers, light, packedOverlay);
+        com.matthieu.planariumview.compat.CreateCopies.render(renderer, blockEntity,
+                planariumview$miniWorld instanceof com.hollingsworth.arsnouveau.client.renderer.PlanariumRenderingWorld world
+                        ? world : null,
+                partialTick, poseStack, buffers, light, packedOverlay);
     }
 
 }

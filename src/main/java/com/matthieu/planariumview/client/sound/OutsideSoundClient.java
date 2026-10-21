@@ -78,7 +78,7 @@ public final class OutsideSoundClient {
 
     /** Vrai pour un son d'ambiance du decor (voir DsSoundBlockMixin). */
     public static boolean isScenery(SoundInstance sound) {
-        return sound instanceof OutsideInstance outside && outside.scenery;
+        return sound instanceof OutsideInstance outside && outside.scenery || MachineSounds.isScenery(sound);
     }
 
     /** Son venu du dehors : deja attenue (par le serveur ou par ClientView), on ne garde que sa direction. */

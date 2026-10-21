@@ -565,6 +565,8 @@ public final class ClientView {
         Minecraft mc = Minecraft.getInstance();
         // Cascades du decor avec les sons de Dynamic Surroundings (integration DS et sons d'ambiance du decor).
         boolean inJar = mc.level != null && currentDim != null && mc.level.dimension().location().equals(currentDim);
+        com.matthieu.planariumview.client.sound.MachineSounds.tick(inJar ? sceneryWorld() : null, currentRadius,
+                lastInfo == null ? null : lastInfo.origin());
         if (!mc.isPaused()) {
             PuddlesCompat.tick(inJar && Config.enabled() ? sceneryWorld() : null, lastInfo);
         }
@@ -900,6 +902,7 @@ public final class ClientView {
         sentEnabled = null;
         sentSoundPrefs = null;
         sentSubLevelViews = null;
+        com.matthieu.planariumview.client.sound.MachineSounds.clear();
         OutsideRecordClient.clear();
         SceneryParticles.clear();
         SceneryBubbles.clear();
@@ -1474,8 +1477,7 @@ public final class ClientView {
             if (blockEntity == null) {
                 return;
             }
-            // Comme Ars : le bloc special est rattache au vrai monde.
-            blockEntity.setLevel(Minecraft.getInstance().level);
+            com.matthieu.planariumview.compat.CreateCopies.attach(blockEntity, world, Minecraft.getInstance().level);
             blockEntity.onLoad();
             blockEntity.loadWithComponents(data, world.registryAccess());
             world.blockEntityMap.put(pos, blockEntity);
@@ -2258,8 +2260,8 @@ public final class ClientView {
                 try {
                     if (!AmbersolCompat.render(blockEntity, partialTick, poseStack, blockEntityBuffers)) {
                         // Couleur de Contraption Lights gardee meme si le rendu recalcule la lumiere (voir HueKeepingBuffers).
-                        renderer.render(blockEntity, partialTick, poseStack, HueKeepingBuffers.of(blockEntityBuffers, light),
-                                light, OverlayTexture.NO_OVERLAY);
+                        com.matthieu.planariumview.compat.CreateCopies.render(renderer, blockEntity, data.fakeRenderingWorld,
+                                partialTick, poseStack, HueKeepingBuffers.of(blockEntityBuffers, light), light, OverlayTexture.NO_OVERLAY);
                     }
                 } catch (Exception e) {
                     LOGGER.debug("[Planarium View] Bloc special ignore", e);

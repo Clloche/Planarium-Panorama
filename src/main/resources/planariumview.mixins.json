@@ -40,7 +40,10 @@
     "HorizonMixin",
     "SkyWeatherScopeMixin",
     "FogWeatherScopeMixin",
-    "MiniShadeMixin"
+    "MiniShadeMixin",
+    "CreateSoundScapesMixin",
+    "CopyCameraMixin",
+    "CopySoundMixin"
   ],
   "injectors": {
     "defaultRequire": 1

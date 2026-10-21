@@ -235,6 +235,27 @@ public final class SubLevelView {
         return level == null ? null : OUTSIDE.get(level.dimension().location());
     }
 
+    /** Captured terrain coordinates -> current jar coordinates, also when the jar moves. */
+    public static Matrix4d sourceFrame(BlockPos origin, int radius) {
+        Scene scene = outside();
+        return scene == null || scene.anchor.to == null || origin == null
+                ? new Matrix4d().translation(-radius, -radius, -radius)
+                : scene.anchor.current().invert().translate(origin.getX(), origin.getY(), origin.getZ());
+    }
+
+    /** Only the outside scene contributes sound; miniatures stay silent. */
+    public static void soundWorlds(java.util.function.BiConsumer<LitRenderingWorld, Matrix4d> consumer) {
+        Scene scene = outside();
+        if (scene == null || !Config.subLevelViews()) return;
+        Matrix4d inverse = scene.anchor.current().invert();
+        for (Part part : scene.parts.values()) {
+            if (part.mesh == null || part.pending != null || part.pose.to == null) continue;
+            if (part.mesh.data.fakeRenderingWorld instanceof LitRenderingWorld world) {
+                consumer.accept(world, new Matrix4d(inverse).mul(part.pose.current()));
+            }
+        }
+    }
+
     public static void drawOutside(RenderLevelStageEvent event, BlockPos captureCenter, boolean special) {
         Scene scene = outside();
         if (scene == null || !Config.subLevelViews()) return;
@@ -449,7 +470,8 @@ public final class SubLevelView {
                 try {
                     pose.translate(at.getX(), at.getY(), at.getZ());
                     int light = LevelRenderer.getLightColor(data.fakeRenderingWorld, at);
-                    renderer.render(entity, partialTick, pose, HueKeepingBuffers.of(buffers, light), light, OverlayTexture.NO_OVERLAY);
+                    com.matthieu.planariumview.compat.CreateCopies.render(renderer, entity, data.fakeRenderingWorld,
+                            partialTick, pose, HueKeepingBuffers.of(buffers, light), light, OverlayTexture.NO_OVERLAY);
                 } catch (RuntimeException e) {
                     LOGGER.debug("[Planarium Panorama] Sub-level block entity skipped", e);
                 } finally {
