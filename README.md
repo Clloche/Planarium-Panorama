@@ -17,7 +17,7 @@ Includes :
 - **Real lighting:** the giant view, the miniature and the jar interior are lit like the Planarium's real spot.
 - **Live scenery:** block changes outside (redstone, pistons, doors...) show up in the giant view within seconds.
 - **Outside sounds:** explosions, blocks, mobs and jukebox music from around the Planarium, heard from their direction.
-- **Sable sub-levels (experimental):** moving structures in the giant scenery and the miniature, including Planariums placed on a moving structure.
+- **Sable sub-levels and Create Aeronautics (experimental):** moving structures in the giant scenery and the miniature, including Planariums placed on a moving structure.
 
 Everything can be changed in game: **Mods** > **Planarium Panorama** > **Config** or in the config files.
 
@@ -28,9 +28,7 @@ The mods are detected automatically and their integration can be turned on or of
 - [Contraption Lights](https://www.curseforge.com/minecraft/mc-mods/contraption-lights) (Colored light)
 - [Dynamic Surroundings](https://www.curseforge.com/minecraft/mc-mods/dynamic-surroundings)
 - [Enhanced Celestials 2](https://www.curseforge.com/minecraft/mc-mods/enhanced-celestials-2-default-lunar-events)
-- Sable / Create Aeronautics (moving structures in the giant scenery and miniature)
-
-[Ars Sable](https://github.com/baileyholl/ars-sable) handles Ars Nouveau's teleportation support for Planariums on moving structures.
+- Sable / Create Aeronautics (WIP)
 
 ## Compatible mods
 
@@ -56,7 +54,6 @@ The version indicated is the version it has been tested with.
 
 ## Known issues
 
-- Sable: particles from moving structures are not yet shown in the giant scenery or miniatures. Very large structures may be partially displayed.
 - [Modonomicon](https://www.curseforge.com/minecraft/mc-mods/modonomicon) (singleplayer): very rarely, entering a jar fails halfway. Loading takes a long time, then you float in the void without the jar. This comes from a timing bug with Modonomicon. To fix it, just Save and Quit then rejoin the world.
 - Mobs: mobs and players around the Planarium are deliberately not shown in the giant scenery or the miniature (paintings, item frames and armor stands are).
 - [Shaders (Iris)](https://modrinth.com/mod/iris): The shaders inside the Planarium will not follow the shaders of the outside.
