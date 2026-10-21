@@ -50,7 +50,7 @@ public final class Config {
                 .comment("View distance (in blocks): past the detail radius, the scenery continues up to this distance as a frozen",
                         "snapshot (blocks only: no animations, particles, sounds or mobs there; Sable structures still show and move).",
                         "Captured when entering the jar, again with the backup refresh, and when a moving Planarium (Sable) has stopped",
-                        "for a few seconds. Hidden while the Planarium moves. Its height is half this value above and below the Planarium.",
+                        "for a few seconds. Hidden while the Planarium moves. A cylinder: this distance around, above and below the Planarium.",
                         "0 = OFF (or any value not larger than the detail radius).")
                 .defineInRange("farRadius", 64, 0, 96);
         BLOCK_UPDATE_SECONDS = common

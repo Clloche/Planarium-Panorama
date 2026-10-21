@@ -1436,7 +1436,7 @@ public final class ServerView {
             // Avec l'anneau lointain, les structures qui volent plus loin restent visibles (blocs et mouvement).
             int far = Config.FAR_RADIUS.get();
             net.minecraft.world.phys.AABB area = far > radius
-                    ? new net.minecraft.world.phys.AABB(track.center).inflate(far + 1, Math.max(radius, far / 2) + 1, far + 1)
+                    ? new net.minecraft.world.phys.AABB(track.center).inflate(far + 1, far + 1, far + 1)
                     : new net.minecraft.world.phys.AABB(track.center).inflate(radius + 1);
             SubLevelServer.send(player, track.pocket.location(), source, area, track.anchor, false,
                     track.source.pos(), prefsOf(player.getUUID()).world());

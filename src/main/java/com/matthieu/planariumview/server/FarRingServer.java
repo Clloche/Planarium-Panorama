@@ -108,7 +108,7 @@ public final class FarRingServer {
             }
             return;
         }
-        Key want = new Key(source.dimension(), center, near, far, Math.max(near, far / 2));
+        Key want = new Key(source.dimension(), center, near, far, Math.max(near, far));
         if (state.job != null) {
             if (!state.job.key.equals(want)) {
                 cancel(player.server, state);
@@ -294,8 +294,11 @@ public final class FarRingServer {
             ticketsAdded = false;
         }
 
+        /** Cylindre autour du Planarium (comme le brouillard), pas un carre : les coins ne se verraient qu'a moitie. */
         private boolean inBox(int x, int y, int z) {
-            return x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ;
+            if (y < minY || y > maxY) return false;
+            long dx = x - key.center.getX(), dz = z - key.center.getZ();
+            return dx * dx + dz * dz <= (long) key.far * key.far + key.far;
         }
 
         private boolean inNear(int x, int y, int z) {
@@ -329,6 +332,9 @@ public final class FarRingServer {
             for (int x = x0; x <= x1; x++) {
                 for (int z = z0; z <= z1; z++) {
                     // Au-dessus du plus haut bloc de la colonne, il n'y a que de l'air.
+                    if (!inBox(x, y0, z)) {
+                        continue;
+                    }
                     int top = Math.min(y1, chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x & 15, z & 15));
                     for (int y = y0; y <= top; y++) {
                         if (inNear(x, y, z)) {
