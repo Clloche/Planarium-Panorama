@@ -181,6 +181,14 @@ public final class SubLevelView {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || !Config.enabled()) return;
         if (!payload.miniature() && !mc.level.dimension().location().equals(payload.dimension())) return;
+        if (!Config.subLevelViews()) {
+            // A moving jar still needs its reference frame for the ordinary terrain panorama.
+            if (!payload.miniature() && payload.scene().contains("anchor", Tag.TAG_LIST)) {
+                OUTSIDE.computeIfAbsent(payload.dimension(), ignored -> new Scene()).anchor
+                        .receive(SubLevelTransforms.read(payload.scene(), "anchor"));
+            }
+            return;
+        }
         Map<ResourceLocation, Scene> scenes = payload.miniature() ? MINIATURES : OUTSIDE;
         Scene scene = scenes.computeIfAbsent(payload.dimension(), ignored -> new Scene());
         CompoundTag tag = payload.scene();
@@ -229,7 +237,7 @@ public final class SubLevelView {
 
     public static void drawOutside(RenderLevelStageEvent event, BlockPos captureCenter, boolean special) {
         Scene scene = outside();
-        if (scene == null || !Config.enabled()) return;
+        if (scene == null || !Config.subLevelViews()) return;
         PoseStack pose = new PoseStack();
         if (!special) pose.mulPose(event.getModelViewMatrix());
         Vec3 camera = event.getCamera().getPosition();
@@ -244,7 +252,7 @@ public final class SubLevelView {
     }
 
     public static void mini(PlanariumTile tile, float partialTick, PoseStack pose, MultiBufferSource buffers) {
-        if (tile.key == null || !Config.enabled()) return;
+        if (tile.key == null || !Config.subLevelViews()) return;
         Scene scene = MINIATURES.get(tile.key.location());
         if (scene == null) return;
         pose.pushPose();
@@ -463,6 +471,16 @@ public final class SubLevelView {
     public static void clearOutside() {
         OUTSIDE.values().forEach(scene -> scene.parts.values().forEach(Part::close));
         OUTSIDE.clear();
+    }
+
+    /** Release the copies while preserving a moving jar's terrain reference frame. */
+    public static void clearStructures() {
+        OUTSIDE.values().forEach(scene -> {
+            scene.parts.values().forEach(Part::close);
+            scene.parts.clear();
+        });
+        MINIATURES.values().forEach(scene -> scene.parts.values().forEach(Part::close));
+        MINIATURES.clear();
     }
 
     public static void clear() {

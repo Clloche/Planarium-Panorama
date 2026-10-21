@@ -37,6 +37,7 @@ public final class SubLevelServer {
     private static final int MAX_PARTS = 256;
     private static final Map<Key, Scene> SCENES = new HashMap<>();
     private static final Map<ResourceKey<Level>, Miniature> MINIATURES = new HashMap<>();
+    private static final Set<UUID> DISABLED = new HashSet<>();
     private static final TicketType<ResourceLocation> MINIATURE_TICKET =
             TicketType.create("planariumview_miniature", ResourceLocation::compareTo);
 
@@ -87,6 +88,20 @@ public final class SubLevelServer {
     private SubLevelServer() {
     }
 
+    public static void setEnabled(UUID player, boolean enabled) {
+        boolean changed = enabled ? DISABLED.remove(player) : DISABLED.add(player);
+        if (changed) forget(player);
+    }
+
+    public static void reset(UUID player) {
+        forget(player);
+        DISABLED.remove(player);
+    }
+
+    private static boolean enabled(UUID player) {
+        return ServerView.enabled(player) && !DISABLED.contains(player);
+    }
+
     /** Called by loaded jars, including jars on Sable plots whose stored position is far from their viewer. */
     public static void seen(PlanariumTile tile) {
         if (tile.key == null || !(tile.getLevel() instanceof ServerLevel level)
@@ -96,7 +111,7 @@ public final class SubLevelServer {
         var center = SubLevelCompat.worldPosition(level, net.minecraft.world.phys.Vec3.atCenterOf(tile.getBlockPos()));
         long expires = level.getServer().getTickCount() + 60L;
         for (ServerPlayer player : level.players()) {
-            if (!ServerView.enabled(player.getUUID()) || player.distanceToSqr(center) > 64 * 64
+            if (!enabled(player.getUUID()) || player.distanceToSqr(center) > 64 * 64
                     || !player.connection.hasChannel(SubLevelPayload.TYPE)) continue;
             MINIATURES.computeIfAbsent(tile.key, ignored -> new Miniature(pocket))
                     .viewers.put(player.getUUID(), expires);
@@ -109,7 +124,7 @@ public final class SubLevelServer {
             Miniature miniature = entry.getValue();
             miniature.viewers.entrySet().removeIf(viewer -> {
                 ServerPlayer player = server.getPlayerList().getPlayer(viewer.getKey());
-                if (viewer.getValue() > now && player != null && ServerView.enabled(viewer.getKey())) return false;
+                if (viewer.getValue() > now && player != null && enabled(viewer.getKey())) return false;
                 SCENES.remove(new Key(viewer.getKey(), entry.getKey().location(), true));
                 return true;
             });
@@ -142,11 +157,20 @@ public final class SubLevelServer {
     public static void send(ServerPlayer player, ResourceLocation dimension, ServerLevel source, AABB area,
                             Matrix4d anchor, boolean miniature, BlockPos hidden, boolean active) {
         if (!SubLevelCompat.available() || !player.connection.hasChannel(SubLevelPayload.TYPE)) return;
+        long now = source.getServer().getTickCount();
+        if (!enabled(player.getUUID())) {
+            // OFF removes structure captures, but the terrain must still follow a jar carried by a sub-level.
+            boolean movingJar = hidden != null && (anchor.m30() != hidden.getX()
+                    || anchor.m31() != hidden.getY() || anchor.m32() != hidden.getZ());
+            if (!miniature && (movingJar || now % 20 == 0)) {
+                frames(player, dimension, false, new ListTag(), anchor, now);
+            }
+            return;
+        }
         Key key = new Key(player.getUUID(), dimension, miniature);
         Scene scene = SCENES.computeIfAbsent(key, ignored -> new Scene());
         scene.level = source;
         scene.source = source.dimension().location();
-        long now = source.getServer().getTickCount();
         int blockSeconds = Config.BLOCK_UPDATE_SECONDS.get();
         long gap = Math.max(5, blockSeconds) * 20L;
         long backup = Config.REFRESH_SECONDS.get() > 0 ? Math.max(60, Config.REFRESH_SECONDS.get()) * 20L : Long.MAX_VALUE;
@@ -217,12 +241,17 @@ public final class SubLevelServer {
         // Repeat empty snapshots once per second, also covering packets lost during a dimension change.
         if (!scene.sent && frames.isEmpty() && now % 20 != 0 && (miniature || anchor.equals(new Matrix4d().translation(
                 anchor.m30(), anchor.m31(), anchor.m32())))) return;
+        frames(player, dimension, miniature, frames, anchor, now);
+        scene.sent = !frames.isEmpty();
+    }
+
+    private static void frames(ServerPlayer player, ResourceLocation dimension, boolean miniature, ListTag frames,
+                               Matrix4d anchor, long tick) {
         CompoundTag packet = new CompoundTag();
         packet.put("frames", frames);
         packet.put("anchor", SubLevelTransforms.write(anchor));
-        packet.putLong("tick", now);
+        packet.putLong("tick", tick);
         PacketDistributor.sendToPlayer(player, new SubLevelPayload(dimension, miniature, packet));
-        scene.sent = !frames.isEmpty();
     }
 
     private static void geometry(ServerPlayer player, ResourceLocation dimension, boolean miniature, String id, CompoundTag geometry) {
@@ -274,7 +303,13 @@ public final class SubLevelServer {
 
     public static void forget(UUID player) {
         forget(player, false);
-        MINIATURES.values().forEach(miniature -> miniature.viewers.remove(player));
+        MINIATURES.entrySet().removeIf(entry -> {
+            Miniature miniature = entry.getValue();
+            miniature.viewers.remove(player);
+            if (!miniature.viewers.isEmpty()) return false;
+            miniature.close();
+            return true;
+        });
     }
 
     private static void forget(UUID player, boolean outsideOnly) {
@@ -292,5 +327,6 @@ public final class SubLevelServer {
         SCENES.clear();
         MINIATURES.values().forEach(Miniature::close);
         MINIATURES.clear();
+        DISABLED.clear();
     }
 }

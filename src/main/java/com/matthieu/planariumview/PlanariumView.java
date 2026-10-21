@@ -25,6 +25,7 @@ import com.matthieu.planariumview.network.SoundPrefsPayload;
 import com.matthieu.planariumview.network.ViewTogglePayload;
 import com.matthieu.planariumview.network.WallPayload;
 import com.matthieu.planariumview.network.SubLevelPayload;
+import com.matthieu.planariumview.network.SubLevelPrefsPayload;
 import com.matthieu.planariumview.client.scenery.SubLevelView;
 import com.matthieu.planariumview.server.ServerView;
 
@@ -60,6 +61,13 @@ public class PlanariumView {
     }
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
+        event.registrar("4").optional().playToServer(
+                SubLevelPrefsPayload.TYPE, SubLevelPrefsPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> {
+                    if (context.player() instanceof net.minecraft.server.level.ServerPlayer player) {
+                        com.matthieu.planariumview.server.SubLevelServer.setEnabled(player.getUUID(), payload.enabled());
+                    }
+                }));
         event.registrar("4").optional().playToClient(
                 SubLevelPayload.TYPE, SubLevelPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> SubLevelView.receive(payload)));

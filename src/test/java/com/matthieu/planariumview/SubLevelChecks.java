@@ -1,8 +1,11 @@
 package com.matthieu.planariumview;
 
 import com.matthieu.planariumview.compat.SubLevelCompat;
+import com.matthieu.planariumview.client.jar.SubLevelColors;
 import com.matthieu.planariumview.network.SubLevelPayload;
 import com.matthieu.planariumview.network.SubLevelTransforms;
+import com.matthieu.planariumview.network.SubLevelPrefsPayload;
+import com.matthieu.planariumview.config.Config;
 import io.netty.buffer.Unpooled;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.DoubleTag;
@@ -19,8 +22,10 @@ public final class SubLevelChecks {
         rotatedBoundsContainTheWholeShip();
         invalidTransformsAreRejected();
         geometrySurvivesNetworkRoundTrip();
+        coloredLightFollowsRotatedPlots();
+        subLevelSwitchKeepsProtocolCompatible();
         check(!SubLevelCompat.available(), "Sable must remain optional on the test classpath");
-        System.out.println("Sub-level checks passed: distant plots, rotation, bounds, malformed matrices, compressed protocol, optional dependency");
+        System.out.println("Sub-level checks passed: distant plots, rotation, bounds, malformed matrices, compressed protocol, projected colors, viewer preference, optional dependency");
     }
 
     private static void storageCoordinatesKeepPrecision() {
@@ -45,6 +50,56 @@ public final class SubLevelChecks {
         near(new Vector3d(bounds.maxX, bounds.maxY, bounds.maxZ), new Vector3d(10, 22, 36));
         check(bounds.intersects(new AABB(6, 21, 35, 7, 22, 36)), "Rotated tip must be visible to the scene query");
         check(!bounds.intersects(new AABB(11, 20, 30, 12, 21, 31)), "Unrelated structures must be excluded");
+    }
+
+    private static void coloredLightFollowsRotatedPlots() {
+        int sx = 1_280_064, sy = 8, sz = 1_280_192;
+        Matrix4d pose = new Matrix4d().translation(16, 5, 16).rotateY(Math.PI / 2)
+                .translate(-(sx << 4), -(sy << 4), -(sz << 4));
+        // The center of local block (0,0,0) rotates into pocket block (16,5,15).
+        short[] interior = new short[32 * 33 * 32];
+        short blue = (short) 0xD00F;
+        interior[(16 * 33 + 5) * 32 + 15] = blue;
+        short[] original = new short[8192];
+        original[4096] = 0x77; // Animated emitter contribution replaced by the exterior cell.
+        short[] result = SubLevelColors.apply(original, sx, sy, sz, pose, interior);
+        check(result[0] == blue && result[4096] == 0, "A rotated Sable block must receive the physical pocket's blue light");
+        check(original[0] == 0 && original[4096] == 0x77, "The shared Contraption Lights section must stay unchanged");
+        original[0] = (short) 0xEFA0;
+        check(SubLevelColors.apply(original, sx, sy, sz, pose, interior) == original,
+                "A stronger light on the sub-level must keep its own color and animation");
+        check(SubLevelColors.apply(original, sx, sy, sz, new Matrix4d(), interior) == original,
+                "Storage coordinates outside the physical pocket must not acquire its color");
+    }
+
+    private static void subLevelSwitchKeepsProtocolCompatible() {
+        check(Config.SUB_LEVEL_VIEWS.getDefault(), "Sub-level views must default to ON");
+        check(!Config.SABLE.present(), "The integration must detect a missing optional Sable dependency");
+        for (boolean enabled : new boolean[]{false, true}) {
+            var buffer = Unpooled.buffer();
+            try {
+                var preference = new SubLevelPrefsPayload(enabled);
+                SubLevelPrefsPayload.STREAM_CODEC.encode(buffer, preference);
+                check(SubLevelPrefsPayload.STREAM_CODEC.decode(buffer).equals(preference),
+                        "Each player's ON/OFF preference must survive the network");
+                check(!buffer.isReadable(), "The preference codec must consume one message");
+            } finally {
+                buffer.release();
+            }
+        }
+        CompoundTag frame = new CompoundTag();
+        frame.put("frames", new ListTag());
+        frame.put("anchor", SubLevelTransforms.write(new Matrix4d().translation(20, 70, 30).rotateY(0.5)));
+        var buffer = Unpooled.buffer();
+        try {
+            var original = new SubLevelPayload(ResourceLocation.fromNamespaceAndPath("ars_nouveau", "moving_jar"), false, frame);
+            SubLevelPayload.STREAM_CODEC.encode(buffer, original);
+            var decoded = SubLevelPayload.STREAM_CODEC.decode(buffer);
+            check(decoded.equals(original), "A moving jar must retain its anchor even with structure views OFF");
+            check(!decoded.scene().contains("geometry"), "An anchor update must not contain a structure capture");
+        } finally {
+            buffer.release();
+        }
     }
 
     private static void invalidTransformsAreRejected() {

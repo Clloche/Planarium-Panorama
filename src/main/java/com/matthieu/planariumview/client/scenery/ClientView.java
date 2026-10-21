@@ -22,6 +22,7 @@ import com.matthieu.planariumview.config.ConfigScreen;
 import com.matthieu.planariumview.network.OutsideViewDeltaPayload;
 import com.matthieu.planariumview.network.OutsideViewPayload;
 import com.matthieu.planariumview.network.SoundPrefsPayload;
+import com.matthieu.planariumview.network.SubLevelPrefsPayload;
 import com.matthieu.planariumview.network.ViewTogglePayload;
 
 import com.hollingsworth.arsnouveau.client.renderer.LiquidBlockVertexConsumer;
@@ -850,11 +851,24 @@ public final class ClientView {
 
     /** Dernieres options des sons du monde exterieur envoyees au serveur (null : rien d'envoye sur cette connexion). */
     private static SoundPrefsPayload sentSoundPrefs;
+    private static Boolean sentSubLevelViews;
 
     private static void sendToggle(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
         net.minecraft.client.multiplayer.ClientPacketListener connection = Minecraft.getInstance().getConnection();
         if (connection == null || Minecraft.getInstance().player == null) {
             return;
+        }
+        boolean subLevels = Config.subLevelViews();
+        if (sentSubLevelViews == null || sentSubLevelViews != subLevels) {
+            sentSubLevelViews = subLevels;
+            if (!subLevels) SubLevelView.clearStructures();
+            try {
+                if (connection.hasChannel(SubLevelPrefsPayload.TYPE)) {
+                    net.neoforged.neoforge.network.PacketDistributor.sendToServer(new SubLevelPrefsPayload(subLevels));
+                }
+            } catch (Exception e) {
+                LOGGER.debug("[Planarium Panorama] Sub-level preference could not be sent", e);
+            }
         }
         SoundPrefsPayload prefs = new SoundPrefsPayload(Config.worldSounds(), Config.mobSounds(), Config.blockSounds(),
                 Config.explosionSounds());
@@ -885,6 +899,7 @@ public final class ClientView {
     private static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         sentEnabled = null;
         sentSoundPrefs = null;
+        sentSubLevelViews = null;
         OutsideRecordClient.clear();
         SceneryParticles.clear();
         SceneryBubbles.clear();

@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.lang.reflect.Method;
+import java.util.concurrent.ConcurrentHashMap;
 
 /** Light at the physical position of Sable blocks, rather than their distant storage plot. */
 public final class SubLevelLight {
@@ -28,6 +29,11 @@ public final class SubLevelLight {
     private static final Map<UUID, Matrix4d> remeshed = new HashMap<>();
     private static long lastSample = Long.MIN_VALUE;
     private static int revision = -1;
+    private static int colorRevision = -1;
+    private static boolean colored;
+    private static volatile int colorEpoch;
+    private record Colors(short[] original, int epoch, int revision, UUID body, short[] result) { }
+    private static final Map<Long, Colors> colorSections = new ConcurrentHashMap<>();
     private static Method renderData, setDirty;
     private static boolean remeshFailed;
 
@@ -61,6 +67,7 @@ public final class SubLevelLight {
         byte[] light = changedLevel ? null : previous.light;
         boolean sample = lastSample == Long.MIN_VALUE || level.getGameTime() - lastSample >= 20;
         boolean changedLight = revision != JarLight.revision();
+        boolean changedColor = colorRevision != JarColor.revision() || colored != Config.coloredLight();
         if (sample && !bodies.isEmpty()) {
             byte[] next = readLight(level);
             changedLight |= !Arrays.equals(light, next);
@@ -74,9 +81,13 @@ public final class SubLevelLight {
                 if (!currentIds.contains(frame.body.id())) remesh(frame.body);
             }
         }
-        if (changedLight) remeshed.clear();
+        if (changedLight || changedColor) remeshed.clear();
         revision = JarLight.revision();
-        if (sample || changedLight || changedLevel) {
+        colorRevision = JarColor.revision();
+        colored = Config.coloredLight();
+        if (sample || changedLight || changedColor || changedLevel) {
+            colorEpoch++;
+            colorSections.clear();
             remeshed.keySet().retainAll(bodies.stream().map(SubLevelCompat.Body::id).toList());
             for (SubLevelCompat.Body body : bodies) {
                 Matrix4d previousPose = remeshed.get(body.id());
@@ -85,6 +96,26 @@ public final class SubLevelLight {
                 remeshed.put(body.id(), new Matrix4d(body.transform()));
             }
         }
+    }
+
+    /** Called after Contraption Lights computes a plot section, including when it returns a cached section. */
+    static short[] colors(short[] original, int sx, int sy, int sz) {
+        Snapshot current = snapshot;
+        if (current == null || current.level != Minecraft.getInstance().level || !Config.coloredLight()) return original;
+        AABB section = new AABB((double) sx * 16, (double) sy * 16, (double) sz * 16,
+                (double) sx * 16 + 16, (double) sy * 16 + 16, (double) sz * 16 + 16);
+        for (Frame frame : current.frames) {
+            if (!frame.storage.intersects(section)) continue;
+            long key = net.minecraft.core.SectionPos.asLong(sx, sy, sz);
+            int epoch = colorEpoch, revision = JarColor.revision();
+            Colors cached = colorSections.get(key);
+            if (cached != null && cached.original == original && cached.epoch == epoch
+                    && cached.revision == revision && cached.body.equals(frame.body.id())) return cached.result;
+            short[] result = SubLevelColors.apply(original, sx, sy, sz, frame.pose, JarColor.cells());
+            colorSections.put(key, new Colors(original, epoch, revision, frame.body.id(), result));
+            return result;
+        }
+        return original;
     }
 
     private static byte[] readLight(ClientLevel level) {
@@ -155,5 +186,8 @@ public final class SubLevelLight {
         remeshed.clear();
         lastSample = Long.MIN_VALUE;
         revision = -1;
+        colorRevision = -1;
+        colorEpoch++;
+        colorSections.clear();
     }
 }

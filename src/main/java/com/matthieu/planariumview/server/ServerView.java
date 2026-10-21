@@ -277,7 +277,7 @@ public final class ServerView {
     @SubscribeEvent
     public static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            SubLevelServer.forget(player.getUUID());
+            SubLevelServer.reset(player.getUUID());
             removeTrack(player.server, player.getUUID());
             update(player, true);
             for (Map.Entry<ResourceKey<Level>, byte[]> entry : MINI_LIGHT.entrySet()) {
@@ -294,7 +294,7 @@ public final class ServerView {
     @SubscribeEvent
     public static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            SubLevelServer.forget(player.getUUID());
+            SubLevelServer.reset(player.getUUID());
             removeTrack(player.server, player.getUUID());
             DISABLED.remove(player.getUUID());
             SOUND_PREFS.remove(player.getUUID());

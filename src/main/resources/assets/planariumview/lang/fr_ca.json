@@ -68,6 +68,8 @@
   "planariumview.config.cave_fog.vanilla": "Vanilla",
   "planariumview.config.cave_fog.dark": "Sombre",
   "planariumview.config.reset.tooltip": "Remet toutes les options à leur valeur par défaut. C'est sauvegardé tout de suite : on ne peut pas revenir en arrière.",
+  "planariumview.config.sub_levels": "Sable / Create Aeronautics",
+  "planariumview.config.sub_levels.tooltip": "Affiche les structures mobiles dans le décor géant et la miniature.\n\nOFF arrête aussi leurs captures pour toi. Les vraies structures, leur éclairage à l'intérieur du bocal et Ars Sable continuent de fonctionner.",
   "planariumview.config.lunar_events": "Enhanced Celestials 2 - Événements lunaires",
   "planariumview.config.lunar_events.tooltip": "La lune du bocal suit l'événement lunaire du monde du Planarium : lune de sang, lune bleue, lune des moissons... (couleur, taille et texture de la lune, et teinte de la lumière). Demande le ciel synchronisé (Éclairage pas à OFF)."
 }

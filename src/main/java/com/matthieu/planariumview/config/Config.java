@@ -33,6 +33,7 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue OUTSIDE_AMBIENCE;
     public static final ModConfigSpec.BooleanValue AMBIENT_SOUNDS;
     public static final ModConfigSpec.BooleanValue LUNAR_EVENTS;
+    public static final ModConfigSpec.BooleanValue SUB_LEVEL_VIEWS;
     public static final ModConfigSpec.EnumValue<CaveFog> CAVE_FOG;
 
     static {
@@ -133,6 +134,10 @@ public final class Config {
                 .comment("Enhanced Celestials 2: the jar's moon follows the lunar event of the Planarium's world",
                         "(blood moon, blue moon, harvest moon...). Requires Enhanced Celestials 2 and the synced sky.")
                 .define("lunarEvents", true);
+        SUB_LEVEL_VIEWS = client
+                .comment("Show Sable / Create Aeronautics structures in the giant scenery and miniatures.",
+                        "OFF stops their captures for this player. Physical structures, their interior lighting and Ars Sable still work.")
+                .define("subLevelViews", true);
         CLIENT_SPEC = client.build();
     }
 
@@ -144,6 +149,7 @@ public final class Config {
     public static final Mod DYNAMIC_SURROUNDINGS = new Mod("org.orecruncher.dsurround.config.DimensionInfo");
     public static final Mod AMBIENT_SOUNDS_MOD = new Mod("team.creative.ambientsounds.AmbientSounds");
     public static final Mod ENHANCED_CELESTIALS = new Mod("dev.corgitaco.enhancedcelestials2core.EnhancedCelestials");
+    public static final Mod SABLE = new Mod("dev.ryanhcode.sable.api.sublevel.SubLevelContainer");
 
     /** Mod reconnu par une de ses classes (verifie une seule fois). */
     public static final class Mod {
@@ -245,6 +251,10 @@ public final class Config {
 
     public static boolean coloredLight() {
         return enabled() && COLORED_LIGHT.get() && CONTRAPTION_LIGHTS.present();
+    }
+
+    public static boolean subLevelViews() {
+        return enabled() && SUB_LEVEL_VIEWS.get() && SABLE.present();
     }
 
     public static boolean ambientSounds() {

@@ -55,8 +55,11 @@ public final class JarColor {
      * Ne modifie jamais le tableau recu (il peut etre partage) : on renvoie une copie corrigee, gardee en cache.
      */
     public static short[] apply(short[] original, int sx, int sy, int sz) {
-        if (sx < 0 || sx > 1 || sy < 0 || sy > 2 || sz < 0 || sz > 1 || failed || !Config.coloredLight()) {
+        if (failed || !Config.coloredLight()) {
             return original;
+        }
+        if (sx < 0 || sx > 1 || sy < 0 || sy > 2 || sz < 0 || sz > 1) {
+            return ColorCompat.building() ? original : SubLevelLight.colors(original, sx, sy, sz);
         }
         if (ColorCompat.building()) {
             return applyMini(original, sx, sy, sz);
@@ -111,7 +114,11 @@ public final class JarColor {
         return !failed && Config.coloredLight() && cells() != null;
     }
 
-    private static short[] cells() {
+    static int revision() {
+        return version;
+    }
+
+    static short[] cells() {
         short[] current = cells;
         if (current != null) {
             return current.length == 0 ? null : current;

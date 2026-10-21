@@ -53,6 +53,7 @@ public final class ConfigScreen {
         boolean dsPresent = Config.DYNAMIC_SURROUNDINGS.present();
         boolean asPresent = Config.AMBIENT_SOUNDS_MOD.present();
         boolean ecPresent = Config.ENHANCED_CELESTIALS.present();
+        boolean sablePresent = Config.SABLE.present();
 
         // Options du joueur grisees quand l'interrupteur general est OFF (si elles sont possibles par ailleurs).
         List<Gated> gated = new ArrayList<>();
@@ -138,6 +139,8 @@ public final class ConfigScreen {
                 Config.AMBIENT_SOUNDS.getDefault(), Config.AMBIENT_SOUNDS::get, Config.AMBIENT_SOUNDS::set);
         Option<Boolean> lunar = integration("lunar_events", "Enhanced Celestials 2", ecPresent,
                 Config.LUNAR_EVENTS.getDefault(), Config.LUNAR_EVENTS::get, Config.LUNAR_EVENTS::set);
+        Option<Boolean> subLevels = integration("sub_levels", "Sable / Create Aeronautics", sablePresent,
+                Config.SUB_LEVEL_VIEWS.getDefault(), Config.SUB_LEVEL_VIEWS::get, Config.SUB_LEVEL_VIEWS::set);
 
         gated.add(new Gated(lighting, () -> true));
         gated.add(new Gated(biome, () -> true));
@@ -155,6 +158,7 @@ public final class ConfigScreen {
         gated.add(new Gated(ambience, () -> dsPresent));
         gated.add(new Gated(ambientSounds, () -> asPresent));
         gated.add(new Gated(lunar, () -> ecPresent));
+        gated.add(new Gated(subLevels, () -> sablePresent));
         boolean enabled = Config.ENABLED.get();
         for (Gated g : gated) {
             g.option().setAvailable(enabled && g.possible().getAsBoolean());
@@ -193,7 +197,7 @@ public final class ConfigScreen {
 
         dirty = false;
         for (Option<?> option : List.of(master, lighting, radius, biome, weather, sceneryAmbience, sceneryParticles, worldSounds, mobSounds,
-                blockSounds, explosionSounds, clouds, fog, blockUpdates, refresh, color, ambience, ambientSounds, lunar, caveFog)) {
+                blockSounds, explosionSounds, clouds, fog, blockUpdates, refresh, color, ambience, ambientSounds, lunar, subLevels, caveFog)) {
             autoSave(option);
         }
         // Le detail des sons du monde exterieur est grise quand le groupe est OFF (rien n'est ecrit dans la config).
@@ -261,6 +265,7 @@ public final class ConfigScreen {
                         .option(color)
                         .option(ambience)
                         .option(lunar)
+                        .option(subLevels)
                         .build())
                 .save(ConfigScreen::saveToDisk)
                 .build();
