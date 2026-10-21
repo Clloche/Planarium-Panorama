@@ -89,7 +89,12 @@ public final class ServerView {
 
     private static final class Track {
         final ResourceKey<Level> pocket;
-        public final GlobalPos source;
+        public final UUID owner;
+        public GlobalPos source;
+        org.joml.Matrix4d anchor;
+        BlockPos center;
+        ChunkPos ticketCenter;
+        BlockPos capturedCenter;
         CompoundTag lastSent;
         byte[] lastLight;
         List<ResourceLocation> lastBiomePalette;
@@ -141,9 +146,13 @@ public final class ServerView {
         /** Synchronisation des jukebox en attente du rechargement des chunks apres reactiver les sons du monde. */
         boolean jukeboxSyncPending;
 
-        Track(ResourceKey<Level> pocket, GlobalPos source) {
+        Track(UUID owner, ResourceKey<Level> pocket, GlobalPos source) {
+            this.owner = owner;
             this.pocket = pocket;
             this.source = source;
+            this.center = source.pos();
+            this.capturedCenter = source.pos();
+            this.anchor = new org.joml.Matrix4d().translation(center.getX(), center.getY(), center.getZ());
         }
     }
 
@@ -179,6 +188,7 @@ public final class ServerView {
         if (!(level instanceof ServerLevel serverLevel) || !serverLevel.getServer().isSameThread()) {
             return;
         }
+        SubLevelServer.dirty(serverLevel, pos);
         boolean lightSourceChanged = previous.getLightEmission(level, pos) != next.getLightEmission(level, pos)
                 && (previous.getLightEmission(level, pos) > 0 || next.getLightEmission(level, pos) > 0);
         for (Track track : TRACKS.values()) {
@@ -186,7 +196,7 @@ public final class ServerView {
                 continue;
             }
             int radius = Math.max(track.lastRadius, Config.RADIUS.get());
-            BlockPos center = track.source.pos();
+            BlockPos center = track.center;
             long dx = Math.abs((long) pos.getX() - center.getX());
             long dz = Math.abs((long) pos.getZ() - center.getZ());
             // Changements visibles : zone capturee plus une case pour les dependances immediates des modeles.
@@ -255,6 +265,11 @@ public final class ServerView {
     @SubscribeEvent
     public static void onChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            ServerLevel previous = player.server.getLevel(event.getFrom());
+            if (previous != null && (isPocket(previous) || isPocket(player.serverLevel()))) {
+                // The client has already discarded that dimension. Do not let Sable send its removals to the new one.
+                com.matthieu.planariumview.compat.SubLevelCompat.forgetTracking(previous, player.getUUID());
+            }
             update(player, true);
         }
     }
@@ -262,6 +277,7 @@ public final class ServerView {
     @SubscribeEvent
     public static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            SubLevelServer.forget(player.getUUID());
             removeTrack(player.server, player.getUUID());
             update(player, true);
             for (Map.Entry<ResourceKey<Level>, byte[]> entry : MINI_LIGHT.entrySet()) {
@@ -278,6 +294,7 @@ public final class ServerView {
     @SubscribeEvent
     public static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            SubLevelServer.forget(player.getUUID());
             removeTrack(player.server, player.getUUID());
             DISABLED.remove(player.getUUID());
             SOUND_PREFS.remove(player.getUUID());
@@ -323,10 +340,10 @@ public final class ServerView {
                         || !player.serverLevel().dimension().equals(track.pocket)) {
                     continue;
                 }
-                BlockPos planarium = track.source.pos();
-                double dx = bolt.getX() - planarium.getX();
-                double dy = bolt.getY() - planarium.getY();
-                double dz = bolt.getZ() - planarium.getZ();
+                Vec3 relative = relative(track, bolt.position());
+                double dx = relative.x;
+                double dy = relative.y;
+                double dz = relative.z;
                 if (dx * dx + dz * dz > THUNDER_RANGE * THUNDER_RANGE) {
                     continue;
                 }
@@ -485,7 +502,7 @@ public final class ServerView {
 
     /** Debut ("" = fin) d'un morceau de jukebox, pour les joueurs dont le Planarium est a portee (64 blocs). */
     private static void sendOutsideRecord(ServerLevel level, BlockPos pos, String song) {
-        Vec3 position = Vec3.atCenterOf(pos);
+        Vec3 position = com.matthieu.planariumview.compat.SubLevelCompat.worldPosition(level, Vec3.atCenterOf(pos));
         for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
             Track track = TRACKS.get(player.getUUID());
             if (track == null || DISABLED.contains(player.getUUID())
@@ -494,10 +511,10 @@ public final class ServerView {
                     || !player.connection.hasChannel(OutsideRecordPayload.TYPE)) {
                 continue;
             }
-            BlockPos center = track.source.pos();
-            double dx = position.x - center.getX();
-            double dy = position.y - center.getY();
-            double dz = position.z - center.getZ();
+            Vec3 relative = relative(track, position);
+            double dx = relative.x;
+            double dy = relative.y;
+            double dz = relative.z;
             // Fin : toujours envoyee (le client l'ignore s'il ne jouait rien). Debut : a portee, et si le joueur le veut.
             SoundPrefsPayload prefs = prefsOf(player.getUUID());
             if (!song.isEmpty() && (dx * dx + dy * dy + dz * dz > 64.0 * 64.0 || !prefs.world())) {
@@ -518,7 +535,7 @@ public final class ServerView {
         if (level == null || !prefs.world() || !player.connection.hasChannel(OutsideRecordPayload.TYPE)) {
             return;
         }
-        BlockPos center = track.source.pos();
+        BlockPos center = track.center;
         ChunkPos centerChunk = new ChunkPos(center);
         for (int cx = centerChunk.x - 4; cx <= centerChunk.x + 4; cx++) {
             for (int cz = centerChunk.z - 4; cz <= centerChunk.z + 4; cz++) {
@@ -531,10 +548,11 @@ public final class ServerView {
                             || !jukebox.getSongPlayer().isPlaying() || jukebox.getSongPlayer().getSong() == null) {
                         continue;
                     }
-                    Vec3 position = Vec3.atCenterOf(jukebox.getBlockPos());
-                    double dx = position.x - center.getX();
-                    double dy = position.y - center.getY();
-                    double dz = position.z - center.getZ();
+                    Vec3 position = com.matthieu.planariumview.compat.SubLevelCompat.worldPosition(level, Vec3.atCenterOf(jukebox.getBlockPos()));
+                    Vec3 relative = relative(track, position);
+                    double dx = relative.x;
+                    double dy = relative.y;
+                    double dz = relative.z;
                     if (dx * dx + dy * dy + dz * dz > 64.0 * 64.0) {
                         continue;
                     }
@@ -567,7 +585,7 @@ public final class ServerView {
         if (source == null) {
             return;
         }
-        BlockPos center = track.source.pos();
+        BlockPos center = track.center;
         BlockPos min = center.offset(-radius, -radius, -radius);
         BlockPos max = center.offset(radius, radius, radius);
         if (!source.hasChunksAt(min, max)) {
@@ -603,6 +621,7 @@ public final class ServerView {
             return;
         }
         long now = System.nanoTime();
+        position = com.matthieu.planariumview.compat.SubLevelCompat.worldPosition(level, position);
         for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
             Track track = TRACKS.get(player.getUUID());
             if (track == null || DISABLED.contains(player.getUUID())
@@ -612,10 +631,10 @@ public final class ServerView {
                     || !prefsOf(player.getUUID()).allows(category)) {
                 continue;
             }
-            BlockPos center = track.source.pos();
-            double dx = position.x - center.getX();
-            double dy = position.y - center.getY();
-            double dz = position.z - center.getZ();
+            Vec3 relative = relative(track, position);
+            double dx = relative.x;
+            double dy = relative.y;
+            double dz = relative.z;
             double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
             if (distance >= range) {
                 continue;
@@ -647,6 +666,13 @@ public final class ServerView {
         // Filet de securite si un appel de son a leve une exception avant l'injection RETURN du mixin.
         PlayerSoundCause.clear();
         MinecraftServer server = event.getServer();
+        if (server.getTickCount() % 2 == 0 && com.matthieu.planariumview.compat.SubLevelCompat.available()) {
+            try {
+                updateSubLevels(server);
+            } catch (Exception e) {
+                logOnce("sous-niveaux", e);
+            }
+        }
         if (server.getTickCount() % 20 != 0) {
             return;
         }
@@ -723,10 +749,12 @@ public final class ServerView {
             if (track != null) {
                 removeTrack(player.server, id);
             }
-            track = new Track(level.dimension(), source);
+            track = new Track(id, level.dimension(), source);
             TRACKS.put(id, track);
             force = true;
         }
+        ServerLevel outside = player.server.getLevel(track.source.dimension());
+        if (outside != null && !updateAnchor(track, outside)) return;
         // On attend que les chunks du bocal soient charges : sinon le recalcul serait saute.
         if (!track.relit) {
             removeLightsBelowFloor(level);
@@ -772,6 +800,8 @@ public final class ServerView {
         }
 
         long now = player.server.getTickCount();
+        if (track.center.distSqr(track.capturedCenter) > Math.max(4, radius * radius / 4)
+                && now - track.lastCapture >= 20) force = true;
         int refresh = Config.REFRESH_SECONDS.get() * 20;
         // Les changements de blocs declenchent une capture au prochain tick de suivi, mais au plus toutes les 5 secondes
         // (une ferme, un four ou de la redstone changent des blocs sans arret). La minuterie reste un filet de securite
@@ -813,6 +843,8 @@ public final class ServerView {
         if (snap == null) {
             return;
         }
+        boolean originMoved = !track.capturedCenter.equals(track.center);
+        track.capturedCenter = track.center;
         track.sceneryDirty = false;
         // La photo complete contient tous les changements en attente.
         track.changedBlocks.clear();
@@ -822,7 +854,7 @@ public final class ServerView {
         long compareStart = System.nanoTime();
         // Capture declenchee par un changement de bloc : on sait deja que le decor a change, inutile de comparer
         // toute la photo (10 a 15 ms). Si le bloc est revenu a son etat d'avant, le client ne trouvera rien a corriger.
-        boolean changed = (dirtyReady && track.lastSent != null)
+        boolean changed = originMoved || (dirtyReady && track.lastSent != null)
                 || !snap.tag().equals(track.lastSent) || !Arrays.equals(snap.light(), track.lastLight)
                 || !snap.biomePalette().equals(track.lastBiomePalette) || !Arrays.equals(snap.biomes(), track.lastBiomes)
                 || !Arrays.equals(snap.rainTops(), track.lastRainTops) || !Arrays.equals(snap.precip(), track.lastPrecip);
@@ -863,7 +895,7 @@ public final class ServerView {
             track.changedBlocks.clear();
             return;
         }
-        BlockPos min = track.source.pos().offset(-radius, -radius, -radius);
+        BlockPos min = track.capturedCenter.offset(-radius, -radius, -radius);
         int size = radius * 2 + 1;
         net.minecraft.nbt.ListTag list = new net.minecraft.nbt.ListTag();
         for (BlockPos pos : track.changedBlocks) {
@@ -916,7 +948,7 @@ public final class ServerView {
         // Sans ciel (le Nether...) : pas de ciel dans le bocal, mais la lumiere du dehors s'applique quand meme
         // (interieur sombre sans torche a cote du Planarium, comme le decor).
         boolean hasSky = source.dimensionType().hasSkyLight() && !source.dimensionType().hasCeiling();
-        Biome biome = source.getBiome(track.source.pos()).value();
+        Biome biome = source.getBiome(track.center).value();
         PacketDistributor.sendToPlayer(player, new SkyPayload(
                 track.pocket.location(),
                 source.getDayTime(),
@@ -928,8 +960,8 @@ public final class ServerView {
                 biome.getModifiedSpecialEffects().getSkyColor(),
                 biome.getModifiedSpecialEffects().getFogColor(),
                 SeasonCompat.seasonTicks(source),
-                hasSky ? outsideLight(source, track.source.pos(), LightLayer.SKY) : 0,
-                outsideLight(source, track.source.pos(), LightLayer.BLOCK),
+                hasSky ? Math.min(outsideLight(source, track.source.pos(), LightLayer.SKY), outsideLight(source, track.center, LightLayer.SKY)) : 0,
+                Math.max(outsideLight(source, track.source.pos(), LightLayer.BLOCK), outsideLight(source, track.center, LightLayer.BLOCK)),
                 // Le ciel de la dimension d'origine (celui de l'Aether, par exemple).
                 source.dimensionType().effectsLocation(),
                 // Le type de dimension d'origine : sa facon de compter les jours (plus longs dans l'Aether).
@@ -988,6 +1020,10 @@ public final class ServerView {
                     best = pos.immutable();
                 }
             }
+        }
+        if (best == null) {
+            best = com.matthieu.planariumview.compat.SubLevelCompat.findPlanarium(sourceLevel, pocket.dimension(),
+                    Vec3.atLowerCornerOf(center), SEARCH_RADIUS);
         }
         return best == null ? null : GlobalPos.of(sourceLevel.dimension(), best);
     }
@@ -1082,7 +1118,7 @@ public final class ServerView {
         if (sourceLevel == null) {
             return null;
         }
-        BlockPos planarium = track.source.pos();
+        BlockPos planarium = track.center;
         BlockPos min = planarium.offset(-radius, -radius, -radius);
         BlockPos max = planarium.offset(radius, radius, radius);
         // Pour les rafraichissements, on ne force pas le chargement des chunks d'origine.
@@ -1090,7 +1126,7 @@ public final class ServerView {
             return null;
         }
         // Le Planarium doit toujours etre la et pointer vers cette dimension.
-        if (!(sourceLevel.getBlockEntity(planarium) instanceof PlanariumTile tile) || !track.pocket.equals(tile.key)) {
+        if (!(sourceLevel.getBlockEntity(track.source.pos()) instanceof PlanariumTile tile) || !track.pocket.equals(tile.key)) {
             return null;
         }
         StructureTemplate template = new StructureTemplate();
@@ -1367,9 +1403,82 @@ public final class ServerView {
         }
     }
 
+    private static void updateSubLevels(MinecraftServer server) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            Track track = TRACKS.get(player.getUUID());
+            if (track == null || DISABLED.contains(player.getUUID()) || !track.pocket.equals(player.serverLevel().dimension())) continue;
+            ServerLevel source = server.getLevel(track.source.dimension());
+            if (source == null || !updateAnchor(track, source)) continue;
+            int radius = Config.RADIUS.get();
+            keepLoaded(server, player.getUUID(), track, radius);
+            SubLevelServer.send(player, track.pocket.location(), source,
+                    new net.minecraft.world.phys.AABB(track.center).inflate(radius + 1), track.anchor, false,
+                    track.source.pos(), prefsOf(player.getUUID()).world());
+        }
+        SubLevelServer.updateMiniatures(server);
+    }
+
+    static boolean enabled(UUID player) {
+        return !DISABLED.contains(player);
+    }
+
+    private static Vec3 relative(Track track, Vec3 world) {
+        org.joml.Vector3d relative = new org.joml.Matrix4d(track.anchor).invert()
+                .transformPosition(new org.joml.Vector3d(world.x, world.y, world.z));
+        return new Vec3(relative.x, relative.y, relative.z);
+    }
+
+    private static boolean updateAnchor(Track track, ServerLevel source) {
+        if (!(source.getBlockEntity(track.source.pos()) instanceof PlanariumTile tile) || !track.pocket.equals(tile.key)) {
+            BlockPos found = com.matthieu.planariumview.compat.SubLevelCompat.findPlanarium(source, track.pocket,
+                    new Vec3(track.anchor.m30(), track.anchor.m31(), track.anchor.m32()), SEARCH_RADIUS);
+            if (found == null) {
+                for (BlockPos at : BlockPos.betweenClosed(track.center.offset(-SEARCH_RADIUS, -SEARCH_RADIUS, -SEARCH_RADIUS),
+                        track.center.offset(SEARCH_RADIUS, SEARCH_RADIUS, SEARCH_RADIUS))) {
+                    if (source.hasChunkAt(at) && source.getBlockEntity(at) instanceof PlanariumTile candidate
+                            && track.pocket.equals(candidate.key)) {
+                        found = at.immutable();
+                        break;
+                    }
+                }
+            }
+            if (found == null) return false;
+            track.source = GlobalPos.of(source.dimension(), found);
+        }
+        org.joml.Matrix4d anchor = com.matthieu.planariumview.compat.SubLevelCompat.anchor(source, track.source.pos());
+        BlockPos center = BlockPos.containing(anchor.m30(), anchor.m31(), anchor.m32());
+        if (!center.equals(track.center)) {
+            track.sceneryDirty = true;
+            track.fullCaptureNeeded = true;
+            track.fullCaptureReason = "Planarium en mouvement";
+            track.changedBlocks.clear();
+        }
+        track.anchor = anchor;
+        track.center = center;
+        return true;
+    }
+
+    @SubscribeEvent
+    public static void onServerStarted(net.neoforged.neoforge.event.server.ServerStartedEvent event) {
+        for (ServerLevel level : event.getServer().getAllLevels()) {
+            com.matthieu.planariumview.compat.SubLevelCompat.clearVisitorTickets(level);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onServerStopping(net.neoforged.neoforge.event.server.ServerStoppingEvent event) {
+        SubLevelServer.clear();
+    }
+
+    @SubscribeEvent
+    public static void onServerStopped(net.neoforged.neoforge.event.server.ServerStoppedEvent event) {
+        SubLevelServer.clear();
+        TRACKS.clear();
+    }
+
     /** Ticket de chargement : garde la zone autour du Planarium chargee tant qu'un joueur est dans le bocal. */
-    private static final TicketType<ChunkPos> VIEW_TICKET =
-            TicketType.create("planariumview", java.util.Comparator.comparingLong(ChunkPos::toLong));
+    private static final TicketType<UUID> VIEW_TICKET =
+            TicketType.create("planariumview", UUID::compareTo);
 
     /**
      * Sans joueur a proximite, les chunks autour du Planarium se dechargent et les rafraichissements
@@ -1383,7 +1492,8 @@ public final class ServerView {
     private static void keepLoaded(MinecraftServer server, UUID player, Track track, int radius) {
         int chunks = Math.floorDiv(radius + 15, 16) + 1;
         boolean active = prefsOf(player).world();
-        if (chunks == track.ticketChunks && active == track.ticketActive) {
+        ChunkPos center = new ChunkPos(track.center);
+        if (chunks == track.ticketChunks && active == track.ticketActive && center.equals(track.ticketCenter)) {
             return;
         }
         ServerLevel source = server.getLevel(track.source.dimension());
@@ -1391,19 +1501,19 @@ public final class ServerView {
             return;
         }
         releaseTickets(source, track);
-        ChunkPos center = new ChunkPos(track.source.pos());
         if (active) {
-            source.getChunkSource().addRegionTicket(VIEW_TICKET, center, chunks, center);
+            source.getChunkSource().addRegionTicket(VIEW_TICKET, center, chunks, track.owner);
         } else {
             for (int dx = -chunks; dx <= chunks; dx++) {
                 for (int dz = -chunks; dz <= chunks; dz++) {
                     ChunkPos chunk = new ChunkPos(center.x + dx, center.z + dz);
-                    source.getChunkSource().addRegionTicket(VIEW_TICKET, chunk, 0, chunk);
+                    source.getChunkSource().addRegionTicket(VIEW_TICKET, chunk, 0, track.owner);
                 }
             }
         }
         track.ticketChunks = chunks;
         track.ticketActive = active;
+        track.ticketCenter = center;
     }
 
     /** Retire les tickets de chargement de ce suivi, selon le mode avec lequel ils ont ete poses. */
@@ -1411,14 +1521,14 @@ public final class ServerView {
         if (track.ticketChunks < 0) {
             return;
         }
-        ChunkPos center = new ChunkPos(track.source.pos());
+        ChunkPos center = track.ticketCenter;
         if (track.ticketActive) {
-            source.getChunkSource().removeRegionTicket(VIEW_TICKET, center, track.ticketChunks, center);
+            source.getChunkSource().removeRegionTicket(VIEW_TICKET, center, track.ticketChunks, track.owner);
         } else {
             for (int dx = -track.ticketChunks; dx <= track.ticketChunks; dx++) {
                 for (int dz = -track.ticketChunks; dz <= track.ticketChunks; dz++) {
                     ChunkPos chunk = new ChunkPos(center.x + dx, center.z + dz);
-                    source.getChunkSource().removeRegionTicket(VIEW_TICKET, chunk, 0, chunk);
+                    source.getChunkSource().removeRegionTicket(VIEW_TICKET, chunk, 0, track.owner);
                 }
             }
         }
@@ -1426,6 +1536,7 @@ public final class ServerView {
     }
 
     private static void removeTrack(MinecraftServer server, UUID id) {
+        SubLevelServer.forgetOutside(id);
         LunarServer.forget(id);
         Track track = TRACKS.remove(id);
         if (track == null || track.ticketChunks < 0) {
@@ -1463,6 +1574,16 @@ public final class ServerView {
             }
         }
         int[] light = JarWalls.measure(source, pos);
+        if (!pos.equals(track.center)) {
+            BlockPos[] samples = JarWalls.samplePositions(pos);
+            org.joml.Matrix4d transform = new org.joml.Matrix4d(track.anchor)
+                    .translate(-pos.getX(), -pos.getY(), -pos.getZ());
+            for (int i = 0; i < samples.length; i++) {
+                org.joml.Vector3d point = transform.transformPosition(new org.joml.Vector3d(
+                        samples[i].getX() + 0.5, samples[i].getY() + 0.5, samples[i].getZ() + 0.5));
+                light[i] = Math.max(light[i], source.getBrightness(LightLayer.BLOCK, BlockPos.containing(point.x, point.y, point.z)));
+            }
+        }
         if (!Arrays.equals(light, track.lastWallLight)) {
             LOGGER.info("[Planarium Panorama] Lumiere autour du Planarium : {}", Arrays.toString(light));
             track.lastWallLight = light;
@@ -1483,7 +1604,7 @@ public final class ServerView {
         if (source == null) {
             return;
         }
-        BlockPos pos = track.source.pos();
+        BlockPos pos = track.center;
         if (!source.hasChunkAt(pos)) {
             return;
         }

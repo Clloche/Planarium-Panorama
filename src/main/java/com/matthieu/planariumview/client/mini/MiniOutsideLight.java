@@ -41,7 +41,7 @@ public final class MiniOutsideLight {
     }
 
     /** 10 faces, puis le centre, puis la lumiere du ciel au Planarium. */
-    private static int[] measure(Level level, BlockPos planarium) {
+    public static int[] measure(Level level, BlockPos planarium) {
         BlockPos[] positions = JarWalls.samplePositions(planarium);
         int[] values = new int[JarWalls.FACES + 2];
         for (int i = 0; i < JarWalls.FACES; i++) {

@@ -57,6 +57,7 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
 
     /** La miniature recoit aussi la lumiere des torches a cote du Planarium, comme l'interieur du bocal. */
     public void setOutsideLight(byte[] table) {
+        if (java.util.Arrays.equals(this.outsideLight, table)) return;
         this.outsideLight = table;
         this.outsideShaded = null;
     }

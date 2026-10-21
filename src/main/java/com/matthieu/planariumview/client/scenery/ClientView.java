@@ -560,6 +560,7 @@ public final class ClientView {
      * faux monde du decor, et on leur fait jouer leur ambiance (les particules sont ignorees).
      */
     private static void tickSceneryAmbience(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
+        com.matthieu.planariumview.client.jar.SubLevelLight.tick();
         Minecraft mc = Minecraft.getInstance();
         // Cascades du decor avec les sons de Dynamic Surroundings (integration DS et sons d'ambiance du decor).
         boolean inJar = mc.level != null && currentDim != null && mc.level.dimension().location().equals(currentDim);
@@ -891,10 +892,12 @@ public final class ClientView {
         dispose();
         MiniLight.clear();
         com.matthieu.planariumview.client.mini.MiniEntities.clear();
+        SubLevelView.clear();
         LunarClient.clear();
     }
 
     private static void dispose() {
+        SubLevelView.clearOutside();
         disposeRender();
         lastTemplate = null;
         lastTemplateTag = null;
@@ -977,6 +980,8 @@ public final class ClientView {
                 SkySync.giantLight(true, partialTick);
                 try {
                     drawBlockEntities(renderData, event);
+                    if (lastInfo != null) SubLevelView.drawOutside(event,
+                            lastInfo.origin().offset(currentRadius, currentRadius, currentRadius), true);
                 } catch (Exception e) {
                     LOGGER.debug("[Planarium View] Erreur de rendu des blocs speciaux", e);
                 } finally {
@@ -1151,7 +1156,7 @@ public final class ClientView {
     }
 
     /** Blocs du gabarit, comme Ars les prepare (sans construire son faux monde). */
-    private static ArrayList<CulledStatePos> statesOf(StructureTemplate template) {
+    static ArrayList<CulledStatePos> statesOf(StructureTemplate template) {
         ArrayList<CulledStatePos> states = new ArrayList<>();
         var palettes = ((com.hollingsworth.arsnouveau.common.mixin.structure.StructureTemplateAccessor) template).getPalettes();
         if (palettes.isEmpty()) {
@@ -1897,6 +1902,9 @@ public final class ClientView {
             translucentSections.sort(Comparator.comparingDouble(entry -> entry.getValue().cameraDistanceSqr));
             java.util.Collections.reverse(translucentSections);
             Matrix4f projectionMatrix = new Matrix4f(event.getProjectionMatrix());
+            poseStack.pushPose();
+            if (lastInfo != null) SubLevelView.terrain(poseStack,
+                    lastInfo.origin().offset(currentRadius, currentRadius, currentRadius));
             for (RenderType renderType : DRAW_ORDER) {
                 Iterable<Map.Entry<SectionPos, SectionMesh>> sections = renderType == RenderType.translucent()
                         ? translucentSections : sectionMeshes.entrySet();
@@ -1915,6 +1923,9 @@ public final class ClientView {
                     renderType.clearRenderState();
                 }
             }
+            poseStack.popPose();
+            if (lastInfo != null) SubLevelView.drawOutside(event,
+                    lastInfo.origin().offset(currentRadius, currentRadius, currentRadius), false);
             drawFogWall(poseStack, projectionMatrix, camera);
             drawCaveDome(poseStack, projectionMatrix);
             try {
@@ -2167,6 +2178,7 @@ public final class ClientView {
             }
             poseStack.pushPose();
             poseStack.translate(-camera.x, -camera.y, -camera.z);
+            SubLevelView.terrain(poseStack, info.origin().offset(radius, radius, radius));
             poseStack.translate(-ARS_OFFSET * GIANT, -ARS_OFFSET * GIANT - Y_SHIFT, -ARS_OFFSET * GIANT);
             poseStack.scale(GIANT, GIANT, GIANT);
             poseStack.translate(-radius, -radius, -radius);
@@ -2228,6 +2240,8 @@ public final class ClientView {
                 }
                 poseStack.pushPose();
                 poseStack.translate(-camera.x, -camera.y, -camera.z);
+                if (lastInfo != null) SubLevelView.terrain(poseStack,
+                        lastInfo.origin().offset(radius, radius, radius));
                 poseStack.translate(-ARS_OFFSET * GIANT, -ARS_OFFSET * GIANT - Y_SHIFT, -ARS_OFFSET * GIANT);
                 poseStack.scale(GIANT, GIANT, GIANT);
                 poseStack.translate(pos.getX() - radius, pos.getY() - radius, pos.getZ() - radius);

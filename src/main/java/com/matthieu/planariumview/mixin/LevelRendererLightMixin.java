@@ -1,6 +1,6 @@
 package com.matthieu.planariumview.mixin;
 
-import com.matthieu.planariumview.client.jar.JarLight;
+import com.matthieu.planariumview.client.jar.SubLevelLight;
 
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.core.BlockPos;
@@ -39,7 +39,7 @@ public abstract class LevelRendererLightMixin {
             return;
         }
         int packed = cir.getReturnValueI();
-        int next = JarLight.packedLight(packed, pos.getX(), pos.getY(), pos.getZ());
+        int next = SubLevelLight.packedLight(packed, pos);
         if (next != packed) {
             // Blocs speciaux et autres rendus hors des chunks (le monde du client lui-meme) : Contraption Lights a peut-etre
             // deja calcule sa couleur avec l'ancienne lumiere. On la recalcule avec la nouvelle, quel que soit l'ordre.

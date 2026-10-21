@@ -57,6 +57,25 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
+tasks.register('checkSubLevels', JavaExec) {
+    group = 'verification'
+    description = 'Checks sub-level coordinate precision and the optional scene network protocol.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.matthieu.planariumview.SubLevelChecks'
+    workingDir = layout.buildDirectory.dir('sublevel-checks').get().asFile
+    doFirst { workingDir.mkdirs() }
+    dependsOn tasks.named('testClasses')
+}
+
+sourceSets.test {
+    compileClasspath += sourceSets.main.compileClasspath
+    runtimeClasspath += sourceSets.main.compileClasspath + sourceSets.main.runtimeClasspath
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('checkSubLevels')
+}
+
 // La version affichee dans la liste des mods vient de gradle.properties (mod_version).
 tasks.named('processResources', ProcessResources).configure {
     def props = [mod_version: project.version.toString()]

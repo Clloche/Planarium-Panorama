@@ -28,6 +28,11 @@ public final class JarLight {
     private static volatile net.minecraft.resources.ResourceLocation tableDim;
     private static int[] lastFaces;
     private static int lastCenter = -2;
+    private static int revision;
+
+    public static int revision() {
+        return revision;
+    }
 
     private JarLight() {
     }
@@ -176,6 +181,7 @@ public final class JarLight {
 
     /** Recalcule la lumiere du dehors bloc par bloc (voir lit). */
     private static void relight() {
+        revision++;
         byte[] source = table;
         boolean[] open = passable;
         if (source == null || open == null) {
@@ -432,6 +438,7 @@ public final class JarLight {
     }
 
     public static void clear() {
+        revision++;
         table = null;
         lit = null;
         passable = null;

@@ -170,6 +170,7 @@ public abstract class PlanariumRendererMixin {
         com.matthieu.planariumview.client.mini.MiniParticles.seen(tile, packedLight);
         com.matthieu.planariumview.client.mini.PlanariumFloor.render(tile, poseStack, buffers, packedLight);
         com.matthieu.planariumview.client.mini.MiniEntities.render(tile, partialTick, poseStack, buffers, packedLight);
+        com.matthieu.planariumview.client.scenery.SubLevelView.mini(tile, partialTick, poseStack, buffers);
         if (tile.key != null && com.matthieu.planariumview.config.Config.enabled()) {
             com.matthieu.planariumview.client.scenery.GiantSprites.markMini(PlanariumRenderer.structureRenderData.get(tile.key));
         }

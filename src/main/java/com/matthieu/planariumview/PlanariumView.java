@@ -24,6 +24,8 @@ import com.matthieu.planariumview.network.SkyPayload;
 import com.matthieu.planariumview.network.SoundPrefsPayload;
 import com.matthieu.planariumview.network.ViewTogglePayload;
 import com.matthieu.planariumview.network.WallPayload;
+import com.matthieu.planariumview.network.SubLevelPayload;
+import com.matthieu.planariumview.client.scenery.SubLevelView;
 import com.matthieu.planariumview.server.ServerView;
 
 import net.minecraft.network.chat.Component;
@@ -51,12 +53,16 @@ public class PlanariumView {
         modBus.addListener(PlanariumView::registerPayloads);
         modBus.addListener(PlanariumView::addPacks);
         NeoForge.EVENT_BUS.register(ServerView.class);
+        com.matthieu.planariumview.compat.SubLevelCompat.available();
         if (FMLEnvironment.dist == Dist.CLIENT) {
             ClientView.init(container);
         }
     }
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
+        event.registrar("4").optional().playToClient(
+                SubLevelPayload.TYPE, SubLevelPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> SubLevelView.receive(payload)));
         event.registrar("4").playToClient(
                 OutsideViewPayload.TYPE,
                 OutsideViewPayload.STREAM_CODEC,
