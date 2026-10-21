@@ -6,7 +6,9 @@ import com.matthieu.planariumview.network.SubLevelPayload;
 import com.matthieu.planariumview.network.SubLevelTransforms;
 import com.matthieu.planariumview.network.SubLevelPrefsPayload;
 import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.server.SceneryMotion;
 import io.netty.buffer.Unpooled;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.DoubleTag;
 import net.minecraft.nbt.ListTag;
@@ -24,8 +26,38 @@ public final class SubLevelChecks {
         geometrySurvivesNetworkRoundTrip();
         coloredLightFollowsRotatedPlots();
         subLevelSwitchKeepsProtocolCompatible();
+        movingSceneryStaysWithinItsCapture();
         check(!SubLevelCompat.available(), "Sable must remain optional on the test classpath");
-        System.out.println("Sub-level checks passed: distant plots, rotation, bounds, malformed matrices, compressed protocol, projected colors, viewer preference, optional dependency");
+        System.out.println("Sub-level checks passed: distant plots, rotation, bounds, malformed matrices, compressed protocol, projected colors, viewer preference, moving scenery, optional dependency");
+    }
+
+    private static void movingSceneryStaysWithinItsCapture() {
+        for (int radius : new int[]{1, 8, 12, 32}) {
+            var at = new BlockPos(-179, 72, 19);
+            check(!SceneryMotion.shouldCapture(at, at, radius, 10_000), "A stationary jar must not add movement captures");
+        }
+        int small = motionCaptures(8), large = motionCaptures(32);
+        check(small > large * 4, "A small radius must follow a fast ship more often than an expensive large capture");
+        check(large <= 20, "A radius-32 capture must retain its one-per-second budget over twenty seconds");
+        var start = new BlockPos(-179, 72, 19);
+        check(SceneryMotion.shouldCapture(start.above(), start, 8, 20), "The final small movement must settle within a second");
+        check(!SceneryMotion.shouldCapture(start.offset(100, 0, 0), start, 8, 1), "Even a teleport must respect the minimum interval");
+    }
+
+    private static int motionCaptures(int radius) {
+        var captured = new BlockPos(-179, 72, 19);
+        int last = 0, count = 0;
+        for (int tick = 2; tick <= 400; tick += 2) {
+            // Replay a 32 blocks/s flight, reverse halfway, and exercise vertical as well as horizontal travel.
+            int offset = (int) Math.floor(Math.min(tick, 400 - tick) * 1.6);
+            var center = new BlockPos(-179 + offset, 72 - offset, 19);
+            if (radius == 8) check(Math.abs(center.getX() - captured.getX()) < radius,
+                    "At 32 blocks/s and radius 8, the jar must stay inside the previous capture between updates");
+            if (SceneryMotion.shouldCapture(center, captured, radius, tick - last)) {
+                captured = center; last = tick; count++;
+            }
+        }
+        return count;
     }
 
     private static void storageCoordinatesKeepPrecision() {

@@ -799,9 +799,13 @@ public final class ServerView {
             trySendPendingJukeboxes(player, track, radius);
         }
 
+        updateScenery(player, track, radius, force);
+    }
+
+    private static void updateScenery(ServerPlayer player, Track track, int radius, boolean force) {
         long now = player.server.getTickCount();
-        if (track.center.distSqr(track.capturedCenter) > Math.max(4, radius * radius / 4)
-                && now - track.lastCapture >= 20) force = true;
+        boolean moved = !track.center.equals(track.capturedCenter);
+        if (SceneryMotion.shouldCapture(track.center, track.capturedCenter, radius, now - track.lastCapture)) force = true;
         int refresh = Config.REFRESH_SECONDS.get() * 20;
         // Les changements de blocs declenchent une capture au prochain tick de suivi, mais au plus toutes les 5 secondes
         // (une ferme, un four ou de la redstone changent des blocs sans arret). La minuterie reste un filet de securite
@@ -831,7 +835,8 @@ public final class ServerView {
         // avec la lumiere a jour. Pas pour les blocs sans effet sur la lumiere (sinon une horloge de redstone
         // relancerait une capture complete toutes les 5 s).
         track.followUpAt = dirtyReady && track.lightChangePending ? now + Math.max(blockGap, 5 * 20) : 0;
-        String reason = force ? "rayon, dimension ou interrupteur" : followUpReady ? "suivi (lumiere a jour)"
+        String reason = force ? (moved && track.hasFull ? "Planarium en mouvement" : "rayon, dimension ou interrupteur")
+                : followUpReady ? "suivi (lumiere a jour)"
                 : dirtyReady ? (track.fullCaptureReason.isEmpty() ? "changement de bloc" : track.fullCaptureReason)
                 : "capture de secours";
         // Les entites ou donnees de biome moddees peuvent changer sans changement de bloc ; garde une capture de securite,
@@ -863,7 +868,8 @@ public final class ServerView {
             return;
         }
         // Temps passe sur le fil du serveur (en solo, il partage le processeur avec le jeu).
-        LOGGER.info("[Planarium Panorama] Envoi du decor complet (cause : {}, capture={} ms, comparaison={} ms)",
+        LOGGER.atLevel(moved && track.hasFull ? org.slf4j.event.Level.DEBUG : org.slf4j.event.Level.INFO)
+                .log("[Planarium Panorama] Envoi du decor complet (cause : {}, capture={} ms, comparaison={} ms)",
                 reason, (compareStart - captureStart) / 1_000_000L, compareNanos / 1_000_000L);
         // Description detaillee des changements : elle parcourt aussi les blocs (10 a 50 ms), donc seulement en DEBUG.
         if (LOGGER.isDebugEnabled()) {
@@ -1414,6 +1420,15 @@ public final class ServerView {
             SubLevelServer.send(player, track.pocket.location(), source,
                     new net.minecraft.world.phys.AABB(track.center).inflate(radius + 1), track.anchor, false,
                     track.source.pos(), prefsOf(player.getUUID()).world());
+            // Terrain follows the same pose updates as the ship, instead of waiting for the 1 Hz environment sync.
+            if (track.hasFull && SceneryMotion.shouldCapture(track.center, track.capturedCenter, radius,
+                    server.getTickCount() - track.lastCapture)) {
+                try {
+                    updateScenery(player, track, radius, true);
+                } catch (Exception e) {
+                    logOnce("decor en mouvement", e);
+                }
+            }
         }
         SubLevelServer.updateMiniatures(server);
     }
