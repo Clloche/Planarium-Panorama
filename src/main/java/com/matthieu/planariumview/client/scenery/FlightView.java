@@ -35,7 +35,7 @@ import java.util.Map;
 public final class FlightView {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final long BUDGET_NANOS = 2_500_000L;
-    /** Securite : bascule meme si le premier lot n'est pas complet apres ce temps. */
+    /** Bascule au plus tard apres ce temps, meme si le premier lot n'est pas complet ou construit. */
     private static final long SWITCH_TIMEOUT_NANOS = 3_000_000_000L;
 
     private record Section(BlockPos origin, Map<RenderType, VertexBuffer> buffers) {
@@ -97,8 +97,9 @@ public final class FlightView {
         if (!Config.enabled()) {
             return;
         }
-        if (flying && !drawing && pending.isEmpty()
-                && (ready || System.nanoTime() - startedAt > SWITCH_TIMEOUT_NANOS)) {
+        // Premier lot recu et construit, ou 3 s depuis le debut du vol meme si des sections attendent encore : a grande
+        // vitesse, la file ne se vide jamais et l'ancien decor serait reste affiche tout le vol.
+        if (flying && !drawing && ((ready && pending.isEmpty()) || System.nanoTime() - startedAt > SWITCH_TIMEOUT_NANOS)) {
             drawing = true;
         }
         if (!flying && (drawing || !sections.isEmpty()) && ClientView.nearCaughtUp()) {

@@ -35,7 +35,6 @@ public final class FarRingServer {
     private static final Logger LOGGER = LogUtils.getLogger();
     /** Les tickets expirent seuls (30 s) si une capture est abandonnee sans les retirer. */
     private static final TicketType<UUID> TICKET = TicketType.create("planariumview_far", UUID::compareTo, 600);
-    private static final long BUDGET_NANOS = 4_000_000L;
     /** Un Planarium qui bouge doit rester immobile ce temps avant la capture de l'anneau. */
     private static final int STILL_TICKS = 100;
     /** Temps max d'attente des chunks d'une capture (ceux qui manquent encore sont laisses vides). */
@@ -172,6 +171,15 @@ public final class FarRingServer {
         }
     }
 
+    /**
+     * Fermeture du monde : les photos et captures en cours sont oubliees. La cle du cache ne contient pas la sauvegarde :
+     * en solo, un autre monde ouvert ensuite aurait pu recevoir l'anneau du precedent aux memes coordonnees.
+     */
+    static void clearAll() {
+        CACHE.clear();
+        STATES.clear();
+    }
+
     /** Le joueur n'est plus suivi (sorti du bocal, deconnecte, vue OFF). */
     static void forget(net.minecraft.server.MinecraftServer server, UUID id) {
         State state = STATES.remove(id);
@@ -256,6 +264,10 @@ public final class FarRingServer {
                         index++;
                         continue;
                     }
+                    if (!CaptureBudget.available()) {
+                        return false;
+                    }
+                    long chunkStart = System.nanoTime();
                     visible.capture(level, chunk, minX, maxX, minY, maxY, minZ, maxZ, new VisibleCapture.Shape() {
                         @Override
                         public boolean contains(int x, int y, int z) {
@@ -268,9 +280,7 @@ public final class FarRingServer {
                         }
                     });
                     index++;
-                    if (System.nanoTime() - start > BUDGET_NANOS) {
-                        return index >= chunks.size() && finish(level);
-                    }
+                    CaptureBudget.spend(System.nanoTime() - chunkStart);
                 }
                 return finish(level);
             } finally {

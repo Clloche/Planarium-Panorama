@@ -31,7 +31,6 @@ import java.util.UUID;
 public final class FlightServer {
     /** Immobile ce temps : fin du vol. */
     private static final int STILL_TICKS = 100;
-    private static final long BUDGET_NANOS = 4_000_000L;
 
     private static final class State {
         ResourceKey<Level> pocket;
@@ -63,6 +62,11 @@ public final class FlightServer {
 
     static void forget(UUID player) {
         STATES.remove(player);
+    }
+
+    /** Fermeture du monde : rien ne doit passer au monde suivant (meme dimension, memes coordonnees). */
+    static void clearAll() {
+        STATES.clear();
     }
 
     /**
@@ -146,13 +150,13 @@ public final class FlightServer {
         }
         // Les plus proches d'abord.
         wanted.sort((it.unimi.dsi.fastutil.longs.LongComparator) (a, b) -> Long.compare(distance(a, live), distance(b, live)));
-        long start = System.nanoTime();
         int done = 0;
         for (int i = 0; i < wanted.size(); i++) {
             long key = wanted.getLong(i);
-            if (done > 0 && System.nanoTime() - start > BUDGET_NANOS) {
+            if (!CaptureBudget.available()) {
                 break;
             }
+            long start = System.nanoTime();
             int sx = SectionPos.x(key), sy = SectionPos.y(key), sz = SectionPos.z(key);
             LevelChunk chunk = level.getChunkSource().getChunkNow(sx, sz);
             if (chunk == null) {
@@ -162,6 +166,7 @@ public final class FlightServer {
             VisibleCapture capture = new VisibleCapture(x0 - 1, y0 - 1, z0 - 1, x0, z0, 4);
             // Les voisins hors de la section sont lus dans le vrai monde (faces et lumiere aux bords).
             capture.capture(level, chunk, x0, x0 + 15, y0, y0 + 15, z0, z0 + 15, (x, y, z) -> true);
+            CaptureBudget.spend(System.nanoTime() - start);
             boolean resend = state.dirty.remove(key);
             state.sent.add(key);
             done++;

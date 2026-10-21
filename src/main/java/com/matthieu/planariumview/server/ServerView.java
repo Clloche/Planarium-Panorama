@@ -1425,13 +1425,29 @@ public final class ServerView {
 
     /** Anneau lointain (voir FarRingServer) : avance chaque tick, avec un petit budget. */
     private static void updateFarRings(MinecraftServer server) {
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+        // Un seul temps de capture par tick pour tous les joueurs et les deux systemes (voir CaptureBudget). L'ordre
+        // tourne a chaque tick (joueurs, puis anneau ou vol en premier) : personne n'attend toujours son tour.
+        CaptureBudget.reset();
+        List<ServerPlayer> players = server.getPlayerList().getPlayers();
+        int count = players.size();
+        if (count == 0) {
+            return;
+        }
+        int tick = server.getTickCount();
+        boolean flightFirst = (tick & 1) == 1;
+        for (int i = 0; i < count; i++) {
+            ServerPlayer player = players.get((i + tick) % count);
             Track track = TRACKS.get(player.getUUID());
             if (track == null || DISABLED.contains(player.getUUID()) || !track.pocket.equals(player.serverLevel().dimension())) continue;
             ServerLevel source = server.getLevel(track.source.dimension());
             if (source == null) continue;
+            if (flightFirst) {
+                FlightServer.tick(player, source, track.pocket, track.center, track.capturedCenter, Config.RADIUS.get(), track.hasFull);
+            }
             FarRingServer.tick(player, source, track.pocket, track.capturedCenter, track.center, track.lastRadius, track.hasFull);
-            FlightServer.tick(player, source, track.pocket, track.center, track.capturedCenter, Config.RADIUS.get(), track.hasFull);
+            if (!flightFirst) {
+                FlightServer.tick(player, source, track.pocket, track.center, track.capturedCenter, Config.RADIUS.get(), track.hasFull);
+            }
         }
     }
 
@@ -1504,6 +1520,8 @@ public final class ServerView {
     @SubscribeEvent
     public static void onServerStopping(net.neoforged.neoforge.event.server.ServerStoppingEvent event) {
         SubLevelServer.clear();
+        FarRingServer.clearAll();
+        FlightServer.clearAll();
     }
 
     @SubscribeEvent
