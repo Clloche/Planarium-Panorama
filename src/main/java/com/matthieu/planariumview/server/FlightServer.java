@@ -2,11 +2,14 @@ package com.matthieu.planariumview.server;
 
 import com.matthieu.planariumview.network.FarRingPayload;
 import com.matthieu.planariumview.network.FlightPayload;
+import com.matthieu.planariumview.config.Config;
 
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
+import net.minecraft.server.level.TicketType;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -19,8 +22,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Decor en vol : pendant qu'un Planarium bouge (sur un vaisseau Sable), le rayon detaille n'est plus recapture en
- * entier tous les quelques blocs. Il est fait de sections de 16 blocs rangees par position dans le monde : seules
+ * Decor en vol : pendant qu'un Planarium bouge (sur un vaisseau Sable), le decor jusqu'a la distance de vue n'est pas
+ * recapture en entier tous les quelques blocs. Il est fait de sections de 16 blocs rangees par position dans le monde : seules
  * celles qui entrent dans le rayon (plus une section d'avance) sont capturees et envoyees, celles qui en sortent sont
  * oubliees. Le client les garde telles quelles pendant le deplacement (voir FlightView).
  *
@@ -31,8 +34,12 @@ import java.util.UUID;
 public final class FlightServer {
     /** Immobile ce temps : fin du vol. */
     private static final int STILL_TICKS = 100;
+    /** Loaded at level 33, without simulation outside the detail radius. Renewed while flying. */
+    private static final TicketType<UUID> TICKET = TicketType.create("planariumview_flight", UUID::compareTo, 600);
 
     private static final class State {
+        ServerLevel level;
+        UUID owner;
         ResourceKey<Level> pocket;
         ResourceKey<Level> source;
         BlockPos stillAt;
@@ -41,6 +48,12 @@ public final class FlightServer {
         boolean readySent;
         final LongOpenHashSet sent = new LongOpenHashSet();
         final LongOpenHashSet dirty = new LongOpenHashSet();
+        final LongOpenHashSet tickets = new LongOpenHashSet();
+        ChunkPos ticketCenter;
+        int ticketRadius = -1;
+        long renewTicketsAt;
+        BlockPos viewCenter;
+        int viewRadius = -1;
     }
 
     private static final Map<UUID, State> STATES = new HashMap<>();
@@ -61,11 +74,13 @@ public final class FlightServer {
     }
 
     static void forget(UUID player) {
-        STATES.remove(player);
+        State state = STATES.remove(player);
+        if (state != null) release(state);
     }
 
     /** Fermeture du monde : rien ne doit passer au monde suivant (meme dimension, memes coordonnees). */
     static void clearAll() {
+        STATES.values().forEach(FlightServer::release);
         STATES.clear();
     }
 
@@ -81,7 +96,10 @@ public final class FlightServer {
         UUID id = player.getUUID();
         State state = STATES.get(id);
         if (state == null || !pocket.equals(state.pocket) || !source.dimension().equals(state.source)) {
+            if (state != null) release(state);
             state = new State();
+            state.level = source;
+            state.owner = id;
             state.pocket = pocket;
             state.source = source.dimension();
             STATES.put(id, state);
@@ -100,6 +118,7 @@ public final class FlightServer {
                 state.readySent = false;
                 state.sent.clear();
                 state.dirty.clear();
+                state.viewCenter = null;
                 PacketDistributor.sendToPlayer(player, FlightPayload.signal(pocket.location(), FlightPayload.START));
             }
         }
@@ -111,10 +130,11 @@ public final class FlightServer {
             state.active = false;
             state.sent.clear();
             state.dirty.clear();
+            release(state);
             PacketDistributor.sendToPlayer(player, FlightPayload.signal(pocket.location(), FlightPayload.STOP));
             return;
         }
-        stream(player, source, pocket, state, live, radius);
+        stream(player, source, pocket, state, live, Math.max(radius, Config.FAR_RADIUS.get()));
     }
 
     /** Sections du rayon (plus une d'avance) : oublie celles qui sortent, envoie celles qui entrent ou ont change. */
@@ -122,6 +142,13 @@ public final class FlightServer {
                                BlockPos live, int radius) {
         int reach = radius + 8 + 16;
         int keep = reach + 16;
+        keepLoaded(state, live, reach + 16, player.server.getTickCount());
+        if (!live.equals(state.viewCenter) || state.viewRadius != radius) {
+            PacketDistributor.sendToPlayer(player, FlightPayload.view(pocket.location(), live, radius,
+                    level.getMinSection(), level.getMaxSection() - 1));
+            state.viewCenter = live;
+            state.viewRadius = radius;
+        }
         LongArrayList dropped = new LongArrayList();
         var it = state.sent.iterator();
         while (it.hasNext()) {
@@ -151,6 +178,7 @@ public final class FlightServer {
         // Les plus proches d'abord.
         wanted.sort((it.unimi.dsi.fastutil.longs.LongComparator) (a, b) -> Long.compare(distance(a, live), distance(b, live)));
         int done = 0;
+        LongArrayList empty = new LongArrayList();
         for (int i = 0; i < wanted.size(); i++) {
             long key = wanted.getLong(i);
             if (!CaptureBudget.available()) {
@@ -159,26 +187,81 @@ public final class FlightServer {
             long start = System.nanoTime();
             int sx = SectionPos.x(key), sy = SectionPos.y(key), sz = SectionPos.z(key);
             LevelChunk chunk = level.getChunkSource().getChunkNow(sx, sz);
-            if (chunk == null) {
+            if (chunk == null || !chunk.isLightCorrect()) {
                 continue;
             }
+            if (chunk.getSection(level.getSectionIndexFromSectionY(sy)).hasOnlyAir()) {
+                state.dirty.remove(key);
+                state.sent.add(key);
+                empty.add(key);
+                done++;
+                CaptureBudget.spend(System.nanoTime() - start);
+                continue;
+            }
+            // Wait for the halo as well: an absent neighbor would otherwise become a permanent solid border.
+            if (!neighborsReady(level, sx, sz)) continue;
             int x0 = sx << 4, y0 = sy << 4, z0 = sz << 4;
             VisibleCapture capture = new VisibleCapture(x0 - 1, y0 - 1, z0 - 1, x0, z0, 4);
             // Les voisins hors de la section sont lus dans le vrai monde (faces et lumiere aux bords).
             capture.capture(level, chunk, x0, x0 + 15, y0, y0 + 15, z0, z0 + 15, (x, y, z) -> true);
             CaptureBudget.spend(System.nanoTime() - start);
-            boolean resend = state.dirty.remove(key);
+            state.dirty.remove(key);
             state.sent.add(key);
             done++;
-            if (!capture.blocks.isEmpty() || resend) {
+            if (!capture.blocks.isEmpty()) {
                 FarRingPayload.Data data = capture.result();
                 PacketDistributor.sendToPlayer(player, FlightPayload.section(pocket.location(), key, data));
+            } else {
+                empty.add(key);
             }
         }
+        if (!empty.isEmpty()) PacketDistributor.sendToPlayer(player, FlightPayload.empty(pocket.location(), empty.toLongArray()));
         if (!state.readySent && done == wanted.size()) {
             state.readySent = true;
             PacketDistributor.sendToPlayer(player, FlightPayload.signal(pocket.location(), FlightPayload.READY));
         }
+    }
+
+    private static boolean neighborsReady(ServerLevel level, int x, int z) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                LevelChunk neighbor = level.getChunkSource().getChunkNow(x + dx, z + dz);
+                if (neighbor == null || !neighbor.isLightCorrect()) return false;
+            }
+        }
+        return true;
+    }
+
+    private static void keepLoaded(State state, BlockPos live, int radius, long now) {
+        ChunkPos center = new ChunkPos(live);
+        boolean renew = now >= state.renewTicketsAt;
+        if (center.equals(state.ticketCenter) && radius == state.ticketRadius && !renew) return;
+        LongOpenHashSet wanted = new LongOpenHashSet();
+        for (int x = (live.getX() - radius) >> 4; x <= (live.getX() + radius) >> 4; x++) {
+            for (int z = (live.getZ() - radius) >> 4; z <= (live.getZ() + radius) >> 4; z++) {
+                long key = ChunkPos.asLong(x, z);
+                wanted.add(key);
+                if (!state.tickets.contains(key) || renew) {
+                    state.level.getChunkSource().addRegionTicket(TICKET, new ChunkPos(key), 0, state.owner);
+                }
+            }
+        }
+        for (long key : state.tickets) {
+            if (!wanted.contains(key)) state.level.getChunkSource().removeRegionTicket(TICKET, new ChunkPos(key), 0, state.owner);
+        }
+        state.tickets.clear();
+        state.tickets.addAll(wanted);
+        state.ticketCenter = center;
+        state.ticketRadius = radius;
+        if (renew) state.renewTicketsAt = now + 100;
+    }
+
+    private static void release(State state) {
+        for (long key : state.tickets) {
+            state.level.getChunkSource().removeRegionTicket(TICKET, new ChunkPos(key), 0, state.owner);
+        }
+        state.tickets.clear();
+        state.ticketCenter = null;
     }
 
     private static boolean near(long section, BlockPos live, int reach) {

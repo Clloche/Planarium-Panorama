@@ -333,6 +333,13 @@ public final class SubLevelView {
         return scene != null && scene.anchor.to != null;
     }
 
+    static BlockPos anchorPosition() {
+        Scene scene = outside();
+        if (scene == null || scene.anchor.to == null) return null;
+        Matrix4d anchor = scene.anchor.current();
+        return BlockPos.containing(anchor.m30(), anchor.m31(), anchor.m32());
+    }
+
     private static Scene outside() {
         var level = Minecraft.getInstance().level;
         return level == null ? null : OUTSIDE.get(level.dimension().location());

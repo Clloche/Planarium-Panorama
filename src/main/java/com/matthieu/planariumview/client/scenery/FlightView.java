@@ -3,6 +3,7 @@ package com.matthieu.planariumview.client.scenery;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.FarRingPayload;
 import com.matthieu.planariumview.network.FlightPayload;
+import com.matthieu.planariumview.network.FlightCoverage;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -24,7 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Decor en vol (voir FlightServer) : le rayon detaille fait de sections de 16 blocs rangees par position dans le monde.
+ * Decor en vol (voir FlightServer) : des sections de 16 blocs jusqu'a la distance de vue, rangees par position dans le monde.
  * Une section construite reste telle quelle pendant le deplacement : elle est seulement replacee chaque image dans le
  * cadre du bocal qui bouge (comme le decor normal, voir SubLevelView.terrain). Seules les sections qui entrent dans le
  * rayon sont construites, avec un petit budget par image.
@@ -41,6 +42,8 @@ public final class FlightView {
     private record Section(BlockPos origin, Map<RenderType, VertexBuffer> buffers) {
     }
 
+    private record DrawFrame(Section section, Matrix4f original, FlightFog.Frame fog) {}
+
     private static ResourceLocation pocket;
     /** Le serveur est en vol (START recu, pas encore STOP). */
     private static boolean flying;
@@ -48,10 +51,14 @@ public final class FlightView {
     private static long startedAt;
     /** Les sections remplacent le decor normal a l'ecran. */
     private static boolean drawing;
+    private static final FlightCoverage coverage = new FlightCoverage();
+    private static BlockPos viewCenter;
+    private static int visibleRadius;
+    private static int knownRadius;
     private static final Map<Long, Section> sections = new HashMap<>();
     private static final LinkedHashMap<Long, FarRingPayload.Data> pending = new LinkedHashMap<>();
     /** Matrice de chaque section pour l'image en cours (calculee une fois, utilisee par chaque couche). */
-    private static final List<Map.Entry<Section, Matrix4f>> frame = new ArrayList<>();
+    private static final List<DrawFrame> frame = new ArrayList<>();
 
     private FlightView() {
     }
@@ -68,13 +75,32 @@ public final class FlightView {
         switch (payload.kind()) {
             case FlightPayload.START -> {
                 clearSections();
+                drawing = false;
                 flying = true;
                 ready = false;
                 startedAt = System.nanoTime();
             }
             case FlightPayload.SECTION -> pending.put(payload.section(), payload.data());
+            case FlightPayload.VIEW -> {
+                long[] view = payload.sections();
+                if (view.length == 3 && view[0] > 0 && view[0] <= 96 && view[1] <= view[2]
+                        && view[1] >= -2048 && view[2] <= 2047) {
+                    coverage.view((int) view[0], (int) view[1], (int) view[2]);
+                    viewCenter = BlockPos.of(payload.section());
+                    knownRadius = Math.max(knownRadius, (int) view[0]);
+                }
+            }
+            case FlightPayload.EMPTY -> {
+                for (long key : payload.sections()) {
+                    pending.remove(key);
+                    Section removed = sections.remove(key);
+                    if (removed != null) removed.buffers().values().forEach(VertexBuffer::close);
+                    coverage.ready(key);
+                }
+            }
             case FlightPayload.DROP -> {
                 for (long key : payload.sections()) {
+                    coverage.drop(key);
                     pending.remove(key);
                     Section removed = sections.remove(key);
                     if (removed != null) removed.buffers().values().forEach(VertexBuffer::close);
@@ -92,6 +118,9 @@ public final class FlightView {
         return drawing;
     }
 
+    static int visibleRadius() { return Math.max(1, visibleRadius); }
+    static int knownRadius() { return knownRadius; }
+
     /** Chaque image, avant le dessin : bascule entre le vol et le decor normal, construit des sections. */
     static void update(Vec3 camera) {
         if (!Config.enabled()) {
@@ -108,6 +137,7 @@ public final class FlightView {
             clearSections();
         }
         if (pending.isEmpty()) {
+            updateCoverage();
             return;
         }
         long start = System.nanoTime();
@@ -120,10 +150,18 @@ public final class FlightView {
                 Section built = build(key, next.getValue(), camera);
                 Section old = built == null ? sections.remove(key) : sections.put(key, built);
                 if (old != null) old.buffers().values().forEach(VertexBuffer::close);
+                coverage.ready(key);
             } catch (RuntimeException e) {
                 LOGGER.debug("[Planarium Panorama] Section du decor en vol ignoree", e);
             }
         } while (!pending.isEmpty() && System.nanoTime() - start < BUDGET_NANOS);
+        updateCoverage();
+    }
+
+    private static void updateCoverage() {
+        BlockPos center = SubLevelView.anchorPosition();
+        if (center == null) center = viewCenter;
+        visibleRadius = center == null || coverage.radius() == 0 ? ClientView.viewRadius() : coverage.edge(center);
     }
 
     private static Section build(long key, FarRingPayload.Data data, Vec3 camera) {
@@ -148,7 +186,8 @@ public final class FlightView {
         for (Section section : sections.values()) {
             poseStack.pushPose();
             SubLevelView.terrain(poseStack, section.origin());
-            frame.add(Map.entry(section, new Matrix4f(poseStack.last().pose())));
+            Matrix4f original = new Matrix4f(poseStack.last().pose());
+            frame.add(new DrawFrame(section, original, FlightFog.frame(original)));
             poseStack.popPose();
         }
     }
@@ -158,13 +197,29 @@ public final class FlightView {
         if (!drawing) {
             return;
         }
-        for (Map.Entry<Section, Matrix4f> entry : frame) {
-            VertexBuffer buffer = entry.getKey().buffers().get(type);
-            if (buffer == null || buffer.getFormat() == null) continue;
-            buffer.bind();
-            buffer.drawWithShader(entry.getValue(), projection, RenderSystem.getShader());
+        var shader = RenderSystem.getShader();
+        var offset = shader.CHUNK_OFFSET;
+        float x = 0, y = 0, z = 0;
+        if (offset != null) {
+            var previous = offset.getFloatBuffer();
+            x = previous.get(0); y = previous.get(1); z = previous.get(2);
         }
-        VertexBuffer.unbind();
+        try {
+            for (DrawFrame entry : frame) {
+                VertexBuffer buffer = entry.section().buffers().get(type);
+                if (buffer == null || buffer.getFormat() == null) continue;
+                buffer.bind();
+                if (offset != null) {
+                    offset.set(entry.fog().chunkOffset());
+                    buffer.drawWithShader(entry.fog().modelView(), projection, shader);
+                } else {
+                    buffer.drawWithShader(entry.original(), projection, shader);
+                }
+            }
+        } finally {
+            if (offset != null) offset.set(x, y, z);
+            VertexBuffer.unbind();
+        }
     }
 
     private static void clearSections() {
@@ -172,6 +227,9 @@ public final class FlightView {
         sections.clear();
         pending.clear();
         frame.clear();
+        coverage.clear();
+        viewCenter = null;
+        visibleRadius = 0;
     }
 
     /** Sortie du bocal ou decor efface. */
@@ -181,5 +239,6 @@ public final class FlightView {
         ready = false;
         drawing = false;
         pocket = null;
+        knownRadius = 0;
     }
 }

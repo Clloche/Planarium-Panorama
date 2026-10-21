@@ -475,6 +475,10 @@ public final class ClientView {
 
     /** Bord vise du decor : celui de l'anneau lointain s'il est la, sinon celui du rayon detaille. */
     private static int targetEdge() {
+        if (FlightView.active()) {
+            return Config.FOG.get() == Config.Fog.RENDER_DISTANCE
+                    ? Math.min(viewRadius(), FlightView.visibleRadius()) : FlightView.visibleRadius();
+        }
         return FarRing.visible() ? FarRing.radius() : viewRadius();
     }
 
@@ -489,6 +493,9 @@ public final class ClientView {
         int target = targetEdge();
         long now = System.nanoTime();
         if (shownEdge < 0.0F) {
+            shownEdge = target;
+        } else if (target < shownEdge) {
+            // A receding frontier can expose missing terrain; only expansion may be smoothed.
             shownEdge = target;
         } else if (shownEdge != target) {
             float seconds = Math.min(0.25F, (now - shownEdgeNanos) / 1.0e9F);
@@ -512,7 +519,8 @@ public final class ClientView {
             return 0.0F;
         }
         // Meme distance tant que le bocal a un anneau, visible ou non : une distance qui change provoquait une saccade.
-        int far = Config.FOG.get() == Config.Fog.RENDER_DISTANCE ? 0 : FarRing.knownRadius;
+        int far = Config.FOG.get() == Config.Fog.RENDER_DISTANCE ? 0
+                : Math.max(FarRing.knownRadius, FlightView.knownRadius());
         int edge = Math.max(Math.max(targetEdge(), far), (int) Math.ceil(Math.max(0.0F, shownEdge)));
         return (edge * GIANT + GIANT + 4.0F) / 0.6F;
     }
@@ -2276,7 +2284,8 @@ public final class ClientView {
         if (mode == Config.Fog.SCENERY_EDGE) {
             // Bord du decor geant : le rayon de vue (en blocs du monde) fois 32, plus la moitie de la case du Planarium.
             float edge = edgeRadius() * GIANT + GIANT / 2.0F;
-            RenderSystem.setShaderFogStart(edge - net.minecraft.util.Mth.clamp(edge / 4.0F, 16.0F, 160.0F));
+            // Scale the fade with the giant scenery too: 160 render units are only about five outside blocks.
+            RenderSystem.setShaderFogStart(edge - net.minecraft.util.Mth.clamp(edge / 4.0F, GIANT, 16.0F * GIANT));
             RenderSystem.setShaderFogEnd(edge);
             RenderSystem.setShaderFogShape(com.mojang.blaze3d.shaders.FogShape.CYLINDER);
             return;

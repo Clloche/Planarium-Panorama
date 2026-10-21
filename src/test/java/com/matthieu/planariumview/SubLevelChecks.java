@@ -27,6 +27,7 @@ public final class SubLevelChecks {
         subLevelSwitchKeepsProtocolCompatible();
         particlesKeepTheirMovingFrame();
         com.matthieu.planariumview.client.scenery.SubLevelLightingChecks.run();
+        FlightChecks.run();
         check(!SubLevelCompat.available(), "Sable must remain optional on the test classpath");
         check(com.matthieu.planariumview.compat.ArsSableCompat.entry(null, java.util.UUID.randomUUID()) == null,
                 "Entry restoration must remain optional without Ars Sable");

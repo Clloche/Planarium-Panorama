@@ -3,17 +3,19 @@ package com.matthieu.planariumview.network;
 import com.matthieu.planariumview.PlanariumView;
 
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * Serveur -> client : le decor en vol (voir FlightServer). Pendant qu'un Planarium bouge sur un vaisseau, le rayon
- * detaille est fait de sections de 16 blocs rangees par position dans le monde : seules les sections qui entrent dans
+ * Serveur -> client : le decor en vol (voir FlightServer). Pendant qu'un Planarium bouge sur un vaisseau, le decor
+ * jusqu'a la distance de vue est fait de sections de 16 blocs : seules les sections qui entrent dans
  * le rayon sont envoyees, au format compact de l'anneau lointain (blocs visibles seulement).
  *
  * {@code kind} : START (debut du vol, tout oublier), SECTION ({@code section} + {@code data}), DROP ({@code sections}
- * a oublier), READY (le premier lot est envoye), STOP (fin du vol : le rayon detaille normal reprend).
+ * a oublier), READY (le premier lot est envoye), STOP (fin du vol : le decor normal reprend),
+ * VIEW (centre dans section ; rayon et limites verticales dans sections), EMPTY (sections connues vides).
  */
 public record FlightPayload(ResourceLocation pocketDim, int kind, long section, long[] sections, FarRingPayload.Data data)
         implements CustomPacketPayload {
@@ -23,6 +25,9 @@ public record FlightPayload(ResourceLocation pocketDim, int kind, long section, 
     public static final int DROP = 2;
     public static final int READY = 3;
     public static final int STOP = 4;
+    /** Additional kinds preserve the existing wire layout; older clients ignore them. */
+    public static final int VIEW = 5;
+    public static final int EMPTY = 6;
 
     public static final Type<FlightPayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(PlanariumView.MODID, "flight"));
@@ -40,6 +45,14 @@ public record FlightPayload(ResourceLocation pocketDim, int kind, long section, 
 
     public static FlightPayload drop(ResourceLocation pocket, long[] sections) {
         return new FlightPayload(pocket, DROP, 0L, sections, FarRingPayload.Data.EMPTY);
+    }
+
+    public static FlightPayload view(ResourceLocation pocket, BlockPos center, int radius, int minY, int maxY) {
+        return new FlightPayload(pocket, VIEW, center.asLong(), new long[]{radius, minY, maxY}, FarRingPayload.Data.EMPTY);
+    }
+
+    public static FlightPayload empty(ResourceLocation pocket, long[] sections) {
+        return new FlightPayload(pocket, EMPTY, 0L, sections, FarRingPayload.Data.EMPTY);
     }
 
     private void write(FriendlyByteBuf buf) {
