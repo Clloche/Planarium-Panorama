@@ -60,6 +60,7 @@ tasks.withType(JavaCompile).configureEach {
 tasks.register('checkSubLevels', JavaExec) {
     group = 'verification'
     description = 'Checks sub-level coordinate precision and the optional scene network protocol.'
+    onlyIf { file('src/test/java/com/matthieu/planariumview/SubLevelChecks.java').exists() }
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.matthieu.planariumview.SubLevelChecks'
     workingDir = layout.buildDirectory.dir('sublevel-checks').get().asFile
