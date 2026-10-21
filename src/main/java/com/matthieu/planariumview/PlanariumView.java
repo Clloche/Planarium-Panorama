@@ -80,6 +80,11 @@ public class PlanariumView {
                 OutsideViewDeltaPayload.TYPE,
                 OutsideViewDeltaPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> ClientView.receiveDelta(payload)));
+        // Facultatif : anneau lointain du decor (un serveur sans cette version n'en envoie pas).
+        event.registrar("4").optional().playToClient(
+                com.matthieu.planariumview.network.FarRingPayload.TYPE,
+                com.matthieu.planariumview.network.FarRingPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.FarRing.receive(payload)));
         event.registrar("4").playToClient(
                 SkyPayload.TYPE,
                 SkyPayload.STREAM_CODEC,

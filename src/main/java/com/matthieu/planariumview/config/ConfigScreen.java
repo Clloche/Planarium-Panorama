@@ -173,6 +173,14 @@ public final class ConfigScreen {
                         .formatValue(v -> Component.translatable(KEY + "radius.value", v)))
                 .available(!serverSide)
                 .build();
+        Option<Integer> farRadius = Option.<Integer>createBuilder()
+                .name(Component.translatable(KEY + "far_radius"))
+                .description(describeServer("far_radius", farRadiusLabel(Config.FAR_RADIUS.getDefault()), serverSide))
+                .binding(Config.FAR_RADIUS.getDefault(), Config.FAR_RADIUS::get, Config.FAR_RADIUS::set)
+                .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(0, 96).step(4)
+                        .formatValue(ConfigScreen::farRadiusLabel))
+                .available(!serverSide)
+                .build();
         Option<Integer> blockUpdates = Option.<Integer>createBuilder()
                 .name(Component.translatable(KEY + "block_updates"))
                 .description(describeServer("block_updates", blockUpdatesLabel(Config.BLOCK_UPDATE_SECONDS.getDefault()), serverSide))
@@ -196,7 +204,7 @@ public final class ConfigScreen {
                 .build();
 
         dirty = false;
-        for (Option<?> option : List.of(master, lighting, radius, biome, weather, sceneryAmbience, sceneryParticles, worldSounds, mobSounds,
+        for (Option<?> option : List.of(master, lighting, radius, farRadius, biome, weather, sceneryAmbience, sceneryParticles, worldSounds, mobSounds,
                 blockSounds, explosionSounds, clouds, fog, blockUpdates, refresh, color, ambience, ambientSounds, lunar, subLevels, caveFog)) {
             autoSave(option);
         }
@@ -215,6 +223,7 @@ public final class ConfigScreen {
                         .option(lighting)
                         // Le rayon de vue est decide par le serveur en multijoueur (grise, voir sa description).
                         .option(radius)
+                        .option(farRadius)
                         .group(OptionGroup.createBuilder()
                                 .name(Component.translatable(KEY + "group.updates"))
                                 .collapsed(false)
@@ -417,6 +426,10 @@ public final class ConfigScreen {
 
     private static Component blockUpdatesLabel(Integer seconds) {
         return seconds == 0 ? Component.translatable(KEY + "block_updates.off") : Component.translatable(KEY + "block_updates.value", seconds);
+    }
+
+    private static Component farRadiusLabel(Integer blocks) {
+        return blocks == 0 ? Component.translatable(KEY + "far_radius.off") : Component.translatable(KEY + "radius.value", blocks);
     }
 
     private static Component refreshLabel(Integer minutes) {

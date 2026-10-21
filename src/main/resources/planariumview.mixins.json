@@ -29,6 +29,7 @@
     "EntityLightMixin",
     "LevelWeatherMixin",
     "LightTextureAccessor",
+    "GameRendererFarMixin",
     "LightTextureMixin",
     "StructureRenderDataMixin",
     "PlanariumRendererMixin",

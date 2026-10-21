@@ -191,6 +191,7 @@ public final class ServerView {
             return;
         }
         SubLevelServer.dirty(serverLevel, pos);
+        FarRingServer.blockChanged(serverLevel.dimension(), pos);
         boolean lightSourceChanged = previous.getLightEmission(level, pos) != next.getLightEmission(level, pos)
                 && (previous.getLightEmission(level, pos) > 0 || next.getLightEmission(level, pos) > 0);
         for (Track track : TRACKS.values()) {
@@ -677,6 +678,11 @@ public final class ServerView {
             } catch (Exception e) {
                 logOnce("sous-niveaux", e);
             }
+        }
+        try {
+            updateFarRings(server);
+        } catch (Exception e) {
+            logOnce("anneau lointain", e);
         }
         if (server.getTickCount() % 20 != 0) {
             return;
@@ -1408,6 +1414,17 @@ public final class ServerView {
         }
     }
 
+    /** Anneau lointain (voir FarRingServer) : avance chaque tick, avec un petit budget. */
+    private static void updateFarRings(MinecraftServer server) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            Track track = TRACKS.get(player.getUUID());
+            if (track == null || DISABLED.contains(player.getUUID()) || !track.pocket.equals(player.serverLevel().dimension())) continue;
+            ServerLevel source = server.getLevel(track.source.dimension());
+            if (source == null) continue;
+            FarRingServer.tick(player, source, track.pocket, track.capturedCenter, track.lastRadius, track.hasFull);
+        }
+    }
+
     private static void updateSubLevels(MinecraftServer server) {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             Track track = TRACKS.get(player.getUUID());
@@ -1416,8 +1433,12 @@ public final class ServerView {
             if (source == null || !updateAnchor(track, source)) continue;
             int radius = Config.RADIUS.get();
             keepLoaded(server, player.getUUID(), track, radius);
-            SubLevelServer.send(player, track.pocket.location(), source,
-                    new net.minecraft.world.phys.AABB(track.center).inflate(radius + 1), track.anchor, false,
+            // Avec l'anneau lointain, les structures qui volent plus loin restent visibles (blocs et mouvement).
+            int far = Config.FAR_RADIUS.get();
+            net.minecraft.world.phys.AABB area = far > radius
+                    ? new net.minecraft.world.phys.AABB(track.center).inflate(far + 1, Math.max(radius, far / 2) + 1, far + 1)
+                    : new net.minecraft.world.phys.AABB(track.center).inflate(radius + 1);
+            SubLevelServer.send(player, track.pocket.location(), source, area, track.anchor, false,
                     track.source.pos(), prefsOf(player.getUUID()).world());
         }
         SubLevelServer.updateMiniatures(server);
@@ -1543,6 +1564,7 @@ public final class ServerView {
     private static void removeTrack(MinecraftServer server, UUID id) {
         SubLevelServer.forgetOutside(id);
         LunarServer.forget(id);
+        FarRingServer.forget(server, id);
         Track track = TRACKS.remove(id);
         if (track == null || track.ticketChunks < 0) {
             return;

@@ -12,6 +12,7 @@ public final class Config {
     // --- Commun / serveur ---
     public static final ModConfigSpec COMMON_SPEC;
     public static final ModConfigSpec.IntValue RADIUS;
+    public static final ModConfigSpec.IntValue FAR_RADIUS;
     public static final ModConfigSpec.IntValue REFRESH_SECONDS;
     public static final ModConfigSpec.IntValue BLOCK_UPDATE_SECONDS;
 
@@ -41,11 +42,17 @@ public final class Config {
         common.comment("Server side: what is captured around the Planarium and how often.",
                 "On a multiplayer server, the server's file is the one that counts.");
         RADIUS = common
-                .comment("Radius (in blocks) captured around the Planarium. Each block appears 32 times bigger.",
-                        "On each player's screen, never larger than their render distance (in chunks), except with NeoVoxy (JohnSnow):",
-                        "    https://github.com/NHblock-Johnsnow/neo-voxy-multiversion",
-                        "Above ~24, the scenery often goes past the render distance and the capture costs more on the server.")
+                .comment("Detail radius (in blocks) around the Planarium: there, the scenery stays alive (block changes, animated",
+                        "blocks, particles, sounds, mobs, colored light). Each block appears 32 times bigger.",
+                        "Past it, farRadius continues the scenery as a frozen snapshot. A larger value costs the server more on each update.")
                 .defineInRange("radius", 12, 1, 32);
+        FAR_RADIUS = common
+                .comment("View distance (in blocks): past the detail radius, the scenery continues up to this distance as a frozen",
+                        "snapshot (blocks only: no animations, particles, sounds or mobs there; Sable structures still show and move).",
+                        "Captured when entering the jar, again with the backup refresh, and when a moving Planarium (Sable) has stopped",
+                        "for a few seconds. Hidden while the Planarium moves. Its height is half this value above and below the Planarium.",
+                        "0 = OFF (or any value not larger than the detail radius).")
+                .defineInRange("farRadius", 64, 0, 96);
         BLOCK_UPDATE_SECONDS = common
                 .comment("Block updates: a block change in the scenery shows up with at most this much delay (in seconds).",
                         "Changes that don't affect light (redstone, doors...) only send the changed blocks; others take a new capture,",
@@ -74,10 +81,11 @@ public final class Config {
                 .defineEnum("lighting", Lighting.FULL);
         FOG = client
                 .comment("Fog on the giant scenery.",
-                        "OFF = no fog: every block within the view radius stays visible.",
-                        "VIEW_RADIUS = the scenery fades into fog at its own edge (the end of the view radius), so it has no hard border.",
-                        "RENDER_DISTANCE = the scenery fades into fog at your render distance, like the rest of the world.")
-                .defineEnum("fog", Fog.VIEW_RADIUS);
+                        "OFF = no fog: the whole scenery stays visible.",
+                        "SCENERY_EDGE = the scenery fades into fog at its own edge (the view distance), so it has no hard border.",
+                        "RENDER_DISTANCE = the scenery fades into fog at your render distance, like the rest of the world",
+                        "    (the frozen snapshot past the detail radius is then not drawn).")
+                .defineEnum("fog", Fog.SCENERY_EDGE);
         CAVE_FOG = client
                 .comment("Fog color around the scenery when the Planarium is in a closed cave (the sky never shows there).",
                         "VANILLA = the normal fog color, like vanilla caves.",
@@ -177,7 +185,7 @@ public final class Config {
 
     /** Les trois niveaux d'eclairage. */
     public enum Fog {
-        OFF, VIEW_RADIUS, RENDER_DISTANCE
+        OFF, SCENERY_EDGE, RENDER_DISTANCE
     }
 
     /** Couleur du brouillard dans les cavernes. */

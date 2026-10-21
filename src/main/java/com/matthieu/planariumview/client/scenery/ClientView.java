@@ -458,32 +458,75 @@ public final class ClientView {
 
     /** Reconstruit le decor geant et les miniatures avec les options actuelles (appele par le menu de config). */
     /**
-     * Rayon de vue affiche : celui du serveur, mais jamais plus grand que la distance d'affichage du joueur (en chunks),
-     * sauf avec Voxy (qui fait dessiner le jeu bien plus loin). Ensuite :
-     * - brouillard "Distance d'affichage" : seulement ce que le brouillard laisse voir. Il finit a la distance d'affichage
-     *   en blocs normaux, et un bloc du decor en fait 32 : environ la moitie de la distance d'affichage, plus un bloc de marge ;
-     * - sinon : le decor, son mur de brouillard et le dome des cavernes doivent rester dans la distance de dessin du jeu
-     *   (avec une marge pour les coins et le haut), sinon ils seraient coupes net.
+     * Rayon detaille affiche : celui du serveur. Le jeu dessine toujours assez loin pour tout le decor (voir
+     * sceneryDepthFar), donc la distance d'affichage ne le limite plus, sauf avec le brouillard "Distance d'affichage" :
+     * seulement ce que ce brouillard laisse voir. Il finit a la distance d'affichage en blocs normaux, et un bloc du
+     * decor en fait 32 : environ la moitie de la distance d'affichage, plus un bloc de marge.
      */
     public static int viewRadius() {
-        int renderDistance = Minecraft.getInstance().options.getEffectiveRenderDistance();
-        int radius = voxy() ? currentRadius : Math.min(currentRadius, renderDistance);
+        int radius = currentRadius;
         if (Config.FOG.get() == Config.Fog.RENDER_DISTANCE) {
+            int renderDistance = Minecraft.getInstance().options.getEffectiveRenderDistance();
             int visible = (int) Math.ceil(renderDistance * 16.0 / GIANT) + 1;
             radius = Math.min(radius, visible);
-        } else {
-            radius = Math.min(radius, drawableRadius());
         }
         return Math.max(1, radius);
     }
 
-    /** Plus grand rayon de vue dont le bord (avec le mur de brouillard ou le dome) reste dans la distance de dessin. */
-    private static int drawableRadius() {
-        float far = drawDistance();
-        if (far <= 0.0F) {
-            return Integer.MAX_VALUE;
+    /** Bord vise du decor : celui de l'anneau lointain s'il est la, sinon celui du rayon detaille. */
+    private static int targetEdge() {
+        return FarRing.visible() ? FarRing.radius() : viewRadius();
+    }
+
+    private static float shownEdge = -1.0F;
+    private static long shownEdgeNanos;
+
+    /**
+     * Bord du decor dessine (brouillard, mur, dome), en blocs du monde. Quand l'anneau lointain arrive (ou part), le
+     * bord glisse en environ une seconde au lieu de sauter d'un coup.
+     */
+    static float edgeRadius() {
+        int target = targetEdge();
+        long now = System.nanoTime();
+        if (shownEdge < 0.0F) {
+            shownEdge = target;
+        } else if (shownEdge != target) {
+            float seconds = Math.min(0.25F, (now - shownEdgeNanos) / 1.0e9F);
+            shownEdge += (target - shownEdge) * (1.0F - (float) Math.exp(-seconds / 0.35F));
+            if (Math.abs(target - shownEdge) < 0.05F) {
+                shownEdge = target;
+            }
         }
-        return Math.max(1, (int) Math.floor((far * 0.6F - GIANT / 2.0F - 3.0F) / GIANT));
+        shownEdgeNanos = now;
+        return shownEdge;
+    }
+
+    /**
+     * Distance de dessin necessaire dans le bocal pour tout le decor (et le mur de brouillard ou le dome a son bord),
+     * 0 sans decor. Voir GameRendererFarMixin.
+     */
+    public static float sceneryDepthFar() {
+        Minecraft mc = Minecraft.getInstance();
+        if (renderData == null || currentDim == null || mc.level == null || !Config.enabled()
+                || !currentDim.equals(mc.level.dimension().location())) {
+            return 0.0F;
+        }
+        int edge = Math.max(targetEdge(), (int) Math.ceil(Math.max(0.0F, shownEdge)));
+        return (edge * GIANT + GIANT + 4.0F) / 0.6F;
+    }
+
+    /** Dimension de poche du decor actuel (null sans decor). */
+    static ResourceLocation currentDimension() {
+        return currentDim;
+    }
+
+    /** Position du Planarium dans le monde pour le decor proche dessine (null sans decor). */
+    static BlockPos nearCenter() {
+        return lastInfo == null ? null : lastInfo.origin().offset(currentRadius, currentRadius, currentRadius);
+    }
+
+    static int nearRadius() {
+        return currentRadius;
     }
 
     private static Boolean voxy;
@@ -917,6 +960,8 @@ public final class ClientView {
 
     private static void dispose() {
         SubLevelView.clearOutside();
+        FarRing.clear();
+        shownEdge = -1.0F;
         disposeRender();
         lastTemplate = null;
         lastTemplateTag = null;
@@ -1912,6 +1957,7 @@ public final class ClientView {
         }
 
         Vec3 camera = event.getCamera().getPosition();
+        FarRing.buildPending(camera);
         PoseStack poseStack = new PoseStack();
         poseStack.mulPose(event.getModelViewMatrix());
         poseStack.translate(-camera.x, -camera.y, -camera.z);
@@ -1943,6 +1989,8 @@ public final class ClientView {
                         ? translucentSections : sectionMeshes.entrySet();
                 renderType.setupRenderState();
                 try {
+                    // L'anneau lointain d'abord : derriere le decor proche (ordre des couches translucides).
+                    FarRing.drawLayer(renderType, poseStack.last().pose(), projectionMatrix);
                     for (Map.Entry<SectionPos, SectionMesh> entry : sections) {
                         VertexBuffer vertexBuffer = entry.getValue().buffers.get(renderType);
                         if (vertexBuffer == null || vertexBuffer.getFormat() == null) continue;
@@ -1984,10 +2032,10 @@ public final class ClientView {
     private static float fogWallEdge = -1;
 
     private static void drawFogWall(PoseStack poseStack, Matrix4f projection, Vec3 camera) {
-        if (Config.FOG.get() != Config.Fog.VIEW_RADIUS) {
+        if (Config.FOG.get() != Config.Fog.SCENERY_EDGE) {
             return;
         }
-        float edge = viewRadius() * GIANT + GIANT / 2.0F + 2.0F;
+        float edge = edgeRadius() * GIANT + GIANT / 2.0F + 2.0F;
         if (fogWall == null || edge != fogWallEdge) {
             buildFogWall(edge);
         }
@@ -2025,7 +2073,7 @@ public final class ClientView {
             return;
         }
         // Dans la distance d'affichage, sinon le dessus serait coupe et laisserait voir le ciel.
-        float edge = Math.min(viewRadius() * GIANT + GIANT / 2.0F + 3.0F, drawDistance() * 0.6F);
+        float edge = Math.min(edgeRadius() * GIANT + GIANT / 2.0F + 3.0F, drawDistance() * 0.6F);
         if (caveDome == null || edge != caveDomeEdge) {
             caveDome = buildDome(caveDome, edge);
             caveDomeEdge = edge;
@@ -2183,9 +2231,9 @@ public final class ClientView {
             RenderSystem.setShaderFogEnd(Float.MAX_VALUE);
             return;
         }
-        if (mode == Config.Fog.VIEW_RADIUS) {
+        if (mode == Config.Fog.SCENERY_EDGE) {
             // Bord du decor geant : le rayon de vue (en blocs du monde) fois 32, plus la moitie de la case du Planarium.
-            float edge = viewRadius() * GIANT + GIANT / 2.0F;
+            float edge = edgeRadius() * GIANT + GIANT / 2.0F;
             RenderSystem.setShaderFogStart(edge - net.minecraft.util.Mth.clamp(edge / 4.0F, 16.0F, 160.0F));
             RenderSystem.setShaderFogEnd(edge);
             RenderSystem.setShaderFogShape(com.mojang.blaze3d.shaders.FogShape.CYLINDER);
