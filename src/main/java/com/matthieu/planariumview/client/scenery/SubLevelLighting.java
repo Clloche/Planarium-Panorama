@@ -17,6 +17,20 @@ import java.util.Map;
 
 /** Color emitters and occluders across all captured sections of the same storage plot. */
 final class SubLevelLighting extends SourceView {
+    static boolean neighbors(int[] origin, int[] other) {
+        return origin.length == 3 && other.length == 3
+                && Math.abs((long) origin[0] - other[0]) <= 16
+                && Math.abs((long) origin[1] - other[1]) <= 16
+                && Math.abs((long) origin[2] - other[2]) <= 16;
+    }
+
+    /** Lighting and border changes do not reset the native machines inside a section. */
+    static boolean sameContents(CompoundTag before, CompoundTag after) {
+        return before != null && java.util.Objects.equals(before.get("blocks"), after.get("blocks"))
+                && java.util.Objects.equals(before.get("palette"), after.get("palette"))
+                && java.util.Objects.equals(before.get("palettes"), after.get("palettes"));
+    }
+
     static final class Section {
         final BlockPos origin;
         final Map<Long, BlockState> states = new HashMap<>();

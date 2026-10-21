@@ -26,6 +26,7 @@ public final class SubLevelChecks {
         coloredLightFollowsRotatedPlots();
         subLevelSwitchKeepsProtocolCompatible();
         particlesKeepTheirMovingFrame();
+        com.matthieu.planariumview.client.scenery.SubLevelLightingChecks.run();
         check(!SubLevelCompat.available(), "Sable must remain optional on the test classpath");
         System.out.println("Sub-level checks passed: distant plots, rotation, bounds, malformed matrices, compressed protocol, projected colors, viewer preference, particle frames, optional dependency");
     }

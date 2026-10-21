@@ -931,6 +931,7 @@ public final class ClientView {
     }
 
     private static void disposeRender() {
+        SceneryParticles.cancelHues();
         PuddlesCompat.clear();
         GiantEntities.clear();
         sceneryEntityLight.clear();
@@ -982,6 +983,7 @@ public final class ClientView {
         }
         Minecraft mc = Minecraft.getInstance();
         if (sky) {
+            SubLevelView.beginFrame();
             SkySync.resetWeatherScope();
         }
         if (sky && mc.level != null) {
@@ -1055,6 +1057,7 @@ public final class ClientView {
                 }
             }
             buildPendingSections(event.getCamera().getPosition());
+            SceneryParticles.prepareHues();
             if (renderData != null) {
                 GiantSprites.markActive();
                 draw(renderData, event);
@@ -1497,6 +1500,7 @@ public final class ClientView {
         blockEntityLight.clear();
         sceneryEntityLight.clear();
         for (BlockPos pos : data.fakeRenderingWorld.blockEntityMap.keySet()) {
+            if (!visibleSceneryPos(pos, currentRadius, viewRadius())) continue;
             try {
                 int light = LevelRenderer.getLightColor(data.fakeRenderingWorld, pos);
                 if (com.matthieu.planariumview.compat.ColorCompat.building() && (light & 0xF0) != 0
