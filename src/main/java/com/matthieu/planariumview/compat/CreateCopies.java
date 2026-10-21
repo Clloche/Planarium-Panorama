@@ -86,23 +86,25 @@ public final class CreateCopies {
         Context previous = context;
         context = new Context(world, source, null, true);
         try {
-            for (BlockEntity entity : world.blockEntityMap.values()) {
-                if (!supported(entity) || entity.isRemoved()) continue;
-                // Ponder powers whistles unconditionally in virtual mode; a snapshot must keep its redstone state.
-                if (entity.getClass().getName().endsWith(".WhistleBlockEntity")
-                        && !entity.getBlockState().getOptionalValue(
-                                net.minecraft.world.level.block.state.properties.BlockStateProperties.POWERED).orElse(false)) continue;
-                Hooks hooks = HOOKS.get(entity.getClass());
-                if (hooks.failed) continue;
-                attach(entity, world, world);
-                try {
-                    hooks.tick.invoke(entity);
-                    if (source != null) MachineSounds.burner(entity);
-                } catch (ReflectiveOperationException | RuntimeException e) {
-                    hooks.failed = true;
-                    LOGGER.warn("[Planarium Panorama] Create preview animation skipped for {}", entity.getClass().getName(), e);
+            com.matthieu.planariumview.client.scenery.CopyParticles.capture(world, () -> {
+                for (BlockEntity entity : world.blockEntityMap.values()) {
+                    if (!supported(entity) || entity.isRemoved()) continue;
+                    // Ponder powers whistles unconditionally in virtual mode; a snapshot must keep its redstone state.
+                    if (entity.getClass().getName().endsWith(".WhistleBlockEntity")
+                            && !entity.getBlockState().getOptionalValue(
+                                    net.minecraft.world.level.block.state.properties.BlockStateProperties.POWERED).orElse(false)) continue;
+                    Hooks hooks = HOOKS.get(entity.getClass());
+                    if (hooks.failed) continue;
+                    attach(entity, world, world);
+                    try {
+                        hooks.tick.invoke(entity);
+                        if (source != null) MachineSounds.burner(entity);
+                    } catch (ReflectiveOperationException | RuntimeException e) {
+                        hooks.failed = true;
+                        LOGGER.warn("[Planarium Panorama] Create preview animation skipped for {}", entity.getClass().getName(), e);
+                    }
                 }
-            }
+            });
         } finally { context = previous; }
     }
 
@@ -129,6 +131,15 @@ public final class CreateCopies {
         }
         attach(entity, world, world);
         VISIBLE.computeIfAbsent(world, ignored -> new Seen()).rendered = ticks;
+        if (world instanceof com.matthieu.planariumview.client.scenery.LitRenderingWorld lit) {
+            Vec3 eye = net.minecraft.client.Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+            var at = entity.getBlockPos();
+            var frame = new org.joml.Matrix4d().translation(eye.x, eye.y, eye.z)
+                    .mul(new org.joml.Matrix4d(pose.last().pose())).translate(-at.getX(), -at.getY(), -at.getZ());
+            double scale = com.matthieu.planariumview.client.scenery.LitRenderingWorld.isGiant(lit)
+                    ? com.matthieu.planariumview.client.scenery.ClientView.GIANT : com.matthieu.planariumview.client.scenery.ClientView.ARS_SCALE;
+            com.matthieu.planariumview.client.scenery.CopyParticles.seen(lit, frame, scale, null);
+        }
         Vector3f local = new Matrix4f(pose.last().pose()).invert().transformPosition(new Vector3f());
         Vec3 camera = new Vec3(local.x + entity.getBlockPos().getX(), local.y + entity.getBlockPos().getY(),
                 local.z + entity.getBlockPos().getZ());

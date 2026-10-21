@@ -41,6 +41,27 @@ public final class SceneryParticles {
     private SceneryParticles() {
     }
 
+    private static FramedParticle.Frame attaching;
+
+    static void framed(FramedParticle.Frame frame, Runnable action) {
+        FramedParticle.Frame previous = attaching;
+        attaching = frame;
+        try { action.run(); }
+        finally { attaching = previous; }
+    }
+
+    static void tickFramed(Particle particle, FramedParticle.Frame frame) {
+        framed(frame, () -> {
+            beginTick(particle);
+            try { particle.tick(); }
+            finally { endTick(particle); }
+        });
+    }
+
+    private static void add(Particle particle) {
+        Minecraft.getInstance().particleEngine.add(attaching == null ? particle : new FramedParticle(particle, attaching));
+    }
+
     /**
      * Ou un faux monde est dessine : un point du gabarit (x, y, z) apparait en (x * scale + ox, y * scale + oy,
      * z * scale + oz) dans le vrai monde.
@@ -286,6 +307,7 @@ public final class SceneryParticles {
     private static Particle spawnAt(Space space, ParticleOptions options, double x, double y, double z, double vx, double vy,
                                     double vz, int light) {
         Minecraft mc = Minecraft.getInstance();
+        if (attaching != null && LIGHT.size() >= 2048) return null;
         Particle particle;
         if (options instanceof Made made) {
             try {
@@ -298,7 +320,7 @@ public final class SceneryParticles {
             }
             adding = true;
             try {
-                mc.particleEngine.add(particle);
+                add(particle);
             } finally {
                 adding = false;
             }
@@ -312,7 +334,7 @@ public final class SceneryParticles {
             }
             adding = true;
             try {
-                mc.particleEngine.add(flame);
+                add(flame);
             } finally {
                 adding = false;
             }
@@ -324,7 +346,7 @@ public final class SceneryParticles {
         creating = added;
         // Miniature : rien n'entre dans le moteur pendant la creation. Une particule enlevee apres y etre entree restait
         // dessinee jusqu'au tick suivant (les flammes geantes clignotaient) : on n'ajoute que celle qu'on garde.
-        holding = mini;
+        holding = mini || attaching != null;
         try {
             particle = mc.particleEngine.createParticle(options, x, y, z, vx, vy, vz);
         } catch (Exception e) {
@@ -354,7 +376,7 @@ public final class SceneryParticles {
             }
             adding = true;
             try {
-                mc.particleEngine.add(flame2);
+                add(flame2);
             } finally {
                 adding = false;
             }
@@ -373,11 +395,11 @@ public final class SceneryParticles {
         if (particle == null || !adopt(particle, space, light)) {
             return null;
         }
-        if (mini && added.contains(particle)) {
+        if ((mini || attaching != null) && added.contains(particle)) {
             // Retenue pendant la creation : on l'ajoute maintenant, a la bonne taille.
             adding = true;
             try {
-                mc.particleEngine.add(particle);
+                add(particle);
             } finally {
                 adding = false;
             }
@@ -520,6 +542,14 @@ public final class SceneryParticles {
             return true;
         }
         Space space = SPACE.get(parent);
+        if (attaching != null && space != null) {
+            if (adopt(particle, space, LIGHT.getOrDefault(parent, 0x00F000F0))) {
+                adding = true;
+                try { add(particle); }
+                finally { adding = false; }
+            }
+            return false;
+        }
         if (space != null && space.bounds() != null) {
             noteForeign(particle);
             return false;
@@ -617,6 +647,7 @@ public final class SceneryParticles {
         // Miniature : particules de Minecraft et integrations dont la mise a l'echelle est geree ici. Les autres
         // se dessinent souvent a leur facon et restent geantes meme rapetissees.
         if (!particle.getClass().getName().startsWith("net.minecraft.")
+                && !particle.getClass().getName().endsWith(".HotAirEmberParticle")
                 && !com.matthieu.planariumview.compat.FallingLeavesCompat.isLeaf(particle)
                 && !(particle instanceof com.matthieu.planariumview.compat.SceneryFirefly)) {
             noteForeign(particle);
@@ -994,11 +1025,13 @@ public final class SceneryParticles {
         NO_COLLISION.clear();
         HUE.clear();
         HUES.clear();
+        CopyParticles.clear();
         EMITTERS.clear();
         ticking = null;
         savedWind = null;
         creating = null;
         holding = false;
         adding = false;
+        attaching = null;
     }
 }

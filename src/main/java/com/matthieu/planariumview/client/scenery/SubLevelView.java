@@ -79,22 +79,49 @@ public final class SubLevelView {
     private static final class Scene {
         final Pose anchor = new Pose();
         final Map<String, Part> parts = new HashMap<>();
+        long revision, lightingRevision = -1;
+        Map<Long, SubLevelLighting.Section> lighting = Map.of();
+
+        Map<Long, SubLevelLighting.Section> lighting() {
+            if (lightingRevision == revision) return lighting;
+            Map<Long, SubLevelLighting.Section> next = new HashMap<>();
+            for (Part part : parts.values()) {
+                CompoundTag tag = part.pending != null ? part.pending : part.source;
+                if (tag == null) continue;
+                if (part.colorTag != tag) {
+                    part.colorData = new SubLevelLighting.Section(tag);
+                    part.colorTag = tag;
+                }
+                next.put(net.minecraft.core.SectionPos.of(part.colorData.origin).asLong(), part.colorData);
+            }
+            lighting = Map.copyOf(next);
+            lightingRevision = revision;
+            return lighting;
+        }
     }
 
     private static final class Part implements AutoCloseable {
+        final Scene scene;
         final Pose pose = new Pose();
         CompoundTag pending, source;
+        CompoundTag colorTag;
+        SubLevelLighting.Section colorData;
+        long preparedRevision = -1;
         Mesh mesh;
         boolean realLight, color;
         final LinkedHashMap<MiniKey, MiniMesh> minis = new LinkedHashMap<>(4, 0.75F, true);
 
+        Part(Scene scene) { this.scene = scene; }
+
         void prepare() {
-            if (pending != null || source != null && (realLight != Config.realLighting() || color != Config.coloredLight())) {
+            if (pending != null || source != null && (preparedRevision != scene.revision
+                    || realLight != Config.realLighting() || color != Config.coloredLight())) {
                 close();
                 if (pending != null) source = pending;
                 pending = null;
                 realLight = Config.realLighting();
                 color = Config.coloredLight();
+                preparedRevision = scene.revision;
             }
         }
 
@@ -102,7 +129,7 @@ public final class SubLevelView {
             prepare();
             if (mesh == null && source != null) {
                 try {
-                    mesh = new Mesh(source, null, null, null);
+                    mesh = new Mesh(source, null, null, null, scene.lighting());
                 } catch (RuntimeException e) {
                     LOGGER.warn("[Planarium Panorama] Sub-level section could not be rendered", e);
                 }
@@ -128,7 +155,7 @@ public final class SubLevelView {
             try {
                 // Give this jar's ambient light to the complete pocket, then sample it in the moving section's frame.
                 MiniOutsideLight.apply(pocket, tile.getLevel(), tile.getBlockPos());
-                Mesh replacement = new Mesh(source, tile, pocket, lightPose);
+                Mesh replacement = new Mesh(source, tile, pocket, lightPose, scene.lighting());
                 if (cached != null) cached.mesh.close();
                 minis.put(key, new MiniMesh(replacement, pocket, environment, lightPose, now));
                 if (minis.size() > 4) minis.remove(minis.firstEntry().getKey()).mesh.close();
@@ -195,9 +222,12 @@ public final class SubLevelView {
         if (tag.contains("geometry", Tag.TAG_COMPOUND)) {
             String id = tag.getString("id");
             if (scene.parts.size() < 256 || scene.parts.containsKey(id)) {
-                Part part = scene.parts.computeIfAbsent(id, ignored -> new Part());
+                Part part = scene.parts.computeIfAbsent(id, ignored -> new Part(scene));
                 CompoundTag geometry = tag.getCompound("geometry");
-                if (!geometry.equals(part.source)) part.pending = geometry;
+                if (!geometry.equals(part.source) && !geometry.equals(part.pending)) {
+                    part.pending = geometry;
+                    scene.revision++;
+                }
             }
         }
         if (tag.contains("frames", Tag.TAG_LIST)) {
@@ -209,11 +239,12 @@ public final class SubLevelView {
                 CompoundTag frame = frames.getCompound(i);
                 String id = frame.getString("id");
                 visible.add(id);
-                scene.parts.computeIfAbsent(id, ignored -> new Part()).pose.receive(SubLevelTransforms.read(frame, "pose"));
+                scene.parts.computeIfAbsent(id, ignored -> new Part(scene)).pose.receive(SubLevelTransforms.read(frame, "pose"));
             }
             scene.parts.entrySet().removeIf(entry -> {
                 if (visible.contains(entry.getKey())) return false;
                 entry.getValue().close();
+                scene.revision++;
                 return true;
             });
         }
@@ -317,10 +348,15 @@ public final class SubLevelView {
 
     private static final class Mesh implements AutoCloseable {
         final StructureRenderData data;
+        final Map<BlockPos, Integer> entityLight = new HashMap<>();
+        ColorCompat.Scope colors;
+        final double particleScale;
         final Map<RenderType, VertexBuffer> buffers = new HashMap<>();
         final Map<RenderType, MeshData.SortState> sorting = new HashMap<>();
 
-        Mesh(CompoundTag tag, PlanariumTile tile, StructureRenderData pocket, Matrix4d lightPose) {
+        Mesh(CompoundTag tag, PlanariumTile tile, StructureRenderData pocket, Matrix4d lightPose,
+             Map<Long, SubLevelLighting.Section> surrounding) {
+            particleScale = tile == null ? ClientView.GIANT : ClientView.ARS_SCALE;
             var level = Minecraft.getInstance().level;
             if (level == null) throw new IllegalStateException("No client world");
             StructureTemplate template = new StructureTemplate();
@@ -337,7 +373,9 @@ public final class SubLevelView {
             neighbors.removeIf(state -> state.pos.getX() >= 0 && state.pos.getX() < 16
                     && state.pos.getY() >= 0 && state.pos.getY() < 16 && state.pos.getZ() >= 0 && state.pos.getZ() < 16);
             neighbors.addAll(data.statePosCache);
-            LitRenderingWorld world = LitRenderingWorld.giant(level, neighbors);
+            // Neighbor states provide shapes and light occlusion, without creating extra animated block entities.
+            LitRenderingWorld world = LitRenderingWorld.giant(level, data.statePosCache);
+            for (CulledStatePos state : neighbors) world.positions.put(state.pos, state.state);
             if (Config.realLighting()) {
                 byte[] light = tag.getByteArray("light");
                 if (tile != null && pocket != null && pocket.fakeRenderingWorld instanceof LitRenderingWorld fullPocket) {
@@ -354,7 +392,17 @@ public final class SubLevelView {
             if (tile != null && Config.biomeColors()) world.setTintBiome(level.getBiome(tile.getBlockPos()));
             data.fakeRenderingWorld = world;
             try {
-                ColorCompat.begin(world);
+                int[] origin = tag.getIntArray("origin");
+                ColorCompat.begin(origin.length == 3 ? new SubLevelLighting(world,
+                        new BlockPos(origin[0], origin[1], origin[2]), surrounding) : world);
+                colors = ColorCompat.capture();
+                for (BlockEntity entity : world.blockEntityMap.values()) {
+                    BlockPos pos = entity.getBlockPos();
+                    int packed = LevelRenderer.getLightColor(world, pos);
+                    if ((packed & ~0x00F000F0) == 0 && (packed & 0xF0) != 0) packed |= FaceHueConsumer.hueAround(world, pos);
+                    entityLight.put(pos, packed);
+                }
+                SceneryParticles.readHues(world, data.statePosCache, false, 0, 0);
                 tessellate();
                 for (var entry : data.bufferBuilders.entrySet()) {
                     MeshData mesh = entry.getValue().build();
@@ -459,29 +507,38 @@ public final class SubLevelView {
 
         @SuppressWarnings({"rawtypes", "unchecked"})
         void special(PoseStack pose, MultiBufferSource buffers, float partialTick) {
-            var dispatcher = Minecraft.getInstance().getBlockEntityRenderDispatcher();
-            for (BlockEntity entity : data.fakeRenderingWorld.blockEntityMap.values()) {
-                BlockPos at = entity.getBlockPos();
-                if (at.getX() < 0 || at.getX() > 15 || at.getY() < 0 || at.getY() > 15 || at.getZ() < 0 || at.getZ() > 15) continue;
-                if (entity instanceof PlanariumTile tile) tile.key = null;
-                BlockEntityRenderer renderer = dispatcher.getRenderer(entity);
-                if (renderer == null || SwingingLanternsCompat.skip(renderer)) continue;
-                pose.pushPose();
-                try {
-                    pose.translate(at.getX(), at.getY(), at.getZ());
-                    int light = LevelRenderer.getLightColor(data.fakeRenderingWorld, at);
-                    com.matthieu.planariumview.compat.CreateCopies.render(renderer, entity, data.fakeRenderingWorld,
-                            partialTick, pose, HueKeepingBuffers.of(buffers, light), light, OverlayTexture.NO_OVERLAY);
-                } catch (RuntimeException e) {
-                    LOGGER.debug("[Planarium Panorama] Sub-level block entity skipped", e);
-                } finally {
-                    pose.popPose();
-                }
+            if (data.fakeRenderingWorld instanceof LitRenderingWorld lit) {
+                Vec3 camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+                CopyParticles.seen(lit, new Matrix4d().translation(camera.x, camera.y, camera.z)
+                        .mul(new Matrix4d(pose.last().pose())), particleScale, data.statePosCache);
             }
+            ColorCompat.use(colors);
+            try {
+                var dispatcher = Minecraft.getInstance().getBlockEntityRenderDispatcher();
+                for (BlockEntity entity : data.fakeRenderingWorld.blockEntityMap.values()) {
+                    BlockPos at = entity.getBlockPos();
+                    if (at.getX() < 0 || at.getX() > 15 || at.getY() < 0 || at.getY() > 15 || at.getZ() < 0 || at.getZ() > 15) continue;
+                    if (entity instanceof PlanariumTile tile) tile.key = null;
+                    BlockEntityRenderer renderer = dispatcher.getRenderer(entity);
+                    if (renderer == null || SwingingLanternsCompat.skip(renderer)) continue;
+                    pose.pushPose();
+                    try {
+                        pose.translate(at.getX(), at.getY(), at.getZ());
+                        int light = entityLight.getOrDefault(at, 0x00F000F0);
+                        com.matthieu.planariumview.compat.CreateCopies.render(renderer, entity, data.fakeRenderingWorld,
+                                partialTick, pose, HueKeepingBuffers.of(buffers, light), light, OverlayTexture.NO_OVERLAY);
+                    } catch (RuntimeException e) {
+                        LOGGER.debug("[Planarium Panorama] Sub-level block entity skipped", e);
+                    } finally {
+                        pose.popPose();
+                    }
+                }
+            } finally { ColorCompat.end(); }
         }
 
         @Override
         public void close() {
+            CopyParticles.forget(data.fakeRenderingWorld);
             buffers.values().forEach(VertexBuffer::close);
             data.vertexBuffers.values().forEach(VertexBuffer::close);
             data.builders.values().forEach(ByteBufferBuilder::close);

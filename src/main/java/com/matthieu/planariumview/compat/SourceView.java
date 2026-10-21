@@ -21,7 +21,7 @@ import org.jetbrains.annotations.Nullable;
  * Avec un decalage ({@code dx}, {@code dz}), Contraption Lights voit le faux monde loin du vrai (voir ColorCompat) :
  * ses caches de couleur, ranges par position seulement, ne melangent plus les deux.
  */
-public final class SourceView implements BlockAndTintGetter {
+public class SourceView implements BlockAndTintGetter {
     private final BlockAndTintGetter world;
     private final int dx;
     private final int dz;

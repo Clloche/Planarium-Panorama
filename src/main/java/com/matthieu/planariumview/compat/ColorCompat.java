@@ -88,6 +88,21 @@ public final class ColorCompat {
         return COMPATIBLE;
     }
 
+    /** Reuse a preview's isolated cache coordinates when its animated parts are rendered. */
+    public static final class Scope {
+        private final Context context;
+        private Scope(Context context) { this.context = context; }
+    }
+
+    public static Scope capture() { return new Scope(CONTEXT.get()); }
+
+    public static void use(Scope scope) {
+        Context previous = CONTEXT.get();
+        Context saved = scope == null ? null : scope.context;
+        CONTEXT.set(saved == null || !Config.coloredLight() ? new Context(previous, null, 0, 0)
+                : new Context(previous, saved.view(), saved.offsetX(), saved.offsetZ()));
+    }
+
     public static void begin(BlockAndTintGetter fakeWorld) {
         Context previous = CONTEXT.get();
         if (!COMPATIBLE || fakeWorld == null || !Config.coloredLight()) {

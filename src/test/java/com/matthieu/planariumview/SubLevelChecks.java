@@ -6,6 +6,7 @@ import com.matthieu.planariumview.network.SubLevelPayload;
 import com.matthieu.planariumview.network.SubLevelTransforms;
 import com.matthieu.planariumview.network.SubLevelPrefsPayload;
 import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.client.scenery.FramedParticle;
 import io.netty.buffer.Unpooled;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.DoubleTag;
@@ -24,8 +25,25 @@ public final class SubLevelChecks {
         geometrySurvivesNetworkRoundTrip();
         coloredLightFollowsRotatedPlots();
         subLevelSwitchKeepsProtocolCompatible();
+        particlesKeepTheirMovingFrame();
         check(!SubLevelCompat.available(), "Sable must remain optional on the test classpath");
-        System.out.println("Sub-level checks passed: distant plots, rotation, bounds, malformed matrices, compressed protocol, projected colors, viewer preference, optional dependency");
+        System.out.println("Sub-level checks passed: distant plots, rotation, bounds, malformed matrices, compressed protocol, projected colors, viewer preference, particle frames, optional dependency");
+    }
+
+    private static void particlesKeepTheirMovingFrame() {
+        for (double scale : new double[]{32, 1.0 / 32}) {
+            Matrix4d pose = new Matrix4d().translation(20, 4, -9).rotateXYZ(.2, .9, .1).scale(scale);
+            var frame = new FramedParticle.Frame(() -> pose, () -> true, scale);
+            Vector3d source = new Vector3d(3.5, 7.2, 11);
+            Vector3d internal = new Vector3d(source).mul(scale).add(1024, 1024, 1024);
+            Vector3d world = pose.transformPosition(new Vector3d(source));
+            near(frame.matrix().transformPosition(new Vector3d(internal)), world);
+            Vector3d camera = new Vector3d(7, 6, 5);
+            Vector3d localCamera = frame.matrix().invert().transformPosition(new Vector3d(camera));
+            near(frame.matrix().transformDirection(new Vector3d(internal).sub(localCamera)), new Vector3d(world).sub(camera));
+            pose.translateLocal(9, 3, -2).rotateY(.7);
+            near(frame.matrix().transformPosition(new Vector3d(internal)), pose.transformPosition(new Vector3d(source)));
+        }
     }
 
     private static void storageCoordinatesKeepPrecision() {

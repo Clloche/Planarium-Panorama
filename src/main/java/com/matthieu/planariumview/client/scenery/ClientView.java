@@ -567,6 +567,7 @@ public final class ClientView {
         boolean inJar = mc.level != null && currentDim != null && mc.level.dimension().location().equals(currentDim);
         com.matthieu.planariumview.client.sound.MachineSounds.tick(inJar ? sceneryWorld() : null, currentRadius,
                 lastInfo == null ? null : lastInfo.origin());
+        CopyParticles.tick();
         if (!mc.isPaused()) {
             PuddlesCompat.tick(inJar && Config.enabled() ? sceneryWorld() : null, lastInfo);
         }
