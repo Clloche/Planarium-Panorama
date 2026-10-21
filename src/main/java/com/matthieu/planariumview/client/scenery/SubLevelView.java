@@ -459,6 +459,15 @@ public final class SubLevelView {
                 for (BlockEntity entity : world.blockEntityMap.values()) {
                     BlockPos pos = entity.getBlockPos();
                     int packed = LevelRenderer.getLightColor(world, pos);
+                    // La case d'un bloc plein (moteur, helice...) vaut souvent 0 dans le plot de Sable : ces rendus
+                    // prendraient alors une lumiere noire. Comme pour les faces des blocs, la lumiere des cases autour.
+                    int sky = (packed >> 20) & 15, block = (packed >> 4) & 15;
+                    for (net.minecraft.core.Direction side : net.minecraft.core.Direction.values()) {
+                        BlockPos next = pos.relative(side);
+                        sky = Math.max(sky, world.getBrightness(LightLayer.SKY, next));
+                        block = Math.max(block, world.getBrightness(LightLayer.BLOCK, next));
+                    }
+                    packed = (packed & ~0x00F000F0) | block << 4 | sky << 20;
                     if ((packed & ~0x00F000F0) == 0 && (packed & 0xF0) != 0) packed |= FaceHueConsumer.hueAround(world, pos);
                     entityLight.put(pos, packed);
                 }

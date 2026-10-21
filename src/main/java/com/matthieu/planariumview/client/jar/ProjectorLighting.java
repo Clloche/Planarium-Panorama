@@ -56,6 +56,8 @@ public final class ProjectorLighting {
         int stepsA;
         int stepsB;
         public int[][] light;
+        /** Rectangles a lumiere constante de la grille (voir merge) : a0, b0, a1, b1 par rectangle. */
+        int[] flat;
     }
 
     private ProjectorLighting() {
@@ -332,7 +334,8 @@ public final class ProjectorLighting {
             boolean valid = cached != null && cached.stepsA == stepsA && cached.stepsB == stepsB
                     && Math.abs(cached.x - ox) < 0.01 && Math.abs(cached.y - oy) < 0.01 && Math.abs(cached.z - oz) < 0.01;
             if (valid && (index + frame) % ROLLING != 0) {
-                emitGrid(stepsA, stepsB, cached.light);
+                if (cached.flat == null) cached.flat = merge(stepsA, stepsB, cached.light);
+                emitMerged(stepsA, stepsB, cached.light, cached.flat);
                 return;
             }
             int[][] light = new int[stepsA + 1][stepsB + 1];
@@ -353,12 +356,92 @@ public final class ProjectorLighting {
             entry.stepsA = stepsA;
             entry.stepsB = stepsB;
             entry.light = light;
+            entry.flat = merge(stepsA, stepsB, light);
             if (index < QUADS.size()) {
                 QUADS.set(index, entry);
             } else {
                 QUADS.add(entry);
             }
-            emitGrid(stepsA, stepsB, light);
+            emitMerged(stepsA, stepsB, light, entry.flat);
+        }
+
+        /**
+         * Emet la grille en regroupant les carres dont les 4 coins ont la meme lumiere en grands rectangles :
+         * une paroi uniformement eclairee devient quelques quadrilateres au lieu de 32 x 32. Seules les zones ou la
+         * lumiere varie (pres d'une lampe, d'une paroi eclairee de dehors) restent decoupees bloc par bloc.
+         * Le resultat est identique : sur un carre a lumiere constante, l'interpolation ne change rien.
+         */
+        private void emitMerged(int stepsA, int stepsB, int[][] light, int[] flat) {
+            boolean[][] covered = new boolean[stepsA][stepsB];
+            for (int i = 0; i + 3 < flat.length; i += 4) {
+                int a0 = flat[i], b0 = flat[i + 1], a1 = flat[i + 2], b1 = flat[i + 3];
+                for (int a = a0; a < a1; a++) {
+                    for (int b = b0; b < b1; b++) {
+                        covered[a][b] = true;
+                    }
+                }
+                int value = light[a0][b0];
+                float s0 = (float) a0 / stepsA, s1 = (float) a1 / stepsA;
+                float t0 = (float) b0 / stepsB, t1 = (float) b1 / stepsB;
+                emit(s0, t0, value);
+                emit(s1, t0, value);
+                emit(s1, t1, value);
+                emit(s0, t1, value);
+            }
+            for (int a = 0; a < stepsA; a++) {
+                for (int b = 0; b < stepsB; b++) {
+                    if (covered[a][b]) continue;
+                    float s0 = (float) a / stepsA;
+                    float s1 = (float) (a + 1) / stepsA;
+                    float t0 = (float) b / stepsB;
+                    float t1 = (float) (b + 1) / stepsB;
+                    emit(s0, t0, light[a][b]);
+                    emit(s1, t0, light[a + 1][b]);
+                    emit(s1, t1, light[a + 1][b + 1]);
+                    emit(s0, t1, light[a][b + 1]);
+                }
+            }
+        }
+
+        private static boolean flatCell(int[][] light, int a, int b) {
+            int v = light[a][b];
+            return light[a + 1][b] == v && light[a][b + 1] == v && light[a + 1][b + 1] == v;
+        }
+
+        /** Rectangles (en carres de la grille) dont toute la lumiere est la meme, trouves une fois par grille. */
+        private static int[] merge(int stepsA, int stepsB, int[][] light) {
+            boolean[][] used = new boolean[stepsA][stepsB];
+            int[] rects = new int[16];
+            int n = 0;
+            for (int b = 0; b < stepsB; b++) {
+                for (int a = 0; a < stepsA; a++) {
+                    if (used[a][b] || !flatCell(light, a, b)) continue;
+                    int value = light[a][b];
+                    int a1 = a;
+                    while (a1 + 1 < stepsA && !used[a1 + 1][b] && flatCell(light, a1 + 1, b) && light[a1 + 1][b] == value) {
+                        a1++;
+                    }
+                    int b1 = b;
+                    grow:
+                    while (b1 + 1 < stepsB) {
+                        for (int x = a; x <= a1; x++) {
+                            if (used[x][b1 + 1] || !flatCell(light, x, b1 + 1) || light[x][b1 + 1] != value) break grow;
+                        }
+                        b1++;
+                    }
+                    for (int x = a; x <= a1; x++) {
+                        for (int y = b; y <= b1; y++) {
+                            used[x][y] = true;
+                        }
+                    }
+                    if (n + 4 > rects.length) rects = java.util.Arrays.copyOf(rects, rects.length * 2);
+                    rects[n++] = a;
+                    rects[n++] = b;
+                    rects[n++] = a1 + 1;
+                    rects[n++] = b1 + 1;
+                }
+            }
+            return java.util.Arrays.copyOf(rects, n);
         }
 
         private void emitGrid(int stepsA, int stepsB, int[][] light) {

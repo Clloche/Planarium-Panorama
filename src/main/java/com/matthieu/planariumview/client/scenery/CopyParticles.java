@@ -106,6 +106,7 @@ public final class CopyParticles {
                     if (!emitter.states.isEmpty() && (at.getX() < 0 || at.getX() > 15 || at.getY() < 0
                             || at.getY() > 15 || at.getZ() < 0 || at.getZ() > 15)) continue;
                     if (entity.getClass().getName().endsWith(".HotAirBurnerBlockEntity")) burner(entity, emitter);
+                    else if (entity.getClass().getName().endsWith("PropellerBlockEntity")) propeller(entity);
                 }
             } finally { LitRenderingWorld.captureSceneryParticles(null); }
         }
@@ -162,6 +163,37 @@ public final class CopyParticles {
             }
         } catch (ReflectiveOperationException | RuntimeException e) {
             if (FAILED.add(entity.getClass())) LogUtils.getLogger().warn("[Planarium Panorama] Burner preview particles unavailable", e);
+        }
+    }
+
+    private static Class<?> propellerType;
+    private static boolean propellerChecked;
+
+    /**
+     * Petites helices d'Aeronautics : en mode virtuel, BasePropellerBlockEntity.tick saute onActiveTick, donc ses
+     * particules d'air. On appelle seulement leur creation (pas pushEntities), comme Aeronautics le ferait :
+     * le faux monde les recoit (capture en cours) et les place dans la copie.
+     */
+    private static void propeller(BlockEntity entity) {
+        if (FAILED.contains(entity.getClass())) return;
+        try {
+            if (!propellerChecked) {
+                propellerChecked = true;
+                propellerType = Class.forName("dev.eriksonn.aeronautics.content.blocks.propeller.small.BasePropellerBlockEntity");
+            }
+            if (propellerType == null || !propellerType.isInstance(entity)) return;
+            if (!(Boolean) propellerType.getMethod("isActive").invoke(entity)) return;
+            if (entity.getClass().getName().endsWith(".SmartPropellerBlockEntity")) {
+                // Sa propre version (les pales s'inclinent) : Aeronautics l'utilise a la place de celle de base.
+                entity.getClass().getMethod("spawnParticles").invoke(entity);
+            } else {
+                Object prop = propellerType.getField("prop").get(entity);
+                if (prop != null) prop.getClass().getMethod("spawnParticles").invoke(prop);
+            }
+        } catch (ClassNotFoundException | LinkageError e) {
+            propellerType = null;
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            if (FAILED.add(entity.getClass())) LogUtils.getLogger().warn("[Planarium Panorama] Propeller preview particles unavailable", e);
         }
     }
 
