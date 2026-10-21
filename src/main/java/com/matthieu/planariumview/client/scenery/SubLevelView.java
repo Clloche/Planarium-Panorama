@@ -54,6 +54,9 @@ public final class SubLevelView {
             RenderType.cutoutMipped(), RenderType.translucent(), RenderType.tripwire());
     private static final double O = -ClientView.ARS_OFFSET * (double) ClientView.GIANT;
     private static MultiBufferSource.BufferSource specialBuffers;
+    private static int buildsThisFrame;
+
+    static void beginFrame() { buildsThisFrame = 0; }
 
     private static final class Pose {
         Matrix4d from, to;
@@ -82,6 +85,18 @@ public final class SubLevelView {
         long revision, lightingRevision = -1;
         Map<Long, SubLevelLighting.Section> lighting = Map.of();
 
+        void changed(CompoundTag geometry) {
+            revision++;
+            if (geometry == null) return;
+            int[] origin = geometry.getIntArray("origin");
+            for (Part part : parts.values()) {
+                CompoundTag tag = part.pending != null ? part.pending : part.source;
+                if (tag != null && SubLevelLighting.neighbors(origin, tag.getIntArray("origin"))) {
+                    part.revision = revision;
+                }
+            }
+        }
+
         Map<Long, SubLevelLighting.Section> lighting() {
             if (lightingRevision == revision) return lighting;
             Map<Long, SubLevelLighting.Section> next = new HashMap<>();
@@ -106,7 +121,7 @@ public final class SubLevelView {
         CompoundTag pending, source;
         CompoundTag colorTag;
         SubLevelLighting.Section colorData;
-        long preparedRevision = -1;
+        long revision, generation, preparedRevision = -1;
         Mesh mesh;
         boolean realLight, color;
         final LinkedHashMap<MiniKey, MiniMesh> minis = new LinkedHashMap<>(4, 0.75F, true);
@@ -114,22 +129,24 @@ public final class SubLevelView {
         Part(Scene scene) { this.scene = scene; }
 
         void prepare() {
-            if (pending != null || source != null && (preparedRevision != scene.revision
+            if (pending != null || source != null && (preparedRevision != revision
                     || realLight != Config.realLighting() || color != Config.coloredLight())) {
-                close();
                 if (pending != null) source = pending;
                 pending = null;
                 realLight = Config.realLighting();
                 color = Config.coloredLight();
-                preparedRevision = scene.revision;
+                preparedRevision = revision;
+                generation++;
             }
         }
 
         Mesh mesh() {
             prepare();
-            if (mesh == null && source != null) {
+            if ((mesh == null || mesh.generation != generation) && source != null) {
                 try {
-                    mesh = new Mesh(source, null, null, null, scene.lighting());
+                    Mesh replacement = new Mesh(source, null, null, null, scene.lighting(), generation, mesh);
+                    if (mesh != null) mesh.close(mesh.data.fakeRenderingWorld != replacement.data.fakeRenderingWorld);
+                    mesh = replacement;
                 } catch (RuntimeException e) {
                     LOGGER.warn("[Planarium Panorama] Sub-level section could not be rendered", e);
                 }
@@ -144,10 +161,12 @@ public final class SubLevelView {
             MiniMesh cached = minis.get(key);
             long now = tile.getLevel().getGameTime();
             StructureRenderData pocket = PlanariumRenderer.structureRenderData.get(tile.key);
-            if (cached != null && Math.abs(now - cached.checked) < 20 && cached.pocket == pocket) return cached.mesh;
+            if (cached != null && cached.mesh.generation == generation
+                    && Math.abs(now - cached.checked) < 20 && cached.pocket == pocket) return cached.mesh;
             int[] environment = Config.realLighting() ? MiniOutsideLight.measure(tile.getLevel(), tile.getBlockPos()) : null;
             Matrix4d lightPose = pose.current();
-            if (cached != null && cached.pocket == pocket && Arrays.equals(environment, cached.environment)
+            if (cached != null && cached.mesh.generation == generation
+                    && cached.pocket == pocket && Arrays.equals(environment, cached.environment)
                     && cached.pose.equals(lightPose, 1.0e-5)) {
                 cached.checked = now;
                 return cached.mesh;
@@ -155,8 +174,9 @@ public final class SubLevelView {
             try {
                 // Give this jar's ambient light to the complete pocket, then sample it in the moving section's frame.
                 MiniOutsideLight.apply(pocket, tile.getLevel(), tile.getBlockPos());
-                Mesh replacement = new Mesh(source, tile, pocket, lightPose, scene.lighting());
-                if (cached != null) cached.mesh.close();
+                Mesh replacement = new Mesh(source, tile, pocket, lightPose, scene.lighting(), generation,
+                        cached == null ? null : cached.mesh);
+                if (cached != null) cached.mesh.close(cached.mesh.data.fakeRenderingWorld != replacement.data.fakeRenderingWorld);
                 minis.put(key, new MiniMesh(replacement, pocket, environment, lightPose, now));
                 if (minis.size() > 4) minis.remove(minis.firstEntry().getKey()).mesh.close();
                 return replacement;
@@ -166,8 +186,20 @@ public final class SubLevelView {
             }
         }
 
-        boolean ready(PlanariumTile tile) {
-            return tile == null ? mesh != null : minis.containsKey(MiniKey.of(tile));
+        Mesh cached(PlanariumTile tile) {
+            if (tile == null) return mesh;
+            MiniMesh mini = minis.get(MiniKey.of(tile));
+            return mini == null ? null : mini.mesh;
+        }
+
+        boolean needsBuild(PlanariumTile tile) {
+            prepare();
+            Mesh cached = cached(tile);
+            if (cached == null || cached.generation != generation) return source != null;
+            if (tile == null) return false;
+            MiniMesh mini = minis.get(MiniKey.of(tile));
+            return mini.pocket != PlanariumRenderer.structureRenderData.get(tile.key)
+                    || Math.abs(tile.getLevel().getGameTime() - mini.checked) >= 20;
         }
 
         @Override
@@ -226,7 +258,7 @@ public final class SubLevelView {
                 CompoundTag geometry = tag.getCompound("geometry");
                 if (!geometry.equals(part.source) && !geometry.equals(part.pending)) {
                     part.pending = geometry;
-                    scene.revision++;
+                    scene.changed(geometry);
                 }
             }
         }
@@ -238,7 +270,7 @@ public final class SubLevelView {
                 CompoundTag geometry = base.copy();
                 geometry.putByteArray("light", tag.getByteArray("light"));
                 part.pending = geometry;
-                scene.revision++;
+                scene.changed(geometry);
             }
         }
         if (tag.contains("frames", Tag.TAG_LIST)) {
@@ -254,8 +286,9 @@ public final class SubLevelView {
             }
             scene.parts.entrySet().removeIf(entry -> {
                 if (visible.contains(entry.getKey())) return false;
+                Part removed = entry.getValue();
+                scene.changed(removed.pending != null ? removed.pending : removed.source);
                 entry.getValue().close();
-                scene.revision++;
                 return true;
             });
         }
@@ -291,7 +324,7 @@ public final class SubLevelView {
         if (scene == null || !Config.subLevelViews()) return;
         Matrix4d inverse = scene.anchor.current().invert();
         for (Part part : scene.parts.values()) {
-            if (part.mesh == null || part.pending != null || part.pose.to == null) continue;
+            if (part.mesh == null || part.pose.to == null) continue;
             if (part.mesh.data.fakeRenderingWorld instanceof LitRenderingWorld world) {
                 consumer.accept(world, new Matrix4d(inverse).mul(part.pose.current()));
             }
@@ -339,11 +372,17 @@ public final class SubLevelView {
             specialBuffers = MultiBufferSource.immediate(new ByteBufferBuilder(262144));
         }
         MultiBufferSource buffers = supplied != null ? supplied : specialBuffers;
-        int built = 0;
         for (Part part : scene.parts.values()) {
             if (part.pose.to == null) continue;
-            if (!part.ready(tile) && built++ >= 2) continue;
-            Mesh mesh = tile == null ? part.mesh() : part.mini(tile);
+            boolean rebuild = part.needsBuild(tile);
+            Mesh mesh;
+            if (rebuild && buildsThisFrame >= 2) {
+                // Keep drawing and ticking the previous copy until this section gets its turn.
+                mesh = part.cached(tile);
+            } else {
+                if (rebuild) buildsThisFrame++;
+                mesh = tile == null ? part.mesh() : part.mini(tile);
+            }
             if (mesh == null) continue;
             pose.pushPose();
             try {
@@ -362,11 +401,16 @@ public final class SubLevelView {
         final Map<BlockPos, Integer> entityLight = new HashMap<>();
         ColorCompat.Scope colors;
         final double particleScale;
+        final long generation;
+        final CompoundTag geometry;
+        final boolean realLight = Config.realLighting();
         final Map<RenderType, VertexBuffer> buffers = new HashMap<>();
         final Map<RenderType, MeshData.SortState> sorting = new HashMap<>();
 
         Mesh(CompoundTag tag, PlanariumTile tile, StructureRenderData pocket, Matrix4d lightPose,
-             Map<Long, SubLevelLighting.Section> surrounding) {
+             Map<Long, SubLevelLighting.Section> surrounding, long generation, Mesh previous) {
+            this.generation = generation;
+            this.geometry = tag;
             particleScale = tile == null ? ClientView.GIANT : ClientView.ARS_SCALE;
             var level = Minecraft.getInstance().level;
             if (level == null) throw new IllegalStateException("No client world");
@@ -385,7 +429,11 @@ public final class SubLevelView {
                     && state.pos.getY() >= 0 && state.pos.getY() < 16 && state.pos.getZ() >= 0 && state.pos.getZ() < 16);
             neighbors.addAll(data.statePosCache);
             // Neighbor states provide shapes and light occlusion, without creating extra animated block entities.
-            LitRenderingWorld world = LitRenderingWorld.giant(level, data.statePosCache);
+            LitRenderingWorld world = previous != null && previous.realLight == realLight
+                    && SubLevelLighting.sameContents(previous.geometry, tag)
+                    ? (LitRenderingWorld) previous.data.fakeRenderingWorld
+                    : LitRenderingWorld.giant(level, data.statePosCache);
+            world.positions.clear();
             for (CulledStatePos state : neighbors) world.positions.put(state.pos, state.state);
             if (Config.realLighting()) {
                 byte[] light = tag.getByteArray("light");
@@ -393,7 +441,8 @@ public final class SubLevelView {
                     light = miniatureLight(light, fullPocket, lightPose);
                 }
                 world.setLight(light, 18);
-            }
+            } else world.setLight(null, 18);
+            world.setTintBiome(null);
             if (Config.biomeColors()) {
                 ResourceLocation biome = ResourceLocation.tryParse(tag.getString("biome"));
                 if (biome != null) level.registryAccess().registryOrThrow(net.minecraft.core.registries.Registries.BIOME)
@@ -428,7 +477,7 @@ public final class SubLevelView {
                 }
                 GiantSprites.collectMini(data);
             } catch (RuntimeException e) {
-                close();
+                close(previous == null || previous.data.fakeRenderingWorld != world);
                 throw e;
             } finally {
                 VertexBuffer.unbind();
@@ -549,7 +598,11 @@ public final class SubLevelView {
 
         @Override
         public void close() {
-            CopyParticles.forget(data.fakeRenderingWorld);
+            close(true);
+        }
+
+        private void close(boolean releaseWorld) {
+            if (releaseWorld) CopyParticles.forget(data.fakeRenderingWorld);
             buffers.values().forEach(VertexBuffer::close);
             data.vertexBuffers.values().forEach(VertexBuffer::close);
             data.builders.values().forEach(ByteBufferBuilder::close);

@@ -931,6 +931,7 @@ public final class ClientView {
     }
 
     private static void disposeRender() {
+        SceneryParticles.cancelHues();
         PuddlesCompat.clear();
         GiantEntities.clear();
         sceneryEntityLight.clear();
@@ -982,6 +983,7 @@ public final class ClientView {
         }
         Minecraft mc = Minecraft.getInstance();
         if (sky) {
+            SubLevelView.beginFrame();
             SkySync.resetWeatherScope();
         }
         if (sky && mc.level != null) {
@@ -1055,6 +1057,7 @@ public final class ClientView {
                 }
             }
             buildPendingSections(event.getCamera().getPosition());
+            SceneryParticles.prepareHues();
             if (renderData != null) {
                 GiantSprites.markActive();
                 draw(renderData, event);
@@ -1328,9 +1331,24 @@ public final class ClientView {
         // Blocs qui arretent ou laissent passer la lumiere avant le changement (pour l'ouverture sur le ciel).
         Set<BlockPos> opaqueBefore = new HashSet<>();
         boolean blockEntitiesChanged = false;
-        for (BlockPos pos : patch.keySet()) {
+        // Une source de lumiere changee (couleur differente a intensite egale, par exemple) ne change pas la lumiere
+        // vanilla : sans ca, seules les sections touchant le bloc etaient refaites et une bande gardait l'ancienne teinte.
+        boolean emitterChanged = false;
+        for (Map.Entry<BlockPos, BlockChange> entry : patch.entrySet()) {
+            BlockPos pos = entry.getKey();
             if (isOpaque(lit, pos)) opaqueBefore.add(pos);
             if (lit.blockEntityMap.containsKey(pos)) blockEntitiesChanged = true;
+            if (com.matthieu.planariumview.compat.ColorCompat.present() && Config.coloredLight()) {
+                BlockState before = lit.getBlockState(pos);
+                BlockState after = entry.getValue().state();
+                if (!java.util.Objects.equals(before, after) && (before.getLightEmission(lit, pos) > 0
+                        || after != null && after.getLightEmission(lit, pos) > 0)) {
+                    // Portee d'une lumiere coloree : 15 blocs autour de la source.
+                    markBox(dirty, pos.getX() - 15, pos.getY() - 15, pos.getZ() - 15,
+                            pos.getX() + 15, pos.getY() + 15, pos.getZ() + 15);
+                    emitterChanged = true;
+                }
+            }
         }
         Set<BlockState> newStates = new HashSet<>();
 
@@ -1342,6 +1360,8 @@ public final class ClientView {
                 lit.setBlock(entry.getKey(), entry.getValue().state(), 0);
             }
         }
+        // Cache de couleurs de Contraption Lights partage par toute la photo : effacer seulement ces sections.
+        ColorCompat.blocksChanged(lit, patch.keySet());
         for (Map.Entry<BlockPos, BlockChange> entry : patch.entrySet()) {
             BlockPos pos = entry.getKey();
             BlockChange change = entry.getValue();
@@ -1417,7 +1437,7 @@ public final class ClientView {
         }
         long skyNanos = System.nanoTime() - stageStart;
         stageStart = System.nanoTime();
-        if (lightChanged || blockEntitiesChanged) {
+        if (lightChanged || blockEntitiesChanged || emitterChanged) {
             ColorCompat.begin(lit);
             try {
                 computeBlockEntityLight(data, info);
@@ -1497,6 +1517,7 @@ public final class ClientView {
         blockEntityLight.clear();
         sceneryEntityLight.clear();
         for (BlockPos pos : data.fakeRenderingWorld.blockEntityMap.keySet()) {
+            if (!visibleSceneryPos(pos, currentRadius, viewRadius())) continue;
             try {
                 int light = LevelRenderer.getLightColor(data.fakeRenderingWorld, pos);
                 if (com.matthieu.planariumview.compat.ColorCompat.building() && (light & 0xF0) != 0
@@ -1536,6 +1557,7 @@ public final class ClientView {
 
     /** Une flaque change : retesseler son voisinage avec le meme budget que les mises a jour du serveur. */
     public static void visualBlocksChanged(LitRenderingWorld world, Collection<BlockPos> positions) {
+        ColorCompat.blocksChanged(world, positions);
         if (renderData == null || renderData.fakeRenderingWorld != world || positions.isEmpty()) return;
         Set<SectionPos> dirty = new HashSet<>();
         for (BlockPos pos : positions) {

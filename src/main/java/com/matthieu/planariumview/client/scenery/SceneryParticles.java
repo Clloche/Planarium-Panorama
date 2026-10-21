@@ -84,6 +84,82 @@ public final class SceneryParticles {
     private static final Map<LitRenderingWorld, Hues> HUES = Collections.synchronizedMap(new WeakHashMap<>());
     private static final int COLOR_BITS = ~0x00F000F0;
     private static final int MAX_HUE_CELLS = 20000;
+    private static final long HUE_BUDGET_NANOS = 1_000_000L;
+    private static HueWork pendingHues;
+
+    /** Only the terrain has thousands of weather columns; its color preparation is spread across frames. */
+    private static final class HueWork {
+        final LitRenderingWorld world;
+        final Object level = Minecraft.getInstance().level;
+        final ColorCompat.Scope colors = ColorCompat.capture();
+        final List<com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos> states = new ArrayList<>();
+        final Hues hues = new Hues();
+        final net.minecraft.core.BlockPos.MutableBlockPos at = new net.minecraft.core.BlockPos.MutableBlockPos();
+        final int min, side;
+        int stateIndex, columnIndex;
+
+        HueWork(LitRenderingWorld world,
+                Iterable<com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos> states, int center, int view) {
+            this.world = world;
+            states.forEach(this.states::add);
+            min = center - view;
+            side = view * 2 + 1;
+        }
+
+        boolean step() {
+            if (stateIndex < states.size() && hues.cells.size() < MAX_HUE_CELLS) {
+                var pos = states.get(stateIndex++).pos;
+                if (world.getBlockState(pos).getLightEmission(world, pos) > 0) {
+                    for (int dy = 0; dy <= 1; dy++) {
+                        at.set(pos.getX(), pos.getY() + dy, pos.getZ());
+                        hues.cells.putIfAbsent(at.asLong(), hueAt(world, at));
+                    }
+                }
+                return true;
+            }
+            stateIndex = states.size();
+            if (columnIndex >= side * side) return false;
+            int x = min + columnIndex / side;
+            int z = min + columnIndex % side;
+            int y = world.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x, z);
+            int hue = hueAt(world, at.set(x, y, z));
+            if (hue != 0) hues.columns.put(columnKey(x, z), hue);
+            columnIndex++;
+            return true;
+        }
+    }
+
+    static void cancelHues() { pendingHues = null; }
+
+    static void prepareHues() {
+        HueWork work = pendingHues;
+        if (work == null) return;
+        if (work.level != Minecraft.getInstance().level || !com.matthieu.planariumview.config.Config.enabled()
+                || !com.matthieu.planariumview.config.Config.coloredLight()) {
+            pendingHues = null;
+            return;
+        }
+        long start = System.nanoTime();
+        int steps = 0;
+        ColorCompat.use(work.colors);
+        try {
+            do {
+                if (!work.step()) {
+                    HUES.put(work.world, work.hues);
+                    pendingHues = null;
+                    break;
+                }
+                // Check every column, and every 64 inexpensive block checks. A color section already started
+                // always finishes; the next frame resumes with the same isolated Contraption Lights cache.
+            } while ((work.stateIndex < work.states.size() && ++steps % 64 != 0)
+                    || System.nanoTime() - start < HUE_BUDGET_NANOS);
+        } catch (Exception ignored) {
+            HUES.put(work.world, work.hues);
+            pendingHues = null;
+        } finally {
+            ColorCompat.end();
+        }
+    }
 
     /**
      * Appele pendant que Contraption Lights lit ce faux monde (ColorCompat.begin). {@code columns} : aussi le sol des
@@ -96,6 +172,12 @@ public final class SceneryParticles {
         }
         if (!ColorCompat.building()) {
             HUES.remove(world);
+            if (pendingHues != null && pendingHues.world == world) pendingHues = null;
+            return;
+        }
+        if (columns) {
+            // A newer capture replaces unfinished work. Existing colors stay available until publication.
+            pendingHues = new HueWork(world, states, center, view);
             return;
         }
         Hues hues = new Hues();
@@ -112,17 +194,6 @@ public final class SceneryParticles {
                 for (int dy = 0; dy <= 1; dy++) {
                     at.set(pos.getX(), pos.getY() + dy, pos.getZ());
                     hues.cells.putIfAbsent(at.asLong(), hueAt(world, at));
-                }
-            }
-            if (columns) {
-                for (int x = center - view; x <= center + view; x++) {
-                    for (int z = center - view; z <= center + view; z++) {
-                        int y = world.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x, z);
-                        int hue = hueAt(world, at.set(x, y, z));
-                        if (hue != 0) {
-                            hues.columns.put(columnKey(x, z), hue);
-                        }
-                    }
                 }
             }
         } catch (Exception ignored) {
@@ -1025,6 +1096,7 @@ public final class SceneryParticles {
         NO_COLLISION.clear();
         HUE.clear();
         HUES.clear();
+        pendingHues = null;
         CopyParticles.clear();
         EMITTERS.clear();
         ticking = null;

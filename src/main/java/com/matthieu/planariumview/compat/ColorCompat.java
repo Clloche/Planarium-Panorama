@@ -7,6 +7,9 @@ import net.minecraft.world.level.BlockAndTintGetter;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Method;
+import java.util.WeakHashMap;
+import java.util.Map;
+import java.util.Collections;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -29,11 +32,20 @@ public final class ColorCompat {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final boolean COMPATIBLE = supportsSections();
     private static final Method CLEAR = find("clear");
+    private static final Method INVALIDATE = find("invalidate", int.class, int.class, int.class);
+    /**
+     * Emplacement de chaque faux monde deja vu : toutes les constructions d'une meme photo (50 sections, blocs
+     * speciaux, couleurs des particules) partagent le cache de Contraption Lights. Avant, chaque begin() prenait un
+     * emplacement neuf : Contraption Lights recherchait les sources de lumiere (scan) de chaque section des dizaines de
+     * fois par photo, environ 80 % du temps de construction des sections. Une nouvelle photo cree un nouveau faux monde,
+     * donc un emplacement neuf ; les changements faits dans un faux monde existant passent par blocksChanged.
+     */
+    private static final Map<Object, int[]> WORLD_SLOTS = Collections.synchronizedMap(new WeakHashMap<>());
 
     /**
      * Decalages du faux monde : loin au-dela de la bordure du monde (30 M), mais sous la limite des positions de
-     * section (2^21 sections, environ 33,5 M blocs). Chaque construction prend une nouvelle case : aucune couleur
-     * d'une construction precedente (decor qui a change entre-temps) n'est reutilisee, comme avec l'ancien vidage.
+     * section (2^21 sections, environ 33,5 M blocs). Chaque faux monde a sa case (voir WORLD_SLOTS) : une nouvelle
+     * photo n'herite jamais des couleurs d'une autre.
      */
     private static final int BASE = 30_720_000;
     /** Le faux monde fait au plus 65 blocs de cote (rayon 32), plus une section de voisins de chaque cote. */
@@ -109,16 +121,48 @@ public final class ColorCompat {
             CONTEXT.set(new Context(previous, null, 0, 0));
             return;
         }
+        int[] slot = WORLD_SLOTS.computeIfAbsent(fakeWorld, ignored -> allocate());
+        CONTEXT.set(new Context(previous, new SourceView(fakeWorld, slot[0], slot[1]), slot[0], slot[1]));
+    }
+
+    private static int[] allocate() {
         long next = NEXT_SLOT.getAndIncrement();
         long count = (long) SLOTS * SLOTS;
         if (next > 0 && next % count == 0) {
-            // Reutilisation des emplacements apres des millions de constructions : aucune vieille teinte ne doit rester.
+            // Reutilisation des emplacements apres des millions de photos : aucune vieille teinte ne doit rester.
             clearCache();
         }
         int index = (int) Math.floorMod(next, count);
-        int offsetX = BASE + (index % SLOTS) * SLOT;
-        int offsetZ = BASE + (index / SLOTS) * SLOT;
-        CONTEXT.set(new Context(previous, new SourceView(fakeWorld, offsetX, offsetZ), offsetX, offsetZ));
+        return new int[]{BASE + (index % SLOTS) * SLOT, BASE + (index / SLOTS) * SLOT};
+    }
+
+    /**
+     * Des blocs ont change dans un faux monde deja colore (correction du decor, flaques) : on efface seulement ces
+     * sections dans le cache de Contraption Lights, comme il le fait lui-meme pour le vrai monde. Son invalidate
+     * efface les sources de lumiere de la section et les couleurs des 26 sections voisines (portee de 15 blocs).
+     */
+    public static void blocksChanged(Object fakeWorld, Iterable<net.minecraft.core.BlockPos> positions) {
+        if (INVALIDATE == null || fakeWorld == null || positions == null) {
+            return;
+        }
+        int[] slot = WORLD_SLOTS.get(fakeWorld);
+        if (slot == null) {
+            return;
+        }
+        java.util.Set<Long> sections = new java.util.HashSet<>();
+        for (net.minecraft.core.BlockPos pos : positions) {
+            int sx = (pos.getX() + slot[0]) >> 4;
+            int sy = pos.getY() >> 4;
+            int sz = (pos.getZ() + slot[1]) >> 4;
+            if (sections.add(net.minecraft.core.SectionPos.asLong(sx, sy, sz))) {
+                try {
+                    INVALIDATE.invoke(null, sx, sy, sz);
+                } catch (Throwable e) {
+                    LOGGER.debug("[Planarium View] Contraption Lights : impossible d'effacer une section", e);
+                    return;
+                }
+            }
+        }
     }
 
     public static void end() {
