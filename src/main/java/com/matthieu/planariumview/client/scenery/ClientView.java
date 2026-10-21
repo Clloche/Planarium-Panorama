@@ -438,7 +438,7 @@ public final class ClientView {
                 }
             }
             float share = open / (float) rays;
-            LOGGER.debug("[Planarium Panorama] Vue vers dehors depuis le Planarium : {} rayons sur {}", open, rays);
+            LOGGER.info("[Planarium Panorama] Vue vers dehors depuis le Planarium : {} rayons sur {}", open, rays);
             return share;
         } catch (Exception e) {
             return 1.0F;
@@ -1014,9 +1014,7 @@ public final class ClientView {
             if (renderData != null && builtViewRadius != viewRadius()) {
                 rebuild();
             }
-            // Finish every section of this snapshot before starting the newest one. Fast ships can otherwise
-            // replace the build queue every few ticks and starve the sections farther from the jar indefinitely.
-            if (pendingTemplate != null && pendingSections.isEmpty()) {
+            if (pendingTemplate != null) {
                 StructureTemplate template = pendingTemplate;
                 byte[] light = pendingLight;
                 OutsideViewPayload info = pendingInfo;
@@ -1038,7 +1036,7 @@ public final class ClientView {
                         pendingInfo = info;
                     }
                 }
-            } else if (pendingTemplate == null && pendingPatch != null && renderData != null) {
+            } else if (pendingPatch != null && renderData != null) {
                 Map<BlockPos, BlockChange> patch = pendingPatch;
                 byte[] light = pendingPatchLight;
                 OutsideViewPayload info = pendingPatchInfo;
@@ -1071,7 +1069,6 @@ public final class ClientView {
     private static StructureRenderData build(StructureTemplate template, byte[] light, OutsideViewPayload info,
                                              int radius, Vec3 camera) {
         long buildStart = System.nanoTime();
-        boolean moving = info != null && renderedOrigin != null && !renderedOrigin.equals(info.origin());
         // Gabarit vide : Ars ne construit pas son propre faux monde (aussitot remplace par le notre ci-dessous).
         StructureRenderData data = LitRenderingWorld.asGiant(() -> new StructureRenderData(new StructureTemplate(), 0L));
         data.statePosCache = statesOf(template);
@@ -1094,7 +1091,7 @@ public final class ClientView {
                         : registry.getHolderOrThrow(net.minecraft.world.level.biome.Biomes.PLAINS));
             }
             lit.setBiomes(palette, info.biomes(), radius * 2 + 1, info.origin());
-            LOGGER.debug("[Planarium Panorama] Couleurs de biome : {} ({})",
+            LOGGER.info("[Planarium Panorama] Couleurs de biome : {} ({})",
                     lit.hasBiomes() ? "OK" : "donnees invalides", info.biomePalette());
         }
         data.fakeRenderingWorld = lit;
@@ -1161,8 +1158,7 @@ public final class ClientView {
         GiantSprites.collect(data);
         PuddlesCompat.collectSprites(lit);
         long spritesNanos = System.nanoTime() - stageStart;
-        LOGGER.atLevel(moving ? org.slf4j.event.Level.DEBUG : org.slf4j.event.Level.INFO)
-                .log("[Planarium Panorama] Preparation de {} blocs : total={} ms, gabarit={} ms, donnees={} ms, " +
+        LOGGER.info("[Planarium Panorama] Preparation de {} blocs : total={} ms, gabarit={} ms, donnees={} ms, " +
                         "lumiere speciale={} ms, sections a retesseler={}, sprites={} ms",
                 data.statePosCache.size(), (System.nanoTime() - buildStart) / 1_000_000L,
                 templateNanos / 1_000_000L, sceneryDataNanos / 1_000_000L,
