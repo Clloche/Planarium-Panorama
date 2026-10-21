@@ -23,8 +23,8 @@ public record FarRingPayload(ResourceLocation pocketDim, BlockPos center, int ne
 
     /**
      * {@code palette} : identifiants d'etats de bloc ; {@code blocks} : positions (voir pack) ; {@code info} : par bloc,
-     * index de palette (16 bits) | voisins pleins (6 bits) << 16 | lumiere de la case (ciel << 4 | blocs) << 22 ;
-     * {@code lightPos}/{@code light} : lumiere des cases autour ; {@code biomes} : un biome de surface par colonne de 4 x 4.
+     * index de palette (16 bits) | voisins pleins (6 bits) << 16 | voisins d'eau (6 bits) << 22 ;
+     * {@code lightPos}/{@code light} : lumiere des blocs et des cases autour ; {@code biomes} : un biome de surface par colonne de 4 x 4.
      */
     public record Data(int[] palette, int[] blocks, int[] info, int[] lightPos, byte[] light,
                        List<ResourceLocation> biomePalette, byte[] biomes, int quarts) {

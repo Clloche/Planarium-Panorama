@@ -346,6 +346,7 @@ public final class FarRingServer {
                             continue;
                         }
                         int solidMask = 0;
+                        int waterMask = 0;
                         boolean visible = false;
                         for (Direction direction : DIRECTIONS) {
                             next.setWithOffset(pos, direction);
@@ -361,6 +362,11 @@ public final class FarRingServer {
                             if (neighbor == null || neighbor.isSolidRender(level, next)) {
                                 solidMask |= 1 << direction.get3DDataValue();
                                 continue;
+                            }
+                            // Eau voisine : le client la remet la ou elle n'est pas envoyee (sous la surface, autour des
+                            // algues et des blocs waterlogged), sinon leur eau aurait des faces vers de l'air.
+                            if (neighbor.getBlock() instanceof LiquidBlock && neighbor.getFluidState().is(net.minecraft.tags.FluidTags.WATER)) {
+                                waterMask |= 1 << direction.get3DDataValue();
                             }
                             // L'eau sous la surface de l'eau ne se voit pas.
                             if (state.getBlock() instanceof LiquidBlock && neighbor.getFluidState().getType().isSame(state.getFluidState().getType())) {
@@ -384,9 +390,14 @@ public final class FarRingServer {
                             palette.add(net.minecraft.world.level.block.Block.getId(state));
                             paletteIndex.put(state, paletteId);
                         }
-                        int own = level.getBrightness(LightLayer.SKY, pos) << 4 | level.getBrightness(LightLayer.BLOCK, pos);
                         blocks.add(local(x, y, z));
-                        info.add(paletteId | solidMask << 16 | own << 22);
+                        info.add(paletteId | solidMask << 16 | waterMask << 22);
+                        // Lumiere de la case du bloc (blocs pas pleins : escaliers, dalles, algues...).
+                        if (lightSeen.add(BlockPos.asLong(x, y, z))) {
+                            lightPos.add(local(x, y, z));
+                            lightValue.add((byte) (level.getBrightness(LightLayer.SKY, pos) << 4
+                                    | level.getBrightness(LightLayer.BLOCK, pos)));
+                        }
                         // Lumiere des cases autour qui laissent passer la vue (faces et ombrage des coins).
                         for (int dx = -1; dx <= 1; dx++) {
                             for (int dy = -1; dy <= 1; dy++) {

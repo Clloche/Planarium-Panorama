@@ -136,6 +136,30 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
     private static boolean constructingGiant;
     /** Faux monde du decor geant (positions du monde d'origine), pas d'une miniature de bocal. */
     private boolean giant;
+    /**
+     * Decor geant autour du Planarium (pas une structure Sable) : au-dela de son bord, les blocs de l'anneau lointain.
+     * Sans eux, l'eau au bord du rayon detaille s'abaissait vers le vide, et laissait une marche avec l'anneau.
+     */
+    private boolean farRingBeyond;
+    private int farRingRadius;
+
+    void useFarRingBeyond(int radius) {
+        farRingRadius = radius;
+        farRingBeyond = true;
+    }
+
+    /** Bloc de l'anneau lointain juste au-dela du bord, ou null (dans le decor, ou pas d'anneau). */
+    private net.minecraft.world.level.block.state.BlockState farRing(BlockPos pos) {
+        if (!farRingBeyond) {
+            return null;
+        }
+        int r = farRingRadius;
+        int x = pos.getX(), y = pos.getY(), z = pos.getZ();
+        if (x >= 0 && y >= 0 && z >= 0 && x <= 2 * r && y <= 2 * r && z <= 2 * r) {
+            return null;
+        }
+        return FarRing.stateAround(x - r, y - r, z - r);
+    }
 
     /** Construit le faux monde du decor geant. */
     public static LitRenderingWorld giant(Level level, List<CulledStatePos> states) {
@@ -265,6 +289,10 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
         if (hidden(pos)) {
             return net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
         }
+        net.minecraft.world.level.block.state.BlockState beyond = farRing(pos);
+        if (beyond != null) {
+            return beyond;
+        }
         // Le constructeur d'Ars appelle getBlockState avant l'initialisation des champs de cette sous-classe.
         net.minecraft.world.level.block.state.BlockState visual = visualBlocks != null ? visualBlocks.get(pos) : null;
         if (visual != null) {
@@ -278,6 +306,10 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
     public net.minecraft.world.level.material.FluidState getFluidState(BlockPos pos) {
         if (hidden(pos)) {
             return net.minecraft.world.level.material.Fluids.EMPTY.defaultFluidState();
+        }
+        net.minecraft.world.level.block.state.BlockState beyond = farRing(pos);
+        if (beyond != null) {
+            return beyond.getFluidState();
         }
         return super.getFluidState(pos);
     }

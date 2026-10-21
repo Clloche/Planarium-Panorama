@@ -590,6 +590,27 @@ public final class ClientView {
         MiniLight.rebuildAll();
     }
 
+    /**
+     * Un nouvel anneau lointain est arrive : le decor proche est reconstruit, pour que son bord se raccorde a l'anneau
+     * (l'eau du bord ne s'abaisse plus vers le vide). Les sections actuelles restent visibles pendant ce temps.
+     */
+    static void farRingArrived() {
+        if (renderData == null || lastTemplate == null && lastTemplateTag == null || currentDim == null) {
+            return;
+        }
+        if (lastTemplate == null) {
+            lastTemplate = loadTemplate(lastTemplateTag);
+        }
+        pendingPatch = null;
+        pendingDiffNanos = 0L;
+        diffGeneration++;
+        reapplyOverlay();
+        pendingTemplate = lastTemplate;
+        pendingLight = lastLight;
+        pendingInfo = latestInfo;
+        forceAllSections = true;
+    }
+
     /** Dernier etat de l'interrupteur general envoye au serveur (null : rien d'envoye sur cette connexion). */
     private static Boolean sentEnabled;
 
@@ -1126,6 +1147,7 @@ public final class ClientView {
         // Remplace le faux monde d'Ars (lumiere 15 partout) par le notre, avec la vraie lumiere.
         // (et avec les couleurs du vrai biome pour l'herbe, les feuilles et l'eau).
         LitRenderingWorld lit = LitRenderingWorld.giant(Minecraft.getInstance().level, data.statePosCache);
+        lit.useFarRingBeyond(radius);
         if (Config.realLighting() && light != null && light.length > 0) {
             lit.setLight(light, radius * 2 + 3);
         }

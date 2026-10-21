@@ -135,11 +135,14 @@ public final class FarRing {
             BlockPos pos = new BlockPos(FarRingPayload.unpackX(packed), FarRingPayload.unpackY(packed), FarRingPayload.unpackZ(packed));
             long key = pos.asLong();
             next.states.put(key, palette[paletteId]);
-            next.light.put(key, (byte) (info[i] >>> 22 & 0xFF));
             int solid = info[i] >>> 16 & 0x3F;
+            int water = info[i] >>> 22 & 0x3F;
             for (Direction direction : directions) {
-                if ((solid & 1 << direction.get3DDataValue()) != 0) {
+                int bit = 1 << direction.get3DDataValue();
+                if ((solid & bit) != 0) {
                     next.solid.add(pos.relative(direction).asLong());
+                } else if ((water & bit) != 0) {
+                    next.water.add(pos.relative(direction).asLong());
                 }
             }
             bySection.computeIfAbsent(BlockPos.asLong(pos.getX() >> 4, pos.getY() >> 4, pos.getZ() >> 4),
@@ -171,6 +174,34 @@ public final class FarRing {
         order.sort(java.util.Comparator.comparingInt(key -> Math.abs(BlockPos.getX(key) - middle)
                 + Math.abs(BlockPos.getY(key) - middleY) + Math.abs(BlockPos.getZ(key) - middle)));
         pending.addAll(order);
+        if (!replacing) {
+            ClientView.farRingArrived();
+        }
+    }
+
+    /**
+     * Bloc de l'anneau a cette position relative au Planarium (pour le bord du decor proche), ou null s'il n'est pas
+     * connu (pas d'anneau, hors de l'anneau, ou case qui n'a pas ete envoyee).
+     */
+    static BlockState stateAround(int rx, int ry, int rz) {
+        FarWorld current = world;
+        if (current == null || !visible() || Math.abs(rx) > far || Math.abs(rz) > far || Math.abs(ry) > height) {
+            return null;
+        }
+        BlockState state = current.known(rx + far, ry + height, rz + far);
+        if (state != null) {
+            return state;
+        }
+        // Case pas envoyee : sous de l'eau (le fond d'un ocean), c'est de l'eau. Sinon l'eau du bord du decor proche
+        // dessinait une paroi d'eau vers l'anneau.
+        for (int y = ry + height + 1; y <= 2 * height; y++) {
+            BlockState above = current.known(rx + far, y, rz + far);
+            if (above != null) {
+                return above.getFluidState().is(net.minecraft.tags.FluidTags.WATER) && above.getBlock() instanceof net.minecraft.world.level.block.LiquidBlock
+                        ? Blocks.WATER.defaultBlockState() : null;
+            }
+        }
+        return null;
     }
 
     /** Oublie l'anneau (sortie du bocal, decor efface, nouvelle photo). */
@@ -331,6 +362,8 @@ public final class FarRing {
         private static final BlockState SOLID = Blocks.STONE.defaultBlockState();
         final Long2ObjectOpenHashMap<BlockState> states = new Long2ObjectOpenHashMap<>();
         final LongOpenHashSet solid = new LongOpenHashSet();
+        /** Eau qui n'est pas envoyee (sous la surface, autour des algues et des blocs waterlogged). */
+        final LongOpenHashSet water = new LongOpenHashSet();
         final Long2ByteOpenHashMap light = new Long2ByteOpenHashMap();
         private final int far;
         private final int height;
@@ -353,6 +386,16 @@ public final class FarRing {
             this.quarts = quarts;
         }
 
+        /** Etat envoye ou deduit (bloc plein cache, eau sous la surface) a cette case, null si inconnu. */
+        @Nullable
+        BlockState known(int x, int y, int z) {
+            long key = BlockPos.asLong(x, y, z);
+            BlockState state = states.get(key);
+            if (state != null) return state;
+            if (solid.contains(key)) return SOLID;
+            return water.contains(key) ? Blocks.WATER.defaultBlockState() : null;
+        }
+
         BlockPos worldPos(BlockPos pos) {
             return center.offset(pos.getX() - far, pos.getY() - height, pos.getZ() - far);
         }
@@ -362,7 +405,8 @@ public final class FarRing {
             long key = pos.asLong();
             BlockState state = states.get(key);
             if (state != null) return state;
-            return solid.contains(key) ? SOLID : Blocks.AIR.defaultBlockState();
+            if (solid.contains(key)) return SOLID;
+            return water.contains(key) ? Blocks.WATER.defaultBlockState() : Blocks.AIR.defaultBlockState();
         }
 
         @Override
