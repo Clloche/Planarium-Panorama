@@ -91,6 +91,8 @@ public final class ServerView {
         final ResourceKey<Level> pocket;
         public final UUID owner;
         public GlobalPos source;
+        /** Prochaine recherche permise du Planarium quand il n'est plus a sa place (voir updateAnchor). */
+        long nextSearch;
         org.joml.Matrix4d anchor;
         BlockPos center;
         ChunkPos ticketCenter;
@@ -196,7 +198,8 @@ public final class ServerView {
                 continue;
             }
             int radius = Math.max(track.lastRadius, Config.RADIUS.get());
-            BlockPos center = track.center;
+            // La zone de la photo affichee : un Planarium qui a un peu bouge montre encore la photo de capturedCenter.
+            BlockPos center = track.capturedCenter;
             long dx = Math.abs((long) pos.getX() - center.getX());
             long dz = Math.abs((long) pos.getZ() - center.getZ());
             // Changements visibles : zone capturee plus une case pour les dependances immediates des modeles.
@@ -270,6 +273,7 @@ public final class ServerView {
                 // The client has already discarded that dimension. Do not let Sable send its removals to the new one.
                 com.matthieu.planariumview.compat.SubLevelCompat.forgetTracking(previous, player.getUUID());
             }
+            SubLevelServer.dimensionChanged(player.getUUID(), player.server.getTickCount());
             update(player, true);
         }
     }
@@ -278,6 +282,7 @@ public final class ServerView {
     public static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             SubLevelServer.reset(player.getUUID());
+            SubLevelServer.dimensionChanged(player.getUUID(), player.server.getTickCount());
             removeTrack(player.server, player.getUUID());
             update(player, true);
             for (Map.Entry<ResourceKey<Level>, byte[]> entry : MINI_LIGHT.entrySet()) {
@@ -1430,6 +1435,10 @@ public final class ServerView {
 
     private static boolean updateAnchor(Track track, ServerLevel source) {
         if (!(source.getBlockEntity(track.source.pos()) instanceof PlanariumTile tile) || !track.pocket.equals(tile.key)) {
+            // Planarium casse ou introuvable : au plus une recherche par seconde (sinon 17^3 blocs toutes les 2 ticks).
+            long tick = source.getServer().getTickCount();
+            if (tick < track.nextSearch) return false;
+            track.nextSearch = tick + 20;
             BlockPos found = com.matthieu.planariumview.compat.SubLevelCompat.findPlanarium(source, track.pocket,
                     new Vec3(track.anchor.m30(), track.anchor.m31(), track.anchor.m32()), SEARCH_RADIUS);
             if (found == null) {
@@ -1447,12 +1456,8 @@ public final class ServerView {
         }
         org.joml.Matrix4d anchor = com.matthieu.planariumview.compat.SubLevelCompat.anchor(source, track.source.pos());
         BlockPos center = BlockPos.containing(anchor.m30(), anchor.m31(), anchor.m32());
-        if (!center.equals(track.center)) {
-            track.sceneryDirty = true;
-            track.fullCaptureNeeded = true;
-            track.fullCaptureReason = "Planarium en mouvement";
-            track.changedBlocks.clear();
-        }
+        // Pas de capture complete a chaque bloc parcouru : le client recale l'ancienne photo autour du bocal
+        // (SubLevelView.terrain), et update() refait une capture quand le centre s'est assez eloigne de celui capture.
         track.anchor = anchor;
         track.center = center;
         return true;

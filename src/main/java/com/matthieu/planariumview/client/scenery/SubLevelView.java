@@ -230,6 +230,17 @@ public final class SubLevelView {
                 }
             }
         }
+        if (!tag.contains("geometry", Tag.TAG_COMPOUND) && tag.contains("light", Tag.TAG_BYTE_ARRAY)) {
+            // Same blocks, new light (a moving structure): rebuild this section with the new light table only.
+            Part part = scene.parts.get(tag.getString("id"));
+            CompoundTag base = part == null ? null : part.pending != null ? part.pending : part.source;
+            if (base != null && !java.util.Arrays.equals(base.getByteArray("light"), tag.getByteArray("light"))) {
+                CompoundTag geometry = base.copy();
+                geometry.putByteArray("light", tag.getByteArray("light"));
+                part.pending = geometry;
+                scene.revision++;
+            }
+        }
         if (tag.contains("frames", Tag.TAG_LIST)) {
             var frames = tag.getList("frames", Tag.TAG_COMPOUND);
             if (frames.size() > 256) throw new IllegalArgumentException("Too many sub-level sections");

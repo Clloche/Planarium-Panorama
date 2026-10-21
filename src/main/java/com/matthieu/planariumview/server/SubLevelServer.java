@@ -26,6 +26,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import org.joml.Matrix4d;
 import org.joml.Vector3d;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -38,15 +39,30 @@ public final class SubLevelServer {
     private static final Map<Key, Scene> SCENES = new HashMap<>();
     private static final Map<ResourceKey<Level>, Miniature> MINIATURES = new HashMap<>();
     private static final Set<UUID> DISABLED = new HashSet<>();
+    /** Interior of a jar, in pocket coordinates (the miniature's capture area). */
+    private static final AABB JAR = new AABB(-1, 0, -1, 33, 34, 33);
+    /**
+     * Saved Sable structures load a little after their chunks: a pocket is declared empty only after this long
+     * without any structure (and rechecked every second meanwhile).
+     */
+    private static final long EMPTY_AFTER = 200;
+    /** Pockets found without structures, with the Ars template version at that time (rechecked when it changes). */
+    private static final Map<ResourceKey<Level>, Long> EMPTY = new HashMap<>();
+    /** Last dimension change (or login) of each player: geometry sent soon after it is repeated (see send). */
+    private static final Map<UUID, Long> DIMENSION_CHANGED = new HashMap<>();
+    private static final long RESEND_WINDOW = 200;
     private static final TicketType<ResourceLocation> MINIATURE_TICKET =
             TicketType.create("planariumview_miniature", ResourceLocation::compareTo);
 
     private static final class Miniature {
         final ServerLevel level;
         final Map<UUID, Long> viewers = new HashMap<>();
+        /** Last tick a structure was seen in this pocket (or the creation tick). */
+        long lastBody;
 
         Miniature(ServerLevel level) {
             this.level = level;
+            this.lastBody = level.getServer().getTickCount();
             // Sable loads saved bodies only when their physical chunks are block ticking.
             // Four overlapping tickets cover the jar and its one-block collision margin.
             for (int x = 0; x <= 1; x++) for (int z = 0; z <= 1; z++) {
@@ -72,6 +88,10 @@ public final class SubLevelServer {
         ServerLevel level;
         ResourceLocation source;
         boolean sent;
+        /** Last poses sent: an identical list is not sent again before a one-second safety resend. */
+        ListTag lastFrames;
+        Matrix4d lastAnchor;
+        long lastFramesAt = Long.MIN_VALUE / 2;
     }
 
     private static final class Part {
@@ -80,6 +100,8 @@ public final class SubLevelServer {
         boolean dirty = true;
         long captured = Long.MIN_VALUE / 2;
         CompoundTag previous;
+        /** previous without its light: block changes and light changes are sent separately. */
+        CompoundTag previousShape;
         Matrix4d capturedPose;
         long resendAt;
         int resends;
@@ -96,6 +118,7 @@ public final class SubLevelServer {
     public static void reset(UUID player) {
         forget(player);
         DISABLED.remove(player);
+        DIMENSION_CHANGED.remove(player);
     }
 
     private static boolean enabled(UUID player) {
@@ -108,6 +131,12 @@ public final class SubLevelServer {
                 || level.getGameTime() % 20 != 0 || !SubLevelCompat.available()) return;
         ServerLevel pocket = level.getServer().getLevel(tile.key);
         if (pocket == null) return;
+        // An empty pocket stays unloaded until Ars updates its template, or a structure shows up in it anyway.
+        Long empty = EMPTY.get(tile.key);
+        if (empty != null) {
+            if (empty == templateVersion(tile.key) && SubLevelCompat.bodies(pocket, JAR).isEmpty()) return;
+            EMPTY.remove(tile.key);
+        }
         var center = SubLevelCompat.worldPosition(level, net.minecraft.world.phys.Vec3.atCenterOf(tile.getBlockPos()));
         long expires = level.getServer().getTickCount() + 60L;
         for (ServerPlayer player : level.players()) {
@@ -132,6 +161,23 @@ public final class SubLevelServer {
                 miniature.close();
                 return true;
             }
+            if (now % 20 == 0) {
+                if (!SubLevelCompat.bodies(miniature.level, JAR).isEmpty()) {
+                    miniature.lastBody = now;
+                } else if (now - miniature.lastBody >= EMPTY_AFTER) {
+                    // No structure in this jar: release the pocket. Clear the viewers' cached copies first.
+                    EMPTY.put(entry.getKey(), templateVersion(entry.getKey()));
+                    for (UUID viewer : miniature.viewers.keySet()) {
+                        SCENES.remove(new Key(viewer, entry.getKey().location(), true));
+                        ServerPlayer player = server.getPlayerList().getPlayer(viewer);
+                        if (player != null && player.connection.hasChannel(SubLevelPayload.TYPE)) {
+                            frames(player, entry.getKey().location(), true, new ListTag(), new Matrix4d(), now);
+                        }
+                    }
+                    miniature.close();
+                    return true;
+                }
+            }
             miniature.level.resetEmptyTime();
             for (UUID viewer : miniature.viewers.keySet()) {
                 ServerPlayer player = server.getPlayerList().getPlayer(viewer);
@@ -140,6 +186,24 @@ public final class SubLevelServer {
             }
             return false;
         });
+    }
+
+    private static long templateVersion(ResourceKey<Level> pocket) {
+        var entry = PlanariumTile.dimManager.entries.get(pocket);
+        return entry == null ? Long.MIN_VALUE : entry.lastUpdated();
+    }
+
+    /** The client is (re)loading a world: packets sent now can be lost, so recent geometry is repeated. */
+    public static void dimensionChanged(UUID player, long tick) {
+        DIMENSION_CHANGED.put(player, tick);
+        for (var entry : SCENES.entrySet()) {
+            if (!entry.getKey().player().equals(player)) continue;
+            for (Part part : entry.getValue().parts.values()) {
+                if (part.previous == null) continue;
+                part.resends = 3;
+                part.resendAt = tick + 20;
+            }
+        }
     }
 
     public static void dirty(ServerLevel source, BlockPos pos) {
@@ -177,6 +241,9 @@ public final class SubLevelServer {
         Set<String> visible = new HashSet<>();
         ListTag frames = new ListTag();
         Set<UUID> pinned = new HashSet<>();
+        // Geometry is sent after the list of visible sections: the client first frees the sections that left
+        // (it holds at most 256), then the new geometry always finds its section. See SubLevelView.receive.
+        java.util.List<Runnable> geometryPackets = new java.util.ArrayList<>();
         for (SubLevelCompat.Body body : SubLevelCompat.bodies(source, area)) {
             if (active) {
                 pinned.add(body.id());
@@ -211,16 +278,26 @@ public final class SubLevelServer {
                         part.captured = now;
                         part.capturedPose = new Matrix4d(body.transform());
                         part.dirty = false;
-                        if (!geometry.equals(part.previous)) {
-                            geometry(player, dimension, miniature, id, geometry);
-                            part.previous = geometry;
-                            part.resends = 3;
+                        CompoundTag shape = geometry.copy();
+                        shape.remove("light");
+                        if (part.previous == null || !shape.equals(part.previousShape)) {
+                            geometryPackets.add(() -> geometry(player, dimension, miniature, id, geometry));
+                            // Repeated only while the client may still be loading a world (see dimensionChanged).
+                            Long changed = DIMENSION_CHANGED.get(player.getUUID());
+                            part.resends = changed != null && now - changed < RESEND_WINDOW ? 3 : 0;
                             part.resendAt = now + 20;
+                        } else if (!Arrays.equals(geometry.getByteArray("light"), part.previous.getByteArray("light"))) {
+                            // Same blocks, new light (a moving structure): only the light table is sent.
+                            byte[] light = geometry.getByteArray("light");
+                            geometryPackets.add(() -> light(player, dimension, miniature, id, light));
                         }
+                        part.previous = geometry;
+                        part.previousShape = shape;
                     }
                     if (part.resends > 0 && now >= part.resendAt) {
                         // The first packet can arrive while the client is still changing dimensions.
-                        geometry(player, dimension, miniature, id, part.previous);
+                        CompoundTag repeated = part.previous;
+                        geometryPackets.add(() -> geometry(player, dimension, miniature, id, repeated));
                         part.resends--;
                         part.resendAt = now + 20;
                     }
@@ -239,10 +316,19 @@ public final class SubLevelServer {
         scene.parts.keySet().retainAll(visible);
         // A returning viewer can still have a cached miniature after its server scene expired.
         // Repeat empty snapshots once per second, also covering packets lost during a dimension change.
-        if (!scene.sent && frames.isEmpty() && now % 20 != 0 && (miniature || anchor.equals(new Matrix4d().translation(
-                anchor.m30(), anchor.m31(), anchor.m32())))) return;
-        frames(player, dimension, miniature, frames, anchor, now);
-        scene.sent = !frames.isEmpty();
+        boolean quiet = !scene.sent && frames.isEmpty() && now % 20 != 0 && (miniature || anchor.equals(new Matrix4d().translation(
+                anchor.m30(), anchor.m31(), anchor.m32())));
+        // Nothing moved: the client already has this complete list. Resent once per second in case one was lost.
+        boolean unchanged = frames.equals(scene.lastFrames) && anchor.equals(scene.lastAnchor) && now - scene.lastFramesAt < 20;
+        if (!quiet && !unchanged) {
+            frames(player, dimension, miniature, frames, anchor, now);
+            scene.sent = !frames.isEmpty();
+            scene.lastFrames = frames;
+            scene.lastAnchor = new Matrix4d(anchor);
+            scene.lastFramesAt = now;
+        }
+        // A skipped list means the client already knows every visible section, including those in these packets.
+        geometryPackets.forEach(Runnable::run);
     }
 
     private static void frames(ServerPlayer player, ResourceLocation dimension, boolean miniature, ListTag frames,
@@ -258,6 +344,13 @@ public final class SubLevelServer {
         CompoundTag packet = new CompoundTag();
         packet.putString("id", id);
         packet.put("geometry", geometry);
+        PacketDistributor.sendToPlayer(player, new SubLevelPayload(dimension, miniature, packet));
+    }
+
+    private static void light(ServerPlayer player, ResourceLocation dimension, boolean miniature, String id, byte[] light) {
+        CompoundTag packet = new CompoundTag();
+        packet.putString("id", id);
+        packet.putByteArray("light", light);
         PacketDistributor.sendToPlayer(player, new SubLevelPayload(dimension, miniature, packet));
     }
 
@@ -328,5 +421,7 @@ public final class SubLevelServer {
         MINIATURES.values().forEach(Miniature::close);
         MINIATURES.clear();
         DISABLED.clear();
+        EMPTY.clear();
+        DIMENSION_CHANGED.clear();
     }
 }
