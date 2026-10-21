@@ -1330,7 +1330,7 @@ public final class ClientView {
         }
         Set<BlockState> newStates = new HashSet<>();
 
-        // 1. Faux monde : tous les nouveaux etats d'abord, pour que les formes s'ajustent avec les bons voisins.
+        // 1. Faux monde : les etats captures avant de preparer les blocs speciaux et le rendu.
         for (Map.Entry<BlockPos, BlockChange> entry : patch.entrySet()) {
             if (entry.getValue().state() == null) {
                 lit.positions.remove(entry.getKey());
@@ -1341,18 +1341,11 @@ public final class ClientView {
         for (Map.Entry<BlockPos, BlockChange> entry : patch.entrySet()) {
             BlockPos pos = entry.getKey();
             BlockChange change = entry.getValue();
-            BlockState adjusted = change.state();
-            if (adjusted != null) {
-                try {
-                    adjusted = net.minecraft.world.level.block.Block.updateFromNeighbourShapes(adjusted, lit, pos);
-                    lit.setBlock(pos, adjusted, 0);
-                } catch (Exception e) {
-                    LOGGER.debug("[Planarium View] Forme de bloc non ajustee", e);
-                }
-            }
-            placeBlockEntity(lit, pos, adjusted, change.nbt());
+            // Meme conservation que dans PlanariumRenderingWorldMixin, y compris apres plantation ou croissance.
+            BlockState captured = change.state();
+            placeBlockEntity(lit, pos, captured, change.nbt());
             if (lit.blockEntityMap.containsKey(pos)) blockEntitiesChanged = true;
-            if (adjusted != null) newStates.add(adjusted);
+            if (captured != null) newStates.add(captured);
 
             // 2. Blocs a dessiner (memes filtres que la construction complete).
             boolean kept = !pos.equals(planarium) && !pos.equals(above) && (view < 0 || view >= radius
