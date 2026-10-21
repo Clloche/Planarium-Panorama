@@ -89,9 +89,18 @@ public final class SubLevelView {
             revision++;
             if (geometry == null) return;
             int[] origin = geometry.getIntArray("origin");
+            Part changed = null;
             for (Part part : parts.values()) {
                 CompoundTag tag = part.pending != null ? part.pending : part.source;
-                if (tag != null && SubLevelLighting.neighbors(origin, tag.getIntArray("origin"))) {
+                if (tag != null && Arrays.equals(origin, tag.getIntArray("origin"))) {
+                    changed = part;
+                    break;
+                }
+            }
+            for (Part part : parts.values()) {
+                CompoundTag tag = part.pending != null ? part.pending : part.source;
+                if (tag != null && (SubLevelLighting.neighbors(origin, tag.getIntArray("origin"))
+                        || changed != null && SubLevelLighting.nearby(part.pose.to, changed.pose.to))) {
                     part.revision = revision;
                 }
             }
@@ -112,6 +121,19 @@ public final class SubLevelView {
             lighting = Map.copyOf(next);
             lightingRevision = revision;
             return lighting;
+        }
+
+        SubLevelLighting.Projected projected(Part own) {
+            lighting();
+            List<SubLevelLighting.Frame> frames = new ArrayList<>();
+            for (Part part : parts.values()) {
+                if (part.colorData != null && part.pose.to != null) {
+                    frames.add(new SubLevelLighting.Frame(part.colorData, new Matrix4d(part.pose.to)));
+                }
+            }
+            int[] origin = own.source.getIntArray("origin");
+            return SubLevelLighting.project(own.source.getByteArray("light"),
+                    new BlockPos(origin[0], origin[1], origin[2]), own.pose.to, frames);
         }
     }
 
@@ -144,7 +166,7 @@ public final class SubLevelView {
             prepare();
             if ((mesh == null || mesh.generation != generation) && source != null) {
                 try {
-                    Mesh replacement = new Mesh(source, null, null, null, scene.lighting(), generation, mesh);
+                    Mesh replacement = new Mesh(source, null, null, null, scene.lighting(), scene.projected(this), generation, mesh);
                     if (mesh != null) mesh.close(mesh.data.fakeRenderingWorld != replacement.data.fakeRenderingWorld);
                     mesh = replacement;
                 } catch (RuntimeException e) {
@@ -174,7 +196,7 @@ public final class SubLevelView {
             try {
                 // Give this jar's ambient light to the complete pocket, then sample it in the moving section's frame.
                 MiniOutsideLight.apply(pocket, tile.getLevel(), tile.getBlockPos());
-                Mesh replacement = new Mesh(source, tile, pocket, lightPose, scene.lighting(), generation,
+                Mesh replacement = new Mesh(source, tile, pocket, lightPose, scene.lighting(), scene.projected(this), generation,
                         cached == null ? null : cached.mesh);
                 if (cached != null) cached.mesh.close(cached.mesh.data.fakeRenderingWorld != replacement.data.fakeRenderingWorld);
                 minis.put(key, new MiniMesh(replacement, pocket, environment, lightPose, now));
@@ -414,7 +436,8 @@ public final class SubLevelView {
         final Map<RenderType, MeshData.SortState> sorting = new HashMap<>();
 
         Mesh(CompoundTag tag, PlanariumTile tile, StructureRenderData pocket, Matrix4d lightPose,
-             Map<Long, SubLevelLighting.Section> surrounding, long generation, Mesh previous) {
+             Map<Long, SubLevelLighting.Section> surrounding, SubLevelLighting.Projected projected,
+             long generation, Mesh previous) {
             this.generation = generation;
             this.geometry = tag;
             particleScale = tile == null ? ClientView.GIANT : ClientView.ARS_SCALE;
@@ -442,7 +465,7 @@ public final class SubLevelView {
             world.positions.clear();
             for (CulledStatePos state : neighbors) world.positions.put(state.pos, state.state);
             if (Config.realLighting()) {
-                byte[] light = tag.getByteArray("light");
+                byte[] light = projected.light;
                 if (tile != null && pocket != null && pocket.fakeRenderingWorld instanceof LitRenderingWorld fullPocket) {
                     light = miniatureLight(light, fullPocket, lightPose);
                 }
@@ -460,7 +483,7 @@ public final class SubLevelView {
             try {
                 int[] origin = tag.getIntArray("origin");
                 ColorCompat.begin(origin.length == 3 ? new SubLevelLighting(world,
-                        new BlockPos(origin[0], origin[1], origin[2]), surrounding) : world);
+                        new BlockPos(origin[0], origin[1], origin[2]), surrounding, projected) : world);
                 colors = ColorCompat.capture();
                 for (BlockEntity entity : world.blockEntityMap.values()) {
                     BlockPos pos = entity.getBlockPos();

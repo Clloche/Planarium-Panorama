@@ -2,10 +2,15 @@ package com.matthieu.planariumview.client.scenery;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.core.BlockPos;
+import org.joml.Matrix4d;
+import java.util.Arrays;
+import java.util.List;
 
 /** Checks that lighting invalidation stays local and preserves unchanged machines. */
 public final class SubLevelLightingChecks {
     public static void run() {
+        lightCrossesPhysicalSublevels();
         int[] origin = {20_481_024, 128, 20_483_072};
         for (int x = -16; x <= 16; x += 16) for (int y = -16; y <= 16; y += 16)
             for (int z = -16; z <= 16; z += 16) {
@@ -44,6 +49,36 @@ public final class SubLevelLightingChecks {
         check(!SubLevelLighting.sameContents(original, changedMachine), "Changed machine settings must still be applied");
         relit.getList("palette", 10).getCompound(0).putString("Name", "aeronautics:adjustable_burner");
         check(!SubLevelLighting.sameContents(original, relit), "Changed blocks require a new fake world");
+    }
+
+    private static void lightCrossesPhysicalSublevels() {
+        BlockPos enginePlot = new BlockPos(20_481_024, 128, 20_485_120);
+        BlockPos burnerPlot = new BlockPos(20_481_024, 112, 20_483_072);
+        byte[] engineLight = new byte[18 * 18 * 18];
+        Arrays.fill(engineLight, (byte) 0x70);
+        byte[] burnerLight = new byte[engineLight.length];
+        Arrays.fill(burnerLight, (byte) 0xFD);
+        var burner = new SubLevelLighting.Section(burnerPlot, burnerLight);
+        Matrix4d ship = new Matrix4d().translation(-1740, 82, 106).rotateXYZ(.1, .8, -.1);
+        Matrix4d engine = new Matrix4d(ship).translate(5, 11, -1);
+        int motor = ((7 + 1) * 18 + 1) * 18 + 8 + 1;
+        var projected = SubLevelLighting.project(engineLight, enginePlot, engine,
+                List.of(new SubLevelLighting.Frame(burner, ship)));
+        check((projected.light[motor] & 255) == 0x7D,
+                "Nearby physical sublevels share block light without replacing the engine's sky occlusion");
+        check((engineLight[motor] & 255) == 0x70, "Projection must not mutate the received light snapshot");
+        var rotated = SubLevelLighting.project(engineLight, enginePlot,
+                new Matrix4d(ship).translate(5, 11, 15).rotateY(Math.PI / 2),
+                List.of(new SubLevelLighting.Frame(burner, ship)));
+        check((rotated.light[motor] & 255) == 0x7D,
+                "A child sublevel rotated on its bearing must sample light in the parent's frame");
+        var far = SubLevelLighting.project(engineLight, enginePlot, engine,
+                List.of(new SubLevelLighting.Frame(burner, new Matrix4d(ship).translate(100, 0, 0))));
+        check((far.light[motor] & 255) == 0x70, "A distant ship must not illuminate the engine");
+        Arrays.fill(engineLight, (byte) 0x7F);
+        projected = SubLevelLighting.project(engineLight, enginePlot, engine,
+                List.of(new SubLevelLighting.Frame(burner, ship)));
+        check((projected.light[motor] & 255) == 0x7F, "A stronger light on the engine must be preserved");
     }
 
     private static void check(boolean condition, String message) {

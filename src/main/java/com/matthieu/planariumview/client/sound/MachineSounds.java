@@ -64,20 +64,21 @@ public final class MachineSounds {
 
     private MachineSounds() {}
 
-    public static void tick(LitRenderingWorld scenery, int radius, BlockPos origin) {
+    public static void tick(LitRenderingWorld scenery, int radius, BlockPos origin, boolean inJar) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || !Config.enabled()) { clear(); return; }
         if (mc.isPaused()) return;
         if (level != mc.level) { clear(); level = mc.level; }
         ticks++;
-        audible = scenery != null && Config.sceneryAmbience();
+        audible = inJar && Config.sceneryAmbience();
         GROUPS.clear(); DESIRED.clear(); ACTIVE.clear();
         readCreateOptions();
         CreateCopies.beginTick();
         if (scenery != null) {
             world(scenery, SubLevelView.sourceFrame(origin, radius));
-            SubLevelView.soundWorlds(MachineSounds::world);
         }
+        // The flight terrain replaces the stationary snapshot, but moving Sable copies remain visible and audible.
+        if (inJar) SubLevelView.soundWorlds(MachineSounds::world);
         CreateCopies.tickVisible();
         for (var entry : GROUPS.entrySet()) {
             Group group = entry.getValue();

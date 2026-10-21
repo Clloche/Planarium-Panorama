@@ -637,10 +637,10 @@ public final class ClientView {
         Minecraft mc = Minecraft.getInstance();
         // Cascades du decor avec les sons de Dynamic Surroundings (integration DS et sons d'ambiance du decor).
         // En vol, le decor normal est cache (voir FlightView) : pas de sons, flaques ni particules a son ancienne place.
-        boolean inJar = mc.level != null && currentDim != null && mc.level.dimension().location().equals(currentDim)
-                && !FlightView.active();
+        boolean insideJar = mc.level != null && currentDim != null && mc.level.dimension().location().equals(currentDim);
+        boolean inJar = insideJar && !FlightView.active();
         com.matthieu.planariumview.client.sound.MachineSounds.tick(inJar ? sceneryWorld() : null, currentRadius,
-                lastInfo == null ? null : lastInfo.origin());
+                lastInfo == null ? null : lastInfo.origin(), insideJar);
         CopyParticles.tick();
         if (!mc.isPaused()) {
             PuddlesCompat.tick(inJar && Config.enabled() ? sceneryWorld() : null, lastInfo);
