@@ -25,6 +25,8 @@ public final class SubLevelCompat {
     private static Object visitorTicket;
     private static Method addTicket, removeTicket, allTickets, infoTickets, ticketType, ticketKey;
     private static Method trackingPlayers;
+    private static Method byId, holdingMap, snatch, trackingData, trackingPoints, pointBody, pointPointer;
+    private static Method generatePoint, getPoint, setPoint, removePoint, pointPosition;
 
     public record Body(Object handle, UUID id, Matrix4d transform, AABB bounds, BlockPos min, BlockPos max,
                        List<LevelChunk> chunks) {
@@ -75,6 +77,22 @@ public final class SubLevelCompat {
                 Class<?> ticket = Class.forName("dev.ryanhcode.sable.api.sublevel.ticket.SubLevelLoadingTicket");
                 ticketType = ticket.getMethod("type");
                 ticketKey = ticket.getMethod("key");
+                byId = containers.getMethod("getSubLevel", UUID.class);
+                holdingMap = server.getMethod("getHoldingChunkMap");
+                Class<?> pointer = Class.forName("dev.ryanhcode.sable.sublevel.storage.holding.GlobalSavedSubLevelPointer");
+                snatch = Class.forName("dev.ryanhcode.sable.sublevel.storage.holding.SubLevelHoldingChunkMap")
+                        .getMethod("snatchAndLoad", pointer, UUID.class);
+                Class<?> points = Class.forName("dev.ryanhcode.sable.sublevel.tracking_points.SubLevelTrackingPointSavedData");
+                Class<?> point = Class.forName("dev.ryanhcode.sable.sublevel.tracking_points.TrackingPoint");
+                trackingData = points.getMethod("getOrLoad", net.minecraft.server.level.ServerLevel.class);
+                trackingPoints = points.getMethod("getAllTrackingPoints");
+                pointBody = point.getMethod("subLevelID");
+                pointPointer = point.getMethod("lastSavedSubLevelPointer");
+                pointPosition = point.getMethod("point");
+                generatePoint = points.getMethod("generateTrackingPoint", Vec3.class, serverBody);
+                getPoint = points.getMethod("getTrackingPoint", UUID.class);
+                setPoint = points.getMethod("setTrackingPoint", UUID.class, point);
+                removePoint = points.getMethod("removeTrackingPoint", UUID.class);
                 available = true;
                 LOGGER.info("[Planarium Panorama] Sable sub-level support enabled");
             } catch (ClassNotFoundException e) {
@@ -134,12 +152,102 @@ public final class SubLevelCompat {
     }
 
     public static void pin(net.minecraft.server.level.ServerLevel level, Object body, UUID player, boolean active) {
+        pin(level, body, player.toString(), active);
+    }
+
+    private static void pin(net.minecraft.server.level.ServerLevel level, Object body, String key, boolean active) {
         if (active ? !available() : removeTicket == null) return;
         try {
             Object owner = container.invoke(null, level);
-            if (owner != null) (active ? addTicket : removeTicket).invoke(owner, body, visitorTicket, player.toString());
+            if (owner != null) (active ? addTicket : removeTicket).invoke(owner, body, visitorTicket, key);
         } catch (ReflectiveOperationException | LinkageError e) {
             disable(e);
+        }
+    }
+
+    /** Restore by UUID, never by a possibly reused plot number. Sable keeps these pointers current when saving. */
+    public static boolean restore(net.minecraft.server.level.ServerLevel level, UUID id) {
+        if (!available()) return false;
+        try {
+            Object owner = container.invoke(null, level);
+            if (owner == null) return false;
+            if (byId.invoke(owner, id) != null) return true;
+            Object data = trackingData.invoke(null, level);
+            for (Object item : (Iterable<?>) trackingPoints.invoke(data)) {
+                Object point = ((java.util.Map.Entry<?, ?>) item).getValue();
+                if (!id.equals(pointBody.invoke(point))) continue;
+                Object pointer = pointPointer.invoke(point);
+                if (pointer == null) continue;
+                // snatchAndLoad also restores connected parts, through Sable's normal storage path.
+                snatch.invoke(holdingMap.invoke(owner), pointer, id);
+                if (byId.invoke(owner, id) != null) return true;
+            }
+            return false;
+        } catch (ReflectiveOperationException | LinkageError e) {
+            disable(e);
+            return false;
+        }
+    }
+
+    /** A separate ticket keeps the entry vessel available even when copies or exterior sounds are disabled. */
+    public static Object holdAnchor(net.minecraft.server.level.ServerLevel level, BlockPos pos, UUID player,
+                                    Object previous) {
+        if (!available()) return previous;
+        try {
+            Object owner = container.invoke(null, level);
+            Object storage = owner == null ? null : containing.invoke(owner, new net.minecraft.world.level.ChunkPos(pos));
+            Object body = storage == null ? null : storage.getClass().getMethod("getSubLevel").invoke(storage);
+            if (body == previous) return body;
+            releaseAnchor(level, player, previous);
+            if (body != null) {
+                pin(level, body, player + "/anchor", true);
+                // One private point per player/dimension; never overwrite Sable's own player login point.
+                Object data = trackingData.invoke(null, level);
+                UUID key = UUID.nameUUIDFromBytes(("planariumview:anchor:" + player)
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                Object current = getPoint.invoke(data, key);
+                org.joml.Vector3d at = new org.joml.Vector3d(pos.getX(), pos.getY(), pos.getZ());
+                if (current == null || !uniqueId.invoke(body).equals(pointBody.invoke(current))
+                        || !at.equals(pointPosition.invoke(current))) {
+                    UUID temporary = (UUID) generatePoint.invoke(data, Vec3.atLowerCornerOf(pos), body);
+                    setPoint.invoke(data, key, getPoint.invoke(data, temporary));
+                    removePoint.invoke(data, temporary);
+                }
+            }
+            return body;
+        } catch (ReflectiveOperationException | LinkageError e) {
+            disable(e);
+            return previous;
+        }
+    }
+
+    public static void releaseAnchor(net.minecraft.server.level.ServerLevel level, UUID player, Object body) {
+        if (body != null) pin(level, body, player + "/anchor", false);
+    }
+
+    /** Search only the saved entry's vessel, so identical pocket names on other vessels cannot steal the view. */
+    public static BlockPos findPlanarium(net.minecraft.server.level.ServerLevel level,
+                                         net.minecraft.resources.ResourceKey<Level> pocket,
+                                         BlockPos near, UUID id, double maxDistance) {
+        if (!restore(level, id)) return null;
+        try {
+            Object body = byId.invoke(container.invoke(null, level), id);
+            Object storage = plot.invoke(body);
+            BlockPos best = null;
+            double distance = maxDistance * maxDistance;
+            for (Object holder : (Collection<?>) loadedChunks.invoke(storage)) {
+                for (var entity : ((LevelChunk) chunk.invoke(holder)).getBlockEntities().values()) {
+                    if (entity instanceof com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile tile
+                            && pocket.equals(tile.key) && tile.getBlockPos().distSqr(near) < distance) {
+                        distance = tile.getBlockPos().distSqr(near);
+                        best = tile.getBlockPos().immutable();
+                    }
+                }
+            }
+            return best;
+        } catch (ReflectiveOperationException | LinkageError e) {
+            disable(e);
+            return null;
         }
     }
 

@@ -94,6 +94,7 @@ public final class ServerView {
         /** Prochaine recherche permise du Planarium quand il n'est plus a sa place (voir updateAnchor). */
         long nextSearch;
         org.joml.Matrix4d anchor;
+        Object anchorBody;
         BlockPos center;
         ChunkPos ticketCenter;
         BlockPos capturedCenter;
@@ -1018,6 +1019,15 @@ public final class ServerView {
      * memorisee par Ars Nouveau (JarDimData.enteredFrom).
      */
     private static GlobalPos findPlanarium(ServerPlayer player, ServerLevel pocket) {
+        var entry = com.matthieu.planariumview.compat.ArsSableCompat.entry(pocket, player.getUUID());
+        if (entry != null && entry.body() != null) {
+            ServerLevel source = player.server.getLevel(entry.position().dimension());
+            if (source == null) return null;
+            BlockPos found = com.matthieu.planariumview.compat.SubLevelCompat.findPlanarium(source,
+                    pocket.dimension(), entry.position().pos(), entry.body(), SEARCH_RADIUS);
+            // A known vessel may still be loading. Never substitute another Planarium near the stale world position.
+            return found == null ? null : GlobalPos.of(source.dimension(), found);
+        }
         JarDimData.RotPos from = JarDimData.from(pocket).getEnteredFrom(player.getUUID());
         if (from == null) {
             return null;
@@ -1026,7 +1036,11 @@ public final class ServerView {
         if (sourceLevel == null) {
             return null;
         }
-        BlockPos center = from.pos().pos();
+        if (entry != null) {
+            sourceLevel = player.server.getLevel(entry.position().dimension());
+            if (sourceLevel == null) return null;
+        }
+        BlockPos center = entry == null ? from.pos().pos() : entry.position().pos();
         BlockPos best = null;
         double bestDist = Double.MAX_VALUE;
         for (BlockPos pos : BlockPos.betweenClosed(
@@ -1502,6 +1516,8 @@ public final class ServerView {
             track.source = GlobalPos.of(source.dimension(), found);
         }
         org.joml.Matrix4d anchor = com.matthieu.planariumview.compat.SubLevelCompat.anchor(source, track.source.pos());
+        track.anchorBody = com.matthieu.planariumview.compat.SubLevelCompat.holdAnchor(source, track.source.pos(),
+                track.owner, track.anchorBody);
         BlockPos center = BlockPos.containing(anchor.m30(), anchor.m31(), anchor.m32());
         // Pas de capture complete a chaque bloc parcouru : le client recale l'ancienne photo autour du bocal
         // (SubLevelView.terrain), et update() refait une capture quand le centre s'est assez eloigne de celui capture.
@@ -1519,6 +1535,7 @@ public final class ServerView {
 
     @SubscribeEvent
     public static void onServerStopping(net.neoforged.neoforge.event.server.ServerStoppingEvent event) {
+        for (UUID id : new ArrayList<>(TRACKS.keySet())) removeTrack(event.getServer(), id);
         SubLevelServer.clear();
         FarRingServer.clearAll();
         FlightServer.clearAll();
@@ -1595,11 +1612,12 @@ public final class ServerView {
         FarRingServer.forget(server, id);
         FlightServer.forget(id);
         Track track = TRACKS.remove(id);
-        if (track == null || track.ticketChunks < 0) {
+        if (track == null) {
             return;
         }
         ServerLevel source = server.getLevel(track.source.dimension());
         if (source != null) {
+            com.matthieu.planariumview.compat.SubLevelCompat.releaseAnchor(source, id, track.anchorBody);
             releaseTickets(source, track);
         }
         track.ticketChunks = -1;

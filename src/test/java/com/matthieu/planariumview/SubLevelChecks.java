@@ -28,6 +28,8 @@ public final class SubLevelChecks {
         particlesKeepTheirMovingFrame();
         com.matthieu.planariumview.client.scenery.SubLevelLightingChecks.run();
         check(!SubLevelCompat.available(), "Sable must remain optional on the test classpath");
+        check(com.matthieu.planariumview.compat.ArsSableCompat.entry(null, java.util.UUID.randomUUID()) == null,
+                "Entry restoration must remain optional without Ars Sable");
         System.out.println("Sub-level checks passed: distant plots, rotation, bounds, malformed matrices, compressed protocol, projected colors, viewer preference, particle frames, optional dependency");
     }
 
