@@ -79,12 +79,19 @@ public final class FarRing {
     private static Map<Long, Map<RenderType, VertexBuffer>> building = new HashMap<>();
     /** Vrai pendant un rafraichissement : les nouvelles sections vont dans {@code building}, sinon directement. */
     private static boolean replacing;
+    /**
+     * Rayon du dernier anneau recu pour ce bocal, garde quand l'anneau est cache (vaisseau qui bouge) : la distance de
+     * dessin du jeu reste la meme (voir ClientView.sceneryDepthFar). La changer a chaque apparition de l'anneau
+     * provoquait une saccade.
+     */
+    static int knownRadius;
     private static final Map<RenderType, ByteBufferBuilder> builders = new IdentityHashMap<>();
 
     private FarRing() {
     }
 
     public static void receive(FarRingPayload payload) {
+        knownRadius = payload.isClear() ? 0 : payload.far();
         boolean sameArea = world != null && !payload.isClear() && payload.pocketDim().equals(pocket)
                 && payload.center().equals(center) && payload.near() == near && payload.far() == far
                 && payload.height() == height;
@@ -100,7 +107,10 @@ public final class FarRing {
             return;
         }
         try {
+            long start = System.nanoTime();
             load(payload);
+            LOGGER.info("[Planarium Panorama] Anneau lointain recu : {} blocs, lecture {} ms", payload.data().blocks().length,
+                    (System.nanoTime() - start) / 1_000_000L);
         } catch (RuntimeException e) {
             LOGGER.warn("[Planarium Panorama] Anneau lointain illisible", e);
             clear();
@@ -112,53 +122,10 @@ public final class FarRing {
         if (mc.level == null) {
             return;
         }
-        FarRingPayload.Data data = payload.data();
-        int[] paletteIds = data.palette();
-        BlockState[] palette = new BlockState[paletteIds.length];
-        for (int i = 0; i < palette.length; i++) {
-            palette[i] = net.minecraft.world.level.block.Block.stateById(paletteIds[i]);
-        }
-        int[] blocks = data.blocks();
-        int[] info = data.info();
-        int[] lightPos = data.lightPos();
-        byte[] light = data.light();
-        if (blocks.length != info.length || lightPos.length != light.length) {
-            throw new IllegalArgumentException("Tailles incoherentes");
-        }
-        FarWorld next = new FarWorld(payload.far(), payload.height(), payload.center());
         Map<Long, List<BlockPos>> bySection = new HashMap<>();
-        Direction[] directions = Direction.values();
-        for (int i = 0; i < blocks.length; i++) {
-            int packed = blocks[i];
-            int paletteId = info[i] & 0xFFFF;
-            if (paletteId >= palette.length) continue;
-            BlockPos pos = new BlockPos(FarRingPayload.unpackX(packed), FarRingPayload.unpackY(packed), FarRingPayload.unpackZ(packed));
-            long key = pos.asLong();
-            next.states.put(key, palette[paletteId]);
-            int solid = info[i] >>> 16 & 0x3F;
-            int water = info[i] >>> 22 & 0x3F;
-            for (Direction direction : directions) {
-                int bit = 1 << direction.get3DDataValue();
-                if ((solid & bit) != 0) {
-                    next.solid.add(pos.relative(direction).asLong());
-                } else if ((water & bit) != 0) {
-                    next.water.add(pos.relative(direction).asLong());
-                }
-            }
-            bySection.computeIfAbsent(BlockPos.asLong(pos.getX() >> 4, pos.getY() >> 4, pos.getZ() >> 4),
-                    ignored -> new ArrayList<>()).add(pos);
-        }
-        for (int i = 0; i < lightPos.length; i++) {
-            int packed = lightPos[i];
-            next.light.put(BlockPos.asLong(FarRingPayload.unpackX(packed), FarRingPayload.unpackY(packed),
-                    FarRingPayload.unpackZ(packed)), light[i]);
-        }
-        var biomeRegistry = mc.level.registryAccess().registryOrThrow(Registries.BIOME);
-        List<Holder<Biome>> biomes = new ArrayList<>();
-        for (ResourceLocation id : data.biomePalette()) {
-            biomes.add(biomeRegistry.getHolder(ResourceKey.create(Registries.BIOME, id)).orElse(null));
-        }
-        next.setBiomes(biomes, data.biomes(), data.quarts());
+        FarWorld next = fill(FarWorld.ring(payload.far(), payload.height(), payload.center()), payload.data(),
+                pos -> bySection.computeIfAbsent(BlockPos.asLong(pos.getX() >> 4, pos.getY() >> 4, pos.getZ() >> 4),
+                        ignored -> new ArrayList<>()).add(pos));
 
         pocket = payload.pocketDim();
         center = payload.center();
@@ -177,6 +144,56 @@ public final class FarRing {
         if (!replacing) {
             ClientView.farRingArrived();
         }
+    }
+
+    /** Remplit {@code next} avec des blocs visibles recus ; {@code sink} recoit la position locale de chaque bloc. */
+    static FarWorld fill(FarWorld next, FarRingPayload.Data data, java.util.function.Consumer<BlockPos> sink) {
+        Minecraft mc = Minecraft.getInstance();
+        int[] paletteIds = data.palette();
+        BlockState[] palette = new BlockState[paletteIds.length];
+        for (int i = 0; i < palette.length; i++) {
+            palette[i] = net.minecraft.world.level.block.Block.stateById(paletteIds[i]);
+        }
+        int[] blocks = data.blocks();
+        int[] info = data.info();
+        int[] lightPos = data.lightPos();
+        byte[] light = data.light();
+        if (blocks.length != info.length || lightPos.length != light.length) {
+            throw new IllegalArgumentException("Tailles incoherentes");
+        }
+        Direction[] directions = Direction.values();
+        for (int i = 0; i < blocks.length; i++) {
+            int packed = blocks[i];
+            int paletteId = info[i] & 0xFFFF;
+            if (paletteId >= palette.length) continue;
+            BlockPos pos = new BlockPos(FarRingPayload.unpackX(packed), FarRingPayload.unpackY(packed), FarRingPayload.unpackZ(packed));
+            next.states.put(pos.asLong(), palette[paletteId]);
+            int solid = info[i] >>> 16 & 0x3F;
+            int water = info[i] >>> 22 & 0x3F;
+            for (Direction direction : directions) {
+                int bit = 1 << direction.get3DDataValue();
+                if ((solid & bit) != 0) {
+                    next.solid.add(pos.relative(direction).asLong());
+                } else if ((water & bit) != 0) {
+                    next.water.add(pos.relative(direction).asLong());
+                }
+            }
+            sink.accept(pos);
+        }
+        for (int i = 0; i < lightPos.length; i++) {
+            int packed = lightPos[i];
+            next.light.put(BlockPos.asLong(FarRingPayload.unpackX(packed), FarRingPayload.unpackY(packed),
+                    FarRingPayload.unpackZ(packed)), light[i]);
+        }
+        if (mc.level != null) {
+            var biomeRegistry = mc.level.registryAccess().registryOrThrow(Registries.BIOME);
+            List<Holder<Biome>> biomes = new ArrayList<>();
+            for (ResourceLocation id : data.biomePalette()) {
+                biomes.add(biomeRegistry.getHolder(ResourceKey.create(Registries.BIOME, id)).orElse(null));
+            }
+            next.setBiomes(biomes, data.biomes(), data.quarts());
+        }
+        return next;
     }
 
     /**
@@ -248,7 +265,12 @@ public final class FarRing {
             List<BlockPos> blocks = pendingBlocks.get(key);
             if (blocks == null) continue;
             try {
+                long sectionStart = System.nanoTime();
                 Map<RenderType, VertexBuffer> built = build(blocks, camera);
+                long sectionMs = (System.nanoTime() - sectionStart) / 1_000_000L;
+                if (sectionMs > 50) {
+                    LOGGER.info("[Planarium Panorama] Section lente de l'anneau lointain : {} blocs, {} ms", blocks.size(), sectionMs);
+                }
                 Map<RenderType, VertexBuffer> old = (replacing ? building : sections).put(key, built);
                 if (old != null) old.values().forEach(VertexBuffer::close);
             } catch (RuntimeException e) {
@@ -286,6 +308,14 @@ public final class FarRing {
     }
 
     private static Map<RenderType, VertexBuffer> build(List<BlockPos> blocks, Vec3 camera) {
+        return build(world, blocks, far, height, far, camera);
+    }
+
+    /**
+     * Construit les blocs {@code blocks} de {@code world}, places a (position locale - decalage) du Planarium, a
+     * l'echelle du decor geant (comme le decor proche). Aussi pour les sections du decor en vol (FlightView).
+     */
+    static Map<RenderType, VertexBuffer> build(FarWorld world, List<BlockPos> blocks, int offX, int offY, int offZ, Vec3 camera) {
         Map<RenderType, BufferBuilder> buffers = new IdentityHashMap<>();
         BlockRenderDispatcher dispatcher = Minecraft.getInstance().getBlockRenderer();
         ModelBlockRenderer modelRenderer = dispatcher.getModelRenderer();
@@ -303,7 +333,7 @@ public final class FarRing {
                     matrix.translate(-ClientView.ARS_OFFSET * giant, -ClientView.ARS_OFFSET * giant - ClientView.Y_SHIFT,
                             -ClientView.ARS_OFFSET * giant);
                     matrix.scale(giant, giant, giant);
-                    matrix.translate(pos.getX() - far, pos.getY() - height, pos.getZ() - far);
+                    matrix.translate(pos.getX() - offX, pos.getY() - offY, pos.getZ() - offZ);
                     if (!fluid.isEmpty()) {
                         RenderType fluidType = ItemBlockRenderTypes.getRenderLayer(fluid);
                         BufferBuilder builder = buffers.computeIfAbsent(fluidType,
@@ -365,18 +395,26 @@ public final class FarRing {
         /** Eau qui n'est pas envoyee (sous la surface, autour des algues et des blocs waterlogged). */
         final LongOpenHashSet water = new LongOpenHashSet();
         final Long2ByteOpenHashMap light = new Long2ByteOpenHashMap();
-        private final int far;
-        private final int height;
-        private final BlockPos center;
+        /** Position dans le monde de la case locale 0, 0, 0. */
+        private final BlockPos origin;
+        /** Cases inconnues au-dessus de cette hauteur locale : le ciel. */
+        private final int skyAbove;
+        /** Decalage entre les positions locales et la grille des biomes. */
+        private final int biomeShift;
         private List<Holder<Biome>> biomes = List.of();
         private byte[] biomeGrid = new byte[0];
         private int quarts;
         private final Map<ColorResolver, int[]> tints = new IdentityHashMap<>();
 
-        FarWorld(int far, int height, BlockPos center) {
-            this.far = far;
-            this.height = height;
-            this.center = center;
+        /** Monde de l'anneau : la boite autour du Planarium. */
+        static FarWorld ring(int far, int height, BlockPos center) {
+            return new FarWorld(center.offset(-far, -height, -far), 2 * height, 0);
+        }
+
+        FarWorld(BlockPos origin, int skyAbove, int biomeShift) {
+            this.origin = origin;
+            this.skyAbove = skyAbove;
+            this.biomeShift = biomeShift;
             light.defaultReturnValue((byte) -1);
         }
 
@@ -397,7 +435,7 @@ public final class FarRing {
         }
 
         BlockPos worldPos(BlockPos pos) {
-            return center.offset(pos.getX() - far, pos.getY() - height, pos.getZ() - far);
+            return origin.offset(pos.getX(), pos.getY(), pos.getZ());
         }
 
         @Override
@@ -428,7 +466,7 @@ public final class FarRing {
             byte value = light.get(pos.asLong());
             if (value == -1) {
                 // Case inconnue : le ciel au-dessus de la boite, l'obscurite dedans (sous le sol).
-                return layer == LightLayer.SKY && pos.getY() > 2 * height ? 15 : 0;
+                return layer == LightLayer.SKY && pos.getY() > skyAbove ? 15 : 0;
             }
             return layer == LightLayer.SKY ? (value >> 4) & 15 : value & 15;
         }
@@ -457,8 +495,8 @@ public final class FarRing {
             }
             int[] colors = tints.computeIfAbsent(resolver, this::quartColors);
             // Melange entre les centres des colonnes de 4 x 4 blocs (sans lui, l'herbe changerait de couleur par carres).
-            float fx = Math.max(0, Math.min(quarts - 1, (pos.getX() - 2) / 4.0F));
-            float fz = Math.max(0, Math.min(quarts - 1, (pos.getZ() - 2) / 4.0F));
+            float fx = Math.max(0, Math.min(quarts - 1, (pos.getX() - biomeShift - 2) / 4.0F));
+            float fz = Math.max(0, Math.min(quarts - 1, (pos.getZ() - biomeShift - 2) / 4.0F));
             int x0 = (int) fx, z0 = (int) fz;
             int x1 = Math.min(quarts - 1, x0 + 1), z1 = Math.min(quarts - 1, z0 + 1);
             float tx = fx - x0, tz = fz - z0;
@@ -473,8 +511,8 @@ public final class FarRing {
                     int index = qx * quarts + qz;
                     int id = index < biomeGrid.length ? biomeGrid[index] & 0xFF : 0;
                     Holder<Biome> biome = id < biomes.size() ? biomes.get(id) : null;
-                    double worldX = center.getX() - far + qx * 4 + 2;
-                    double worldZ = center.getZ() - far + qz * 4 + 2;
+                    double worldX = origin.getX() + biomeShift + qx * 4 + 2;
+                    double worldZ = origin.getZ() + biomeShift + qz * 4 + 2;
                     colors[index] = biome == null ? 0xFFFFFF : resolver.getColor(biome.value(), worldX, worldZ);
                 }
             }
@@ -490,7 +528,7 @@ public final class FarRing {
 
         @Override
         public int getHeight() {
-            return 2 * height + 64;
+            return skyAbove + 64;
         }
 
         @Override

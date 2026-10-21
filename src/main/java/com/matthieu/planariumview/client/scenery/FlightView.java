@@ -1,0 +1,184 @@
+package com.matthieu.planariumview.client.scenery;
+
+import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.network.FarRingPayload;
+import com.matthieu.planariumview.network.FlightPayload;
+
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexBuffer;
+import com.mojang.logging.LogUtils;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4f;
+import org.slf4j.Logger;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Decor en vol (voir FlightServer) : le rayon detaille fait de sections de 16 blocs rangees par position dans le monde.
+ * Une section construite reste telle quelle pendant le deplacement : elle est seulement replacee chaque image dans le
+ * cadre du bocal qui bouge (comme le decor normal, voir SubLevelView.terrain). Seules les sections qui entrent dans le
+ * rayon sont construites, avec un petit budget par image.
+ *
+ * Le decor normal reste affiche jusqu'a ce que le premier lot de sections soit pret, puis il est cache pendant le vol.
+ * A la fin du vol, les sections restent jusqu'a ce que la nouvelle photo normale soit construite.
+ */
+public final class FlightView {
+    private static final Logger LOGGER = LogUtils.getLogger();
+    private static final long BUDGET_NANOS = 2_500_000L;
+    /** Securite : bascule meme si le premier lot n'est pas complet apres ce temps. */
+    private static final long SWITCH_TIMEOUT_NANOS = 3_000_000_000L;
+
+    private record Section(BlockPos origin, Map<RenderType, VertexBuffer> buffers) {
+    }
+
+    private static ResourceLocation pocket;
+    /** Le serveur est en vol (START recu, pas encore STOP). */
+    private static boolean flying;
+    private static boolean ready;
+    private static long startedAt;
+    /** Les sections remplacent le decor normal a l'ecran. */
+    private static boolean drawing;
+    private static final Map<Long, Section> sections = new HashMap<>();
+    private static final LinkedHashMap<Long, FarRingPayload.Data> pending = new LinkedHashMap<>();
+    /** Matrice de chaque section pour l'image en cours (calculee une fois, utilisee par chaque couche). */
+    private static final List<Map.Entry<Section, Matrix4f>> frame = new ArrayList<>();
+
+    private FlightView() {
+    }
+
+    public static void receive(FlightPayload payload) {
+        var level = Minecraft.getInstance().level;
+        if (level == null || !level.dimension().location().equals(payload.pocketDim())) {
+            return;
+        }
+        if (pocket != null && !pocket.equals(payload.pocketDim())) {
+            clear();
+        }
+        pocket = payload.pocketDim();
+        switch (payload.kind()) {
+            case FlightPayload.START -> {
+                clearSections();
+                flying = true;
+                ready = false;
+                startedAt = System.nanoTime();
+            }
+            case FlightPayload.SECTION -> pending.put(payload.section(), payload.data());
+            case FlightPayload.DROP -> {
+                for (long key : payload.sections()) {
+                    pending.remove(key);
+                    Section removed = sections.remove(key);
+                    if (removed != null) removed.buffers().values().forEach(VertexBuffer::close);
+                }
+            }
+            case FlightPayload.READY -> ready = true;
+            case FlightPayload.STOP -> flying = false;
+            default -> {
+            }
+        }
+    }
+
+    /** Vrai : le decor normal est cache, les sections du vol sont dessinees a sa place. */
+    public static boolean active() {
+        return drawing;
+    }
+
+    /** Chaque image, avant le dessin : bascule entre le vol et le decor normal, construit des sections. */
+    static void update(Vec3 camera) {
+        if (!Config.enabled()) {
+            return;
+        }
+        if (flying && !drawing && pending.isEmpty()
+                && (ready || System.nanoTime() - startedAt > SWITCH_TIMEOUT_NANOS)) {
+            drawing = true;
+        }
+        if (!flying && (drawing || !sections.isEmpty()) && ClientView.nearCaughtUp()) {
+            // La photo normale de l'arret est construite : elle reprend.
+            drawing = false;
+            clearSections();
+        }
+        if (pending.isEmpty()) {
+            return;
+        }
+        long start = System.nanoTime();
+        do {
+            var iterator = pending.entrySet().iterator();
+            Map.Entry<Long, FarRingPayload.Data> next = iterator.next();
+            iterator.remove();
+            long key = next.getKey();
+            try {
+                Section built = build(key, next.getValue(), camera);
+                Section old = built == null ? sections.remove(key) : sections.put(key, built);
+                if (old != null) old.buffers().values().forEach(VertexBuffer::close);
+            } catch (RuntimeException e) {
+                LOGGER.debug("[Planarium Panorama] Section du decor en vol ignoree", e);
+            }
+        } while (!pending.isEmpty() && System.nanoTime() - start < BUDGET_NANOS);
+    }
+
+    private static Section build(long key, FarRingPayload.Data data, Vec3 camera) {
+        BlockPos sectionMin = new BlockPos(SectionPos.x(key) << 4, SectionPos.y(key) << 4, SectionPos.z(key) << 4);
+        // Positions locales : 0 = un bloc avant la section (voisins des bords).
+        List<BlockPos> blocks = new ArrayList<>();
+        FarRing.FarWorld world = FarRing.fill(new FarRing.FarWorld(sectionMin.offset(-1, -1, -1), 17, 1), data, blocks::add);
+        if (blocks.isEmpty()) {
+            return null;
+        }
+        Map<RenderType, VertexBuffer> buffers = FarRing.build(world, blocks, 1, 1, 1, camera);
+        return new Section(sectionMin, buffers);
+    }
+
+    /** Matrices de l'image : chaque section dans le cadre actuel du bocal. */
+    static void prepare(PoseStack poseStack) {
+        frame.clear();
+        // Sans cadre de reference, les sections (rangees par position dans le monde) ne peuvent pas etre placees.
+        if (!drawing || !SubLevelView.hasAnchor()) {
+            return;
+        }
+        for (Section section : sections.values()) {
+            poseStack.pushPose();
+            SubLevelView.terrain(poseStack, section.origin());
+            frame.add(Map.entry(section, new Matrix4f(poseStack.last().pose())));
+            poseStack.popPose();
+        }
+    }
+
+    /** Dessine une couche (l'etat de rendu de la couche est deja en place, voir ClientView.draw). */
+    static void drawLayer(RenderType type, Matrix4f projection) {
+        if (!drawing) {
+            return;
+        }
+        for (Map.Entry<Section, Matrix4f> entry : frame) {
+            VertexBuffer buffer = entry.getKey().buffers().get(type);
+            if (buffer == null || buffer.getFormat() == null) continue;
+            buffer.bind();
+            buffer.drawWithShader(entry.getValue(), projection, RenderSystem.getShader());
+        }
+        VertexBuffer.unbind();
+    }
+
+    private static void clearSections() {
+        sections.values().forEach(section -> section.buffers().values().forEach(VertexBuffer::close));
+        sections.clear();
+        pending.clear();
+        frame.clear();
+    }
+
+    /** Sortie du bocal ou decor efface. */
+    public static void clear() {
+        clearSections();
+        flying = false;
+        ready = false;
+        drawing = false;
+        pocket = null;
+    }
+}

@@ -4,23 +4,14 @@ import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.FarRingPayload;
 
 import com.mojang.logging.LogUtils;
-import it.unimi.dsi.fastutil.bytes.ByteArrayList;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.LightLayer;
-import net.minecraft.world.level.block.LiquidBlock;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraft.world.level.levelgen.Heightmap;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.slf4j.Logger;
 
@@ -49,7 +40,6 @@ public final class FarRingServer {
     private static final int STILL_TICKS = 100;
     /** Temps max d'attente des chunks d'une capture (ceux qui manquent encore sont laisses vides). */
     private static final int LOAD_WAIT_TICKS = 400;
-    private static final Direction[] DIRECTIONS = Direction.values();
 
     private record Key(ResourceKey<Level> source, BlockPos center, int near, int far, int height) {
     }
@@ -65,6 +55,8 @@ public final class FarRingServer {
         ResourceKey<Level> pocket;
         Job job;
         BlockPos lastCenter;
+        /** Position reelle du Planarium au dernier mouvement (un vaisseau a l'arret peut trembler d'un bloc). */
+        BlockPos stillAt;
         long movedAt = Long.MIN_VALUE / 2;
         long nextRefresh;
     }
@@ -80,10 +72,12 @@ public final class FarRingServer {
     }
 
     /**
-     * Chaque tick, pour un joueur suivi dans un bocal. {@code near} : rayon de la derniere photo du rayon proche ;
-     * {@code ready} : le client a deja recu cette photo.
+     * Chaque tick, pour un joueur suivi dans un bocal. {@code center} : centre de la derniere photo du rayon detaille ;
+     * {@code live} : position actuelle du Planarium (elle bouge avec un vaisseau, la photo seulement tous les quelques
+     * blocs) ; {@code near} : rayon de cette photo ; {@code ready} : le client a deja recu cette photo.
      */
-    static void tick(ServerPlayer player, ServerLevel source, ResourceKey<Level> pocket, BlockPos center, int near, boolean ready) {
+    static void tick(ServerPlayer player, ServerLevel source, ResourceKey<Level> pocket, BlockPos center, BlockPos live,
+                     int near, boolean ready) {
         UUID id = player.getUUID();
         State state = STATES.computeIfAbsent(id, ignored -> new State());
         long now = player.server.getTickCount();
@@ -98,6 +92,15 @@ public final class FarRingServer {
             }
             state.lastCenter = center;
             cancel(player.server, state);
+        }
+        // Un vaisseau qui derive lentement change de photo seulement tous les quelques blocs : l'arret se juge sur sa
+        // position reelle, sinon l'anneau etait recapture (et reconstruit) a chaque photo.
+        if (state.stillAt == null || state.stillAt.distSqr(live) > 2) {
+            if (state.stillAt != null) {
+                state.movedAt = now;
+                cancel(player.server, state);
+            }
+            state.stillAt = live;
         }
         int far = Config.FAR_RADIUS.get();
         if (far <= near || !ready || !player.connection.hasChannel(FarRingPayload.TYPE)) {
@@ -123,7 +126,7 @@ public final class FarRingServer {
                     int refresh = refreshTicks();
                     state.nextRefresh = refresh > 0 ? now + refresh : Long.MAX_VALUE;
                     LOGGER.info("[Planarium Panorama] Anneau lointain envoye : rayon {}, {} blocs visibles, {} ms de capture en {} ticks",
-                            far, done.blocks.size(), done.workNanos / 1_000_000L, now - done.startedAt);
+                            far, done.visible.blocks.size(), done.workNanos / 1_000_000L, now - done.startedAt);
                 }
                 return;
             }
@@ -208,17 +211,7 @@ public final class FarRingServer {
         boolean ticketsAdded;
         long workNanos;
         final int minX, minY, minZ, maxX, maxY, maxZ;
-        final Map<BlockState, Integer> paletteIndex = new HashMap<>();
-        final IntArrayList palette = new IntArrayList();
-        final IntArrayList blocks = new IntArrayList();
-        final IntArrayList info = new IntArrayList();
-        final IntArrayList lightPos = new IntArrayList();
-        final ByteArrayList lightValue = new ByteArrayList();
-        final LongOpenHashSet lightSeen = new LongOpenHashSet();
-        final List<ResourceLocation> biomePalette = new ArrayList<>();
-        final Map<ResourceLocation, Integer> biomeIndex = new HashMap<>();
-        final int quarts;
-        final byte[] biomes;
+        final VisibleCapture visible;
 
         Job(Key key, UUID owner, long now) {
             this.key = key;
@@ -239,8 +232,7 @@ public final class FarRingServer {
             // Les chunks les plus proches d'abord.
             ChunkPos middle = new ChunkPos(c);
             chunks.sort(java.util.Comparator.comparingInt(chunk -> Math.max(Math.abs(chunk.x - middle.x), Math.abs(chunk.z - middle.z))));
-            quarts = ((maxX - minX) >> 2) + 1;
-            biomes = new byte[quarts * quarts];
+            visible = new VisibleCapture(minX, minY, minZ, minX, minZ, ((maxX - minX) >> 2) + 1);
         }
 
         /** Vrai quand la capture est finie. */
@@ -264,7 +256,17 @@ public final class FarRingServer {
                         index++;
                         continue;
                     }
-                    capture(level, chunk);
+                    visible.capture(level, chunk, minX, maxX, minY, maxY, minZ, maxZ, new VisibleCapture.Shape() {
+                        @Override
+                        public boolean contains(int x, int y, int z) {
+                            return inBox(x, y, z);
+                        }
+
+                        @Override
+                        public boolean skip(int x, int y, int z) {
+                            return inNear(x, y, z);
+                        }
+                    });
                     index++;
                     if (System.nanoTime() - start > BUDGET_NANOS) {
                         return index >= chunks.size() && finish(level);
@@ -307,142 +309,8 @@ public final class FarRingServer {
                     && Math.abs(z - c.getZ()) <= key.near;
         }
 
-        private int local(int x, int y, int z) {
-            return FarRingPayload.pack(x - minX, y - minY, z - minZ);
-        }
-
-        /** Etat d'une case voisine sans charger de chunk (null : chunk absent). */
-        private static BlockState stateAt(ServerLevel level, LevelChunk home, BlockPos pos) {
-            if ((pos.getX() >> 4) == home.getPos().x && (pos.getZ() >> 4) == home.getPos().z) {
-                return home.getBlockState(pos);
-            }
-            LevelChunk other = level.getChunkSource().getChunkNow(pos.getX() >> 4, pos.getZ() >> 4);
-            return other == null ? null : other.getBlockState(pos);
-        }
-
-        private void capture(ServerLevel level, LevelChunk chunk) {
-            int x0 = Math.max(minX, chunk.getPos().getMinBlockX());
-            int x1 = Math.min(maxX, chunk.getPos().getMaxBlockX());
-            int z0 = Math.max(minZ, chunk.getPos().getMinBlockZ());
-            int z1 = Math.min(maxZ, chunk.getPos().getMaxBlockZ());
-            int y0 = Math.max(minY, level.getMinBuildHeight());
-            int y1 = Math.min(maxY, level.getMaxBuildHeight() - 1);
-            BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-            BlockPos.MutableBlockPos next = new BlockPos.MutableBlockPos();
-            for (int x = x0; x <= x1; x++) {
-                for (int z = z0; z <= z1; z++) {
-                    // Au-dessus du plus haut bloc de la colonne, il n'y a que de l'air.
-                    if (!inBox(x, y0, z)) {
-                        continue;
-                    }
-                    int top = Math.min(y1, chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x & 15, z & 15));
-                    for (int y = y0; y <= top; y++) {
-                        if (inNear(x, y, z)) {
-                            continue;
-                        }
-                        pos.set(x, y, z);
-                        BlockState state = chunk.getBlockState(pos);
-                        if (state.isAir()) {
-                            continue;
-                        }
-                        int solidMask = 0;
-                        int waterMask = 0;
-                        boolean visible = false;
-                        for (Direction direction : DIRECTIONS) {
-                            next.setWithOffset(pos, direction);
-                            if (!inBox(next.getX(), next.getY(), next.getZ())) {
-                                if (direction == Direction.UP) {
-                                    visible = true;
-                                } else {
-                                    solidMask |= 1 << direction.get3DDataValue();
-                                }
-                                continue;
-                            }
-                            BlockState neighbor = stateAt(level, chunk, next);
-                            if (neighbor == null || neighbor.isSolidRender(level, next)) {
-                                solidMask |= 1 << direction.get3DDataValue();
-                                continue;
-                            }
-                            // Eau voisine : le client la remet la ou elle n'est pas envoyee (sous la surface, autour des
-                            // algues et des blocs waterlogged), sinon leur eau aurait des faces vers de l'air.
-                            if (neighbor.getBlock() instanceof LiquidBlock && neighbor.getFluidState().is(net.minecraft.tags.FluidTags.WATER)) {
-                                waterMask |= 1 << direction.get3DDataValue();
-                            }
-                            // L'eau sous la surface de l'eau ne se voit pas.
-                            if (state.getBlock() instanceof LiquidBlock && neighbor.getFluidState().getType().isSame(state.getFluidState().getType())) {
-                                continue;
-                            }
-                            // Une case sans aucune lumiere (caverne noire) : ce qui l'entoure ne se voit pas du bocal.
-                            if (level.getBrightness(LightLayer.SKY, next) == 0 && level.getBrightness(LightLayer.BLOCK, next) == 0) {
-                                continue;
-                            }
-                            visible = true;
-                        }
-                        if (!visible) {
-                            continue;
-                        }
-                        Integer paletteId = paletteIndex.get(state);
-                        if (paletteId == null) {
-                            if (palette.size() >= 65535) {
-                                continue;
-                            }
-                            paletteId = palette.size();
-                            palette.add(net.minecraft.world.level.block.Block.getId(state));
-                            paletteIndex.put(state, paletteId);
-                        }
-                        blocks.add(local(x, y, z));
-                        info.add(paletteId | solidMask << 16 | waterMask << 22);
-                        // Lumiere de la case du bloc (blocs pas pleins : escaliers, dalles, algues...).
-                        if (lightSeen.add(BlockPos.asLong(x, y, z))) {
-                            lightPos.add(local(x, y, z));
-                            lightValue.add((byte) (level.getBrightness(LightLayer.SKY, pos) << 4
-                                    | level.getBrightness(LightLayer.BLOCK, pos)));
-                        }
-                        // Lumiere des cases autour qui laissent passer la vue (faces et ombrage des coins).
-                        for (int dx = -1; dx <= 1; dx++) {
-                            for (int dy = -1; dy <= 1; dy++) {
-                                for (int dz = -1; dz <= 1; dz++) {
-                                    if (dx == 0 && dy == 0 && dz == 0) continue;
-                                    int nx = x + dx, ny = y + dy, nz = z + dz;
-                                    if (!inBox(nx, ny, nz)) continue;
-                                    long key = BlockPos.asLong(nx, ny, nz);
-                                    if (!lightSeen.add(key)) continue;
-                                    next.set(nx, ny, nz);
-                                    BlockState around = stateAt(level, chunk, next);
-                                    if (around == null || around.isSolidRender(level, next)) continue;
-                                    lightPos.add(local(nx, ny, nz));
-                                    lightValue.add((byte) (level.getBrightness(LightLayer.SKY, next) << 4
-                                            | level.getBrightness(LightLayer.BLOCK, next)));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            // Biomes de surface, un par colonne de 4 x 4 blocs (couleurs d'herbe, de feuilles et d'eau).
-            for (int qx = (x0 - minX) >> 2; qx <= (x1 - minX) >> 2; qx++) {
-                for (int qz = (z0 - minZ) >> 2; qz <= (z1 - minZ) >> 2; qz++) {
-                    int x = Math.max(x0, Math.min(x1, minX + qx * 4 + 2));
-                    int z = Math.max(z0, Math.min(z1, minZ + qz * 4 + 2));
-                    int y = Math.max(minY, Math.min(maxY, chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x & 15, z & 15)));
-                    ResourceLocation id = level.getBiome(pos.set(x, y, z)).unwrapKey()
-                            .map(ResourceKey::location).orElse(ResourceLocation.withDefaultNamespace("plains"));
-                    Integer index = biomeIndex.get(id);
-                    if (index == null) {
-                        index = biomePalette.size() < 255 ? biomePalette.size() : 0;
-                        if (index == biomePalette.size()) {
-                            biomePalette.add(id);
-                            biomeIndex.put(id, index);
-                        }
-                    }
-                    biomes[qx * quarts + qz] = (byte) (int) index;
-                }
-            }
-        }
-
         FarRingPayload.Data result() {
-            return new FarRingPayload.Data(palette.toIntArray(), blocks.toIntArray(), info.toIntArray(),
-                    lightPos.toIntArray(), lightValue.toByteArray(), List.copyOf(biomePalette), biomes, quarts);
+            return visible.result();
         }
     }
 }

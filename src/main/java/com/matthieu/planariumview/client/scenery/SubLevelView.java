@@ -305,6 +305,12 @@ public final class SubLevelView {
         stack.mulPose(new Matrix4f(correction));
     }
 
+    /** Vrai si le bocal a un cadre de reference (Planarium sur une structure Sable). */
+    static boolean hasAnchor() {
+        Scene scene = outside();
+        return scene != null && scene.anchor.to != null;
+    }
+
     private static Scene outside() {
         var level = Minecraft.getInstance().level;
         return level == null ? null : OUTSIDE.get(level.dimension().location());

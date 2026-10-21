@@ -192,6 +192,7 @@ public final class ServerView {
         }
         SubLevelServer.dirty(serverLevel, pos);
         FarRingServer.blockChanged(serverLevel.dimension(), pos);
+        FlightServer.blockChanged(serverLevel.dimension(), pos);
         boolean lightSourceChanged = previous.getLightEmission(level, pos) != next.getLightEmission(level, pos)
                 && (previous.getLightEmission(level, pos) > 0 || next.getLightEmission(level, pos) > 0);
         for (Track track : TRACKS.values()) {
@@ -811,6 +812,14 @@ public final class ServerView {
         }
 
         long now = player.server.getTickCount();
+        // En vol, le rayon detaille arrive par sections (FlightServer) : pas de photo complete a chaque deplacement.
+        // A l'arret, une photo normale a la position actuelle termine le vol.
+        if (FlightServer.active(player.getUUID())) {
+            if (!FlightServer.wantsNear(player.getUUID(), now) || track.center.equals(track.capturedCenter)) {
+                return;
+            }
+            force = true;
+        }
         if (track.center.distSqr(track.capturedCenter) > Math.max(4, radius * radius / 4)
                 && now - track.lastCapture >= 20) force = true;
         int refresh = Config.REFRESH_SECONDS.get() * 20;
@@ -1421,7 +1430,8 @@ public final class ServerView {
             if (track == null || DISABLED.contains(player.getUUID()) || !track.pocket.equals(player.serverLevel().dimension())) continue;
             ServerLevel source = server.getLevel(track.source.dimension());
             if (source == null) continue;
-            FarRingServer.tick(player, source, track.pocket, track.capturedCenter, track.lastRadius, track.hasFull);
+            FarRingServer.tick(player, source, track.pocket, track.capturedCenter, track.center, track.lastRadius, track.hasFull);
+            FlightServer.tick(player, source, track.pocket, track.center, track.capturedCenter, Config.RADIUS.get(), track.hasFull);
         }
     }
 
@@ -1565,6 +1575,7 @@ public final class ServerView {
         SubLevelServer.forgetOutside(id);
         LunarServer.forget(id);
         FarRingServer.forget(server, id);
+        FlightServer.forget(id);
         Track track = TRACKS.remove(id);
         if (track == null || track.ticketChunks < 0) {
             return;

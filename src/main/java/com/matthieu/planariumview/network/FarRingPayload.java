@@ -46,6 +46,11 @@ public record FarRingPayload(ResourceLocation pocketDim, BlockPos center, int ne
         buf.writeVarInt(near);
         buf.writeVarInt(far);
         buf.writeVarInt(height);
+        writeData(buf, data);
+    }
+
+    /** Ecrit des blocs visibles (aussi pour les sections du decor en vol, voir FlightPayload). */
+    public static void writeData(FriendlyByteBuf buf, Data data) {
         buf.writeVarIntArray(data.palette());
         writeInts(buf, data.blocks());
         writeInts(buf, data.info());
@@ -56,12 +61,7 @@ public record FarRingPayload(ResourceLocation pocketDim, BlockPos center, int ne
         buf.writeVarInt(data.quarts());
     }
 
-    private static FarRingPayload read(FriendlyByteBuf buf) {
-        ResourceLocation pocket = buf.readResourceLocation();
-        BlockPos center = buf.readBlockPos();
-        int near = buf.readVarInt();
-        int far = buf.readVarInt();
-        int height = buf.readVarInt();
+    public static Data readData(FriendlyByteBuf buf) {
         int[] palette = buf.readVarIntArray(MAX);
         int[] blocks = readInts(buf);
         int[] info = readInts(buf);
@@ -70,8 +70,16 @@ public record FarRingPayload(ResourceLocation pocketDim, BlockPos center, int ne
         List<ResourceLocation> biomePalette = buf.readList(FriendlyByteBuf::readResourceLocation);
         byte[] biomes = buf.readByteArray(MAX);
         int quarts = buf.readVarInt();
-        return new FarRingPayload(pocket, center, near, far, height,
-                new Data(palette, blocks, info, lightPos, light, biomePalette, biomes, quarts));
+        return new Data(palette, blocks, info, lightPos, light, biomePalette, biomes, quarts);
+    }
+
+    private static FarRingPayload read(FriendlyByteBuf buf) {
+        ResourceLocation pocket = buf.readResourceLocation();
+        BlockPos center = buf.readBlockPos();
+        int near = buf.readVarInt();
+        int far = buf.readVarInt();
+        int height = buf.readVarInt();
+        return new FarRingPayload(pocket, center, near, far, height, readData(buf));
     }
 
     /** Entiers de taille fixe (les positions et infos sont grandes : un VarInt prendrait 4 ou 5 octets). */

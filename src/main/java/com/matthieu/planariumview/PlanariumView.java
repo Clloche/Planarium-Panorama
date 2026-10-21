@@ -80,6 +80,11 @@ public class PlanariumView {
                 OutsideViewDeltaPayload.TYPE,
                 OutsideViewDeltaPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> ClientView.receiveDelta(payload)));
+        // Facultatif : decor en vol (sections du rayon detaille pendant qu'un Planarium bouge).
+        event.registrar("4").optional().playToClient(
+                com.matthieu.planariumview.network.FlightPayload.TYPE,
+                com.matthieu.planariumview.network.FlightPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.FlightView.receive(payload)));
         // Facultatif : anneau lointain du decor (un serveur sans cette version n'en envoie pas).
         event.registrar("4").optional().playToClient(
                 com.matthieu.planariumview.network.FarRingPayload.TYPE,

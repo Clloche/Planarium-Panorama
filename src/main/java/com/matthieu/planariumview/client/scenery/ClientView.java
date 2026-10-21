@@ -511,8 +511,16 @@ public final class ClientView {
                 || !currentDim.equals(mc.level.dimension().location())) {
             return 0.0F;
         }
-        int edge = Math.max(targetEdge(), (int) Math.ceil(Math.max(0.0F, shownEdge)));
+        // Meme distance tant que le bocal a un anneau, visible ou non : une distance qui change provoquait une saccade.
+        int far = Config.FOG.get() == Config.Fog.RENDER_DISTANCE ? 0 : FarRing.knownRadius;
+        int edge = Math.max(Math.max(targetEdge(), far), (int) Math.ceil(Math.max(0.0F, shownEdge)));
         return (edge * GIANT + GIANT + 4.0F) / 0.6F;
+    }
+
+    /** La derniere photo normale recue est construite (fin du vol, voir FlightView). */
+    static boolean nearCaughtUp() {
+        return renderData != null && pendingTemplate == null && pendingPatch == null && pendingSectionData == null
+                && pendingSections.isEmpty() && lastInfo != null && lastInfo == latestInfo;
     }
 
     /** Dimension de poche du decor actuel (null sans decor). */
@@ -628,7 +636,9 @@ public final class ClientView {
         com.matthieu.planariumview.client.jar.SubLevelLight.tick();
         Minecraft mc = Minecraft.getInstance();
         // Cascades du decor avec les sons de Dynamic Surroundings (integration DS et sons d'ambiance du decor).
-        boolean inJar = mc.level != null && currentDim != null && mc.level.dimension().location().equals(currentDim);
+        // En vol, le decor normal est cache (voir FlightView) : pas de sons, flaques ni particules a son ancienne place.
+        boolean inJar = mc.level != null && currentDim != null && mc.level.dimension().location().equals(currentDim)
+                && !FlightView.active();
         com.matthieu.planariumview.client.sound.MachineSounds.tick(inJar ? sceneryWorld() : null, currentRadius,
                 lastInfo == null ? null : lastInfo.origin());
         CopyParticles.tick();
@@ -647,7 +657,7 @@ public final class ClientView {
         boolean sounds = Config.sceneryAmbience();
         boolean particles = Config.sceneryParticles();
         if (mc.level == null || mc.isPaused() || renderData == null || currentDim == null || (!sounds && !particles)
-                || !mc.level.dimension().location().equals(currentDim)
+                || !inJar
                 || !(renderData.fakeRenderingWorld instanceof LitRenderingWorld lit)) {
             return;
         }
@@ -982,6 +992,8 @@ public final class ClientView {
     private static void dispose() {
         SubLevelView.clearOutside();
         FarRing.clear();
+        FarRing.knownRadius = 0;
+        FlightView.clear();
         shownEdge = -1.0F;
         disposeRender();
         lastTemplate = null;
@@ -1066,7 +1078,7 @@ public final class ClientView {
             if (renderData != null) {
                 SkySync.giantLight(true, partialTick);
                 try {
-                    drawBlockEntities(renderData, event);
+                    if (!FlightView.active()) drawBlockEntities(renderData, event);
                     if (lastInfo != null) SubLevelView.drawOutside(event,
                             lastInfo.origin().offset(currentRadius, currentRadius, currentRadius), true);
                 } catch (Exception e) {
@@ -1980,6 +1992,7 @@ public final class ClientView {
 
         Vec3 camera = event.getCamera().getPosition();
         FarRing.buildPending(camera);
+        FlightView.update(camera);
         PoseStack poseStack = new PoseStack();
         poseStack.mulPose(event.getModelViewMatrix());
         poseStack.translate(-camera.x, -camera.y, -camera.z);
@@ -2003,6 +2016,8 @@ public final class ClientView {
             translucentSections.sort(Comparator.comparingDouble(entry -> entry.getValue().cameraDistanceSqr));
             java.util.Collections.reverse(translucentSections);
             Matrix4f projectionMatrix = new Matrix4f(event.getProjectionMatrix());
+            boolean flight = FlightView.active();
+            FlightView.prepare(poseStack);
             poseStack.pushPose();
             if (lastInfo != null) SubLevelView.terrain(poseStack,
                     lastInfo.origin().offset(currentRadius, currentRadius, currentRadius));
@@ -2011,6 +2026,11 @@ public final class ClientView {
                         ? translucentSections : sectionMeshes.entrySet();
                 renderType.setupRenderState();
                 try {
+                    if (flight) {
+                        // En vol : les sections du vol a la place du decor normal (et sans anneau lointain).
+                        FlightView.drawLayer(renderType, projectionMatrix);
+                        continue;
+                    }
                     // L'anneau lointain d'abord : derriere le decor proche (ordre des couches translucides).
                     FarRing.drawLayer(renderType, poseStack.last().pose(), projectionMatrix);
                     for (Map.Entry<SectionPos, SectionMesh> entry : sections) {
