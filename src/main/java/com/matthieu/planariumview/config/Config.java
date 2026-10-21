@@ -27,9 +27,6 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue SCENERY_AMBIENCE;
     public static final ModConfigSpec.BooleanValue SCENERY_PARTICLES;
     public static final ModConfigSpec.BooleanValue WORLD_SOUNDS;
-    public static final ModConfigSpec.BooleanValue MOB_SOUNDS;
-    public static final ModConfigSpec.BooleanValue BLOCK_SOUNDS;
-    public static final ModConfigSpec.BooleanValue EXPLOSION_SOUNDS;
     public static final ModConfigSpec.BooleanValue COLORED_LIGHT;
     public static final ModConfigSpec.BooleanValue OUTSIDE_AMBIENCE;
     public static final ModConfigSpec.BooleanValue AMBIENT_SOUNDS;
@@ -54,7 +51,7 @@ public final class Config {
                         "0 = OFF (or any value not larger than the detail radius).")
                 .defineInRange("farRadius", 64, 0, 96);
         BLOCK_UPDATE_SECONDS = common
-                .comment("Block updates: a block change in the scenery shows up with at most this much delay (in seconds).",
+                .comment("Block updates in the detail radius: a block change there shows up with at most this much delay (in seconds).",
                         "Changes that don't affect light (redstone, doors...) only send the changed blocks; others take a new capture,",
                         "followed by a second one a bit later so lighting can settle. Continuous changes can therefore cause updates at this interval.",
                         "Lower values show changes faster, but cost more on busy servers (farms, redstone...).",
@@ -114,18 +111,9 @@ public final class Config {
         WORLD_SOUNDS = client
                 .comment("Sounds from the outside world around the Planarium (mobs, redstone, explosions, jukeboxes...), from their direction",
                         "in the scenery. Sounds directly caused by a player are excluded.",
-                        "While ON, the area kept loaded around the Planarium keeps running as if you were there (machines, mobs, furnaces).",
+                        "While ON, the detail radius around the Planarium keeps running as if you were there (machines, mobs, furnaces).",
                         "OFF: that area is paused while no player is there; only the scenery's ambient sounds remain.")
                 .define("worldSounds", true);
-        MOB_SOUNDS = client
-                .comment("Outside world sounds: mobs and animals.")
-                .define("mobSounds", false);
-        BLOCK_SOUNDS = client
-                .comment("Outside world sounds: redstone and blocks (pistons, doors, dispensers, note blocks, anvils, blocks broken by mobs...).")
-                .define("blockSounds", true);
-        EXPLOSION_SOUNDS = client
-                .comment("Outside world sounds: explosions.")
-                .define("explosionSounds", true);
         COLORED_LIGHT = client
                 .comment("Colored light from Contraption Lights on the giant scenery and the miniature (if the mod is installed).")
                 .define("coloredLight", true);
@@ -240,16 +228,17 @@ public final class Config {
         return enabled() && WORLD_SOUNDS.get();
     }
 
+    // Mobs, blocs et explosions : tous avec les sons du monde exterieur (plus de reglage separe).
     public static boolean mobSounds() {
-        return worldSounds() && MOB_SOUNDS.get();
+        return worldSounds();
     }
 
     public static boolean blockSounds() {
-        return worldSounds() && BLOCK_SOUNDS.get();
+        return worldSounds();
     }
 
     public static boolean explosionSounds() {
-        return worldSounds() && EXPLOSION_SOUNDS.get();
+        return worldSounds();
     }
 
     /** Musique des jukebox : fait partie des sons du monde exterieur. */
