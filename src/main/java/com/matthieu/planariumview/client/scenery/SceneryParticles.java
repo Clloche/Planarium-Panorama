@@ -273,28 +273,31 @@ public final class SceneryParticles {
     }
 
     /**
-     * Particule tres loin dans le decor (vent de Windy, a 40-70 blocs) : plus loin que le decor dessine, ou le
-     * brouillard la cacherait. On la rapproche du Planarium jusqu'au bord du decor en la rapetissant d'autant : vue du
-     * bocal, elle a la meme taille et la meme direction. Lumiere fixe ({@code light}).
+     * Particule loin dans le decor (vent de Windy, a 40-70 blocs du point tire), a sa vraie place, seulement dans le
+     * decor dessine (anneau lointain compris) et hors des blocs pleins. Lumiere fixe ({@code light}).
      */
     public static void spawnFar(LitRenderingWorld world, int radius, ParticleOptions options, double x, double y, double z,
                                 int light) {
         double center = radius + 0.5;
         double dx = x - center;
-        double dy = y - center;
         double dz = z - center;
-        double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        double reach = Math.max(8.0, ClientView.viewRadius() * 0.9);
-        double shrink = distance > reach ? reach / distance : 1.0;
+        // A sa vraie place, comme Windy dans le monde : le decor (anneau lointain compris) va maintenant assez loin.
+        // Avant, la rafale etait rapprochee du Planarium et pouvait tomber dans une colline ou pres du sol. Au-dela du
+        // decor dessine, rien ne la cacherait derriere le relief : on ne la fait pas naitre.
+        if (Math.sqrt(dx * dx + dz * dz) > ClientView.edgeRadius() - 2.0) {
+            return;
+        }
+        // Windy ne verifie rien a l'arrivee ; dans le monde, le relief cache les rafales nees dans un bloc. Ici, une
+        // rafale nee dans un bloc plein du decor depasserait de ses faces : on l'ecarte.
+        net.minecraft.core.BlockPos at = net.minecraft.core.BlockPos.containing(x, y, z);
+        if (world.getBlockState(at).isSolidRender(world, at)) {
+            return;
+        }
         Space giant = giantSpace(world, radius);
-        double scale = giant.scale() * shrink;
-        // Le Planarium reste au meme endroit : on rapproche tout autour de lui.
-        double ox = center * giant.scale() + giant.ox() - center * scale;
-        double oy = center * giant.scale() + giant.oy() - center * scale;
-        double oz = center * giant.scale() + giant.oz() - center * scale;
-        Particle particle = spawnAt(new Space(world, scale, ox, oy, oz, null, false, null), options,
-                x * scale + ox, y * scale + oy, z * scale + oz, 0.0, 0.0, 0.0, light);
-        if (particle != null && FAR_SIZE != 1.0F) {
+        Particle particle = spawnAt(new Space(world, giant.scale(), giant.ox(), giant.oy(), giant.oz(), null, false, null),
+                options, x * giant.scale() + giant.ox(), y * giant.scale() + giant.oy(), z * giant.scale() + giant.oz(),
+                0.0, 0.0, 0.0, light);
+        if (particle != null) {
             // Un peu plus large : vues de loin dans le decor, les rafales paraissaient fines.
             particle.scale(FAR_SIZE);
         }
