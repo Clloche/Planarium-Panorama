@@ -31,9 +31,52 @@ public final class OutsideFluidView {
         return sample != null ? sample : ClientView.outsideFluid(position);
     }
 
+    /**
+     * Liquide du bocal entier, et non a la position donnee (gardee pour les appelants) : tout le bocal est soit
+     * immerge, soit au sec. Sinon, avec une surface qui traverse le bocal, l'ambiance changeait en montant ou en
+     * descendant.
+     */
     public static FogType fogAt(Vec3 position) {
-        FluidState fluid = at(position);
-        return fluid.is(FluidTags.WATER) ? FogType.WATER : fluid.is(FluidTags.LAVA) ? FogType.LAVA : FogType.NONE;
+        return jarFluid();
+    }
+
+    /** Points testes le long de l'axe vertical du bocal (coordonnees de la poche : 32 blocs de large, centre a 16). */
+    private static final int SAMPLES = 12;
+    private static final double JAR_CENTER = 16.0;
+    private static final double JAR_FLOOR = 1.0;
+    private static final double JAR_CEILING = 31.0;
+    /** Immerge au-dessus de 60 % du bocal sous le liquide, de nouveau au sec sous 40 % : pas de clignotement en surface. */
+    private static final float ENTER = 0.6F;
+    private static final float LEAVE = 0.4F;
+
+    private static FogType jarState = FogType.NONE;
+    private static long jarStateTick = Long.MIN_VALUE;
+
+    /** Etat du bocal, recalcule au plus une fois par tick. */
+    public static FogType jarFluid() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || !Config.enabled() || !SkySync.inKnownJar(mc.level)) {
+            jarState = FogType.NONE;
+            jarStateTick = Long.MIN_VALUE;
+            return FogType.NONE;
+        }
+        long tick = mc.level.getGameTime();
+        if (tick == jarStateTick) return jarState;
+        jarStateTick = tick;
+        int water = 0;
+        int lava = 0;
+        for (int i = 0; i < SAMPLES; i++) {
+            double y = JAR_FLOOR + (JAR_CEILING - JAR_FLOOR) * (i + 0.5) / SAMPLES;
+            FluidState fluid = at(new Vec3(JAR_CENTER, y, JAR_CENTER));
+            if (fluid.is(FluidTags.WATER)) water++;
+            else if (fluid.is(FluidTags.LAVA)) lava++;
+        }
+        float waterShare = water / (float) SAMPLES;
+        float lavaShare = lava / (float) SAMPLES;
+        if (jarState == FogType.WATER && waterShare >= LEAVE) return jarState;
+        if (jarState == FogType.LAVA && lavaShare >= LEAVE) return jarState;
+        jarState = lavaShare >= ENTER ? FogType.LAVA : waterShare >= ENTER ? FogType.WATER : FogType.NONE;
+        return jarState;
     }
 
     /**
