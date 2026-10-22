@@ -136,6 +136,12 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
     private static boolean constructingGiant;
     /** Faux monde du decor geant (positions du monde d'origine), pas d'une miniature de bocal. */
     private boolean giant;
+    /** Copie d'une structure Sable : les blocs pas pleins prennent la lumiere de leurs voisins (voir getBrightness). */
+    private boolean occupiedFromNeighbors;
+
+    void lightOccupiedFromNeighbors() {
+        occupiedFromNeighbors = true;
+    }
     /**
      * Decor geant autour du Planarium (pas une structure Sable) : au-dela de son bord, les blocs de l'anneau lointain.
      * Sans eux, l'eau au bord du rayon detaille s'abaissait vers le vide, et laissait une marche avec l'anneau.
@@ -500,6 +506,23 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
     @Override
     public int getBrightness(LightLayer layer, BlockPos pos) {
         int value = rawBrightness(layer, pos);
+        if (occupiedFromNeighbors && light != null) {
+            // Copie d'une structure Sable : la case d'un bloc pas plein (coffre, moteur, helice...) vaut souvent 0 dans
+            // la photo. Certains rendus relisent cette case eux-memes (le coffre d'Ars et les coffres vanilla, via
+            // BrightnessCombiner) au lieu de la lumiere qu'on leur passe : ils devenaient presque noirs. La case prend
+            // la lumiere de son voisin le plus eclaire, moins un, comme la lumiere qui entre dans un bloc pas plein.
+            net.minecraft.world.level.block.state.BlockState state = getBlockState(pos);
+            if (!state.isAir() && !state.isSolidRender(this, pos)) {
+                int best = 0;
+                BlockPos.MutableBlockPos next = new BlockPos.MutableBlockPos();
+                for (net.minecraft.core.Direction direction : net.minecraft.core.Direction.values()) {
+                    next.setWithOffset(pos, direction);
+                    best = Math.max(best, rawBrightness(layer, next));
+                }
+                return Math.max(value, best - 1);
+            }
+            return value;
+        }
         if (giant || light == null || value > 0 || !getBlockState(pos).isSolidRender(this, pos)) {
             return value;
         }

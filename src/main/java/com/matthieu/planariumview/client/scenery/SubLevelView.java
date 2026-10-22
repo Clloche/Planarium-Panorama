@@ -478,6 +478,7 @@ public final class SubLevelView {
                     && SubLevelLighting.sameContents(previous.geometry, tag)
                     ? (LitRenderingWorld) previous.data.fakeRenderingWorld
                     : LitRenderingWorld.giant(level, data.statePosCache);
+            world.lightOccupiedFromNeighbors();
             world.positions.clear();
             for (CulledStatePos state : neighbors) world.positions.put(state.pos, state.state);
             if (Config.realLighting()) {
@@ -578,6 +579,9 @@ public final class SubLevelView {
                                 new LiquidBlockVertexConsumer(builder(layer), pose, state.pos), state.state, fluid);
                     }
                     if (!PlanariumRenderer.isModelRender(state.state)) continue;
+                    // Coffres et blocs dessines seulement par leur rendu special : leur modele de bloc ne sert qu'aux
+                    // particules (le coffre d'Ars est un cube de planches) et cacherait le vrai rendu.
+                    if (state.state.getRenderShape() != net.minecraft.world.level.block.RenderShape.MODEL) continue;
                     var model = dispatcher.getBlockModel(state.state);
                     for (RenderType layer : model.getRenderTypes(state.state, random, ModelData.EMPTY)) {
                         VertexConsumer target = ColorCompat.building()
