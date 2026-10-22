@@ -143,7 +143,7 @@ public abstract class PlanariumRendererMixin {
                                                  Vec3 cameraPosition, Operation<Void> original) {
         planariumview$lastFluidPos = null;
         if (data != null) {
-            com.matthieu.planariumview.client.mini.MiniOutsideLight.apply(data, level, renderPos);
+            com.matthieu.planariumview.client.mini.MiniOutsideLight.applyShared(data, level, renderPos);
         }
         ColorCompat.begin(data != null ? data.fakeRenderingWorld : null);
         try {

@@ -18,15 +18,13 @@ import net.minecraft.world.level.LightLayer;
 
 import java.util.Arrays;
 import java.util.Map;
-import java.util.WeakHashMap;
+import java.util.HashMap;
 
 /**
  * Cote client : la miniature vue de l'exterieur recoit la lumiere des torches et lampes a cote du Planarium,
  * repartie comme a l'interieur du bocal (voir JarLight). On la mesure dans le monde du client, autour du Planarium.
  */
 public final class MiniOutsideLight {
-    /** Derniere lumiere mesuree autour de chaque Planarium (10 faces + le centre). */
-    private static final Map<ResourceKey<Level>, int[]> MEASURED = new WeakHashMap<>();
 
     private MiniOutsideLight() {
     }
@@ -54,22 +52,59 @@ public final class MiniOutsideLight {
         return values;
     }
 
-    /** Chaque seconde : si la lumiere autour du Planarium a change, Ars reconstruit la miniature. */
+    /**
+     * Ars n'a qu'une miniature par bocal, partagee par tous les Planariums qui l'ouvrent. Elle prend la lumiere d'un
+     * seul d'entre eux, son "proprietaire" : le plus proche de la camera. Sinon, deux Planariums du meme bocal avec des
+     * lumieres differentes la faisaient reconstruire chaque seconde, a tour de role (saccades).
+     */
+    private static final class Owner {
+        BlockPos pos;
+        /** Lumiere avec laquelle la miniature a ete construite (null : pas encore construite, ou option OFF). */
+        int[] light;
+        boolean built;
+
+        Owner(BlockPos pos) {
+            this.pos = pos;
+        }
+    }
+
+    private static final Map<ResourceKey<Level>, Owner> OWNERS = new HashMap<>();
+    /** Un autre Planarium ne devient proprietaire que s'il est nettement plus proche (pas de va-et-vient). */
+    private static final double OWNER_MARGIN = 8.0;
+
+    /** Chaque seconde : si la lumiere autour du Planarium proprietaire a change, Ars reconstruit la miniature. */
     public static void check(PlanariumTile tile) {
         Level level = tile.getLevel();
         if (level == null || tile.key == null || level.getGameTime() % 20 != 0) {
             return;
         }
-        int[] now = enabled() ? measure(level, tile.getBlockPos()) : null;
-        int[] before = MEASURED.get(tile.key);
-        if (Arrays.equals(now, before)) {
+        BlockPos pos = tile.getBlockPos().immutable();
+        Owner owner = OWNERS.computeIfAbsent(tile.key, key -> new Owner(pos));
+        if (!owner.pos.equals(pos)) {
+            boolean ownerGone = !(level.getBlockEntity(owner.pos) instanceof PlanariumTile other) || !tile.key.equals(other.key);
+            net.minecraft.world.phys.Vec3 camera = net.minecraft.client.Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+            double mine = Math.sqrt(pos.distToCenterSqr(camera));
+            double theirs = Math.sqrt(owner.pos.distToCenterSqr(camera));
+            if (ownerGone || mine + OWNER_MARGIN < theirs) {
+                owner.pos = pos;
+                owner.built = false;
+                rebuild(tile.key);
+            }
             return;
         }
-        MEASURED.put(tile.key, now);
-        if (before == null) {
-            return; // premiere mesure : la miniature vient d'etre construite avec cette lumiere
+        if (!owner.built) {
+            return; // la miniature n'a pas encore ete reconstruite avec ce proprietaire
         }
-        PlanariumRenderer.StructureRenderData old = PlanariumRenderer.structureRenderData.remove(tile.key);
+        int[] now = enabled() ? measure(level, pos) : null;
+        if (Arrays.equals(now, owner.light)) {
+            return;
+        }
+        owner.built = false;
+        rebuild(tile.key);
+    }
+
+    private static void rebuild(ResourceKey<Level> key) {
+        PlanariumRenderer.StructureRenderData old = PlanariumRenderer.structureRenderData.remove(key);
         if (old != null) {
             try {
                 PlanariumRenderer.clearByteBuffers(old);
@@ -80,6 +115,31 @@ public final class MiniOutsideLight {
                 // la miniature sera simplement reconstruite
             }
         }
+    }
+
+    /**
+     * Construction de la miniature d'Ars (partagee) : la lumiere du Planarium proprietaire, quel que soit le Planarium
+     * qui l'a declenchee.
+     */
+    public static void applyShared(PlanariumRenderer.StructureRenderData data, Level level, BlockPos renderPos) {
+        if (level == null) {
+            apply(data, level, renderPos);
+            return;
+        }
+        BlockPos at = level.getBlockEntity(renderPos) instanceof PlanariumTile ? renderPos : renderPos.below();
+        if (level.getBlockEntity(at) instanceof PlanariumTile tile && tile.key != null) {
+            BlockPos atImmutable = at.immutable();
+            Owner owner = OWNERS.computeIfAbsent(tile.key, key -> new Owner(atImmutable));
+            if (!owner.pos.equals(at) && level.getBlockEntity(owner.pos) instanceof PlanariumTile other
+                    && tile.key.equals(other.key)) {
+                at = owner.pos;
+            } else {
+                owner.pos = atImmutable;
+            }
+            owner.light = enabled() ? measure(level, at) : null;
+            owner.built = true;
+        }
+        apply(data, level, at);
     }
 
     /** Au debut de la construction de la miniature : on donne la lumiere du dehors a son faux monde. */
