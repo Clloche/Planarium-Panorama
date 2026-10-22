@@ -177,6 +177,19 @@ final class VisibleCapture {
                 }
             }
         }
+        captureBiomes(level, chunk, x0, x1, y0, y1, z0, z1);
+    }
+
+    /** Also used for a section's biome halo; never captures blocks or loads additional chunks. */
+    void captureBiomes(ServerLevel level, LevelChunk chunk, int x0, int x1, int y0, int y1, int z0, int z1) {
+        x0 = Math.max(x0, chunk.getPos().getMinBlockX());
+        x1 = Math.min(x1, chunk.getPos().getMaxBlockX());
+        z0 = Math.max(z0, chunk.getPos().getMinBlockZ());
+        z1 = Math.min(z1, chunk.getPos().getMaxBlockZ());
+        y0 = Math.max(y0, level.getMinBuildHeight());
+        y1 = Math.min(y1, level.getMaxBuildHeight() - 1);
+        if (x0 > x1 || z0 > z1 || y0 > y1) return;
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         // Biomes de surface, un par colonne de 4 x 4 blocs (couleurs d'herbe, de feuilles et d'eau).
         for (int qx = Math.max(0, (x0 - biomeX) >> 2); qx <= Math.min(quarts - 1, (x1 - biomeX) >> 2); qx++) {
             for (int qz = Math.max(0, (z0 - biomeZ) >> 2); qz <= Math.min(quarts - 1, (z1 - biomeZ) >> 2); qz++) {

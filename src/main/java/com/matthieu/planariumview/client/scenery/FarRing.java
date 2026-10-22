@@ -316,6 +316,16 @@ public final class FarRing {
      * l'echelle du decor geant (comme le decor proche). Aussi pour les sections du decor en vol (FlightView).
      */
     static Map<RenderType, VertexBuffer> build(FarWorld world, List<BlockPos> blocks, int offX, int offY, int offZ, Vec3 camera) {
+        return build(world, blocks, offX, offY, offZ, camera, true);
+    }
+
+    /** Keep flight vertices in source block units; scale and place all sections together at draw time. */
+    static Map<RenderType, VertexBuffer> buildFlight(FarWorld world, List<BlockPos> blocks, Vec3 localCamera) {
+        return build(world, blocks, 1, 1, 1, localCamera, false);
+    }
+
+    private static Map<RenderType, VertexBuffer> build(FarWorld world, List<BlockPos> blocks,
+            int offX, int offY, int offZ, Vec3 camera, boolean giantCoordinates) {
         Map<RenderType, BufferBuilder> buffers = new IdentityHashMap<>();
         BlockRenderDispatcher dispatcher = Minecraft.getInstance().getBlockRenderer();
         ModelBlockRenderer modelRenderer = dispatcher.getModelRenderer();
@@ -330,9 +340,11 @@ public final class FarRing {
                 matrix.pushPose();
                 try {
                     // Comme le decor proche : coordonnees de poche = (position relative au Planarium - decalage d'Ars) x 32.
-                    matrix.translate(-ClientView.ARS_OFFSET * giant, -ClientView.ARS_OFFSET * giant - ClientView.Y_SHIFT,
-                            -ClientView.ARS_OFFSET * giant);
-                    matrix.scale(giant, giant, giant);
+                    if (giantCoordinates) {
+                        matrix.translate(-ClientView.ARS_OFFSET * giant, -ClientView.ARS_OFFSET * giant - ClientView.Y_SHIFT,
+                                -ClientView.ARS_OFFSET * giant);
+                        matrix.scale(giant, giant, giant);
+                    }
                     matrix.translate(pos.getX() - offX, pos.getY() - offY, pos.getZ() - offZ);
                     if (!fluid.isEmpty()) {
                         RenderType fluidType = ItemBlockRenderTypes.getRenderLayer(fluid);
@@ -404,7 +416,8 @@ public final class FarRing {
         private List<Holder<Biome>> biomes = List.of();
         private byte[] biomeGrid = new byte[0];
         private int quarts;
-        private final Map<ColorResolver, int[]> tints = new IdentityHashMap<>();
+        private final Map<ColorResolver, TerrainTintCache> tints = new IdentityHashMap<>();
+        private int tintRadius = -1;
 
         /** Monde de l'anneau : la boite autour du Planarium. */
         static FarWorld ring(int far, int height, BlockPos center) {
@@ -422,6 +435,7 @@ public final class FarRing {
             this.biomes = biomes;
             this.biomeGrid = grid;
             this.quarts = quarts;
+            tints.clear();
         }
 
         /** Etat envoye ou deduit (bloc plein cache, eau sous la surface) a cette case, null si inconnu. */
@@ -493,37 +507,24 @@ public final class FarRing {
             if (!Config.biomeColors() || quarts == 0) {
                 return level != null ? level.getBlockTint(new BlockPos(16, 33, 16), resolver) : 0xFFFFFF;
             }
-            int[] colors = tints.computeIfAbsent(resolver, this::quartColors);
-            // Melange entre les centres des colonnes de 4 x 4 blocs (sans lui, l'herbe changerait de couleur par carres).
-            float fx = Math.max(0, Math.min(quarts - 1, (pos.getX() - biomeShift - 2) / 4.0F));
-            float fz = Math.max(0, Math.min(quarts - 1, (pos.getZ() - biomeShift - 2) / 4.0F));
-            int x0 = (int) fx, z0 = (int) fz;
-            int x1 = Math.min(quarts - 1, x0 + 1), z1 = Math.min(quarts - 1, z0 + 1);
-            float tx = fx - x0, tz = fz - z0;
-            return mix(mix(colors[x0 * quarts + z0], colors[x1 * quarts + z0], tx),
-                    mix(colors[x0 * quarts + z1], colors[x1 * quarts + z1], tx), tz);
-        }
-
-        private int[] quartColors(ColorResolver resolver) {
-            int[] colors = new int[quarts * quarts];
-            for (int qx = 0; qx < quarts; qx++) {
-                for (int qz = 0; qz < quarts; qz++) {
-                    int index = qx * quarts + qz;
-                    int id = index < biomeGrid.length ? biomeGrid[index] & 0xFF : 0;
-                    Holder<Biome> biome = id < biomes.size() ? biomes.get(id) : null;
-                    double worldX = origin.getX() + biomeShift + qx * 4 + 2;
-                    double worldZ = origin.getZ() + biomeShift + qz * 4 + 2;
-                    colors[index] = biome == null ? 0xFFFFFF : resolver.getColor(biome.value(), worldX, worldZ);
-                }
+            int radius = Minecraft.getInstance().options.biomeBlendRadius().get();
+            if (radius != tintRadius) {
+                tintRadius = radius;
+                tints.clear();
             }
-            return colors;
+            TerrainTintCache colors = tints.computeIfAbsent(resolver,
+                    key -> new TerrainTintCache(radius, (x, z) -> rawTint(key, x, z)));
+            // Noise-based resolvers must see the actual block coordinates, with the same halo on either side of a section.
+            return colors.color(origin.getX() + pos.getX(), origin.getZ() + pos.getZ());
         }
 
-        private static int mix(int a, int b, float t) {
-            int r = (int) (((a >> 16) & 255) * (1 - t) + ((b >> 16) & 255) * t);
-            int g = (int) (((a >> 8) & 255) * (1 - t) + ((b >> 8) & 255) * t);
-            int bl = (int) ((a & 255) * (1 - t) + (b & 255) * t);
-            return r << 16 | g << 8 | bl;
+        private int rawTint(ColorResolver resolver, int worldX, int worldZ) {
+            int qx = Math.clamp(Math.floorDiv(worldX - origin.getX() - biomeShift, 4), 0, quarts - 1);
+            int qz = Math.clamp(Math.floorDiv(worldZ - origin.getZ() - biomeShift, 4), 0, quarts - 1);
+            int index = qx * quarts + qz;
+            int id = index < biomeGrid.length ? biomeGrid[index] & 255 : 0;
+            Holder<Biome> biome = id < biomes.size() ? biomes.get(id) : null;
+            return biome == null ? 0xFFFFFF : resolver.getColor(biome.value(), worldX, worldZ);
         }
 
         @Override

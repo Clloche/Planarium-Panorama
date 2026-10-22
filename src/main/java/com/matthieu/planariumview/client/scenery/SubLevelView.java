@@ -327,6 +327,15 @@ public final class SubLevelView {
         stack.mulPose(new Matrix4f(correction));
     }
 
+    /** Unscaled flight vertices: sample the moving anchor once for all terrain sections in this frame. */
+    static void terrainBlocks(PoseStack stack, BlockPos origin) {
+        Scene scene = outside();
+        if (scene == null || scene.anchor.to == null) return;
+        Matrix4d transform = new Matrix4d().translation(O, O - ClientView.Y_SHIFT, O).scale(ClientView.GIANT)
+                .mul(scene.anchor.current().invert()).translate(origin.getX(), origin.getY(), origin.getZ());
+        stack.mulPose(new Matrix4f(transform));
+    }
+
     /** Vrai si le bocal a un cadre de reference (Planarium sur une structure Sable). */
     static boolean hasAnchor() {
         Scene scene = outside();

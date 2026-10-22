@@ -16,6 +16,7 @@ import net.minecraft.core.SectionPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
@@ -168,11 +169,18 @@ public final class FlightView {
         BlockPos sectionMin = new BlockPos(SectionPos.x(key) << 4, SectionPos.y(key) << 4, SectionPos.z(key) << 4);
         // Positions locales : 0 = un bloc avant la section (voisins des bords).
         List<BlockPos> blocks = new ArrayList<>();
-        FarRing.FarWorld world = FarRing.fill(new FarRing.FarWorld(sectionMin.offset(-1, -1, -1), 17, 1), data, blocks::add);
+        // Older servers sent four biome columns without a halo; both layouts retain the existing packet format.
+        int biomeShift = data.quarts() == 8 ? -7 : 1;
+        FarRing.FarWorld world = FarRing.fill(new FarRing.FarWorld(sectionMin.offset(-1, -1, -1), 17, biomeShift), data, blocks::add);
         if (blocks.isEmpty()) {
             return null;
         }
-        Map<RenderType, VertexBuffer> buffers = FarRing.build(world, blocks, 1, 1, 1, camera);
+        PoseStack placement = new PoseStack();
+        SubLevelView.terrainBlocks(placement, sectionMin);
+        Vector3f localCamera = new Matrix4f(placement.last().pose()).invertAffine()
+                .transformPosition(new Vector3f((float) camera.x, (float) camera.y, (float) camera.z));
+        Map<RenderType, VertexBuffer> buffers = FarRing.buildFlight(world, blocks,
+                new Vec3(localCamera.x, localCamera.y, localCamera.z));
         return new Section(sectionMin, buffers);
     }
 
@@ -183,11 +191,21 @@ public final class FlightView {
         if (!drawing || !SubLevelView.hasAnchor()) {
             return;
         }
-        for (Section section : sections.values()) {
-            poseStack.pushPose();
-            SubLevelView.terrain(poseStack, section.origin());
-            Matrix4f original = new Matrix4f(poseStack.last().pose());
-            frame.add(new DrawFrame(section, original, FlightFog.frame(original)));
+        BlockPos anchor = SubLevelView.anchorPosition();
+        if (anchor == null) return;
+        BlockPos origin = SectionPos.of(anchor).origin();
+        poseStack.pushPose();
+        try {
+            SubLevelView.terrainBlocks(poseStack, origin);
+            Matrix4f common = new Matrix4f(poseStack.last().pose());
+            FlightFog.Frame fog = FlightFog.frame(common);
+            for (Section section : sections.values()) {
+                int x = section.origin().getX() - origin.getX();
+                int y = section.origin().getY() - origin.getY();
+                int z = section.origin().getZ() - origin.getZ();
+                frame.add(new DrawFrame(section, new Matrix4f(common).translate(x, y, z), fog.section(x, y, z)));
+            }
+        } finally {
             poseStack.popPose();
         }
     }
@@ -200,9 +218,14 @@ public final class FlightView {
         var shader = RenderSystem.getShader();
         var offset = shader.CHUNK_OFFSET;
         float x = 0, y = 0, z = 0;
+        float fogStart = RenderSystem.getShaderFogStart();
+        float fogEnd = RenderSystem.getShaderFogEnd();
         if (offset != null) {
             var previous = offset.getFloatBuffer();
             x = previous.get(0); y = previous.get(1); z = previous.get(2);
+            // Position + ChunkOffset now uses source blocks, before the common giant scale in ModelViewMat.
+            RenderSystem.setShaderFogStart(fogStart / ClientView.GIANT);
+            RenderSystem.setShaderFogEnd(fogEnd / ClientView.GIANT);
         }
         try {
             for (DrawFrame entry : frame) {
@@ -217,7 +240,11 @@ public final class FlightView {
                 }
             }
         } finally {
-            if (offset != null) offset.set(x, y, z);
+            if (offset != null) {
+                offset.set(x, y, z);
+                RenderSystem.setShaderFogStart(fogStart);
+                RenderSystem.setShaderFogEnd(fogEnd);
+            }
             VertexBuffer.unbind();
         }
     }

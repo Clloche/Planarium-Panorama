@@ -133,7 +133,8 @@ public final class Config {
                 .define("lunarEvents", true);
         SUB_LEVEL_VIEWS = client
                 .comment("Show Sable / Create Aeronautics structures in the giant scenery and miniatures.",
-                        "OFF stops their captures for this player. Physical structures, their interior lighting and Ars Sable still work.")
+                        "OFF stops their captures for this player. Physical structures, their interior lighting and Ars Sable still work.",
+                        "If ships do not reappear after switching this back ON, leave and rejoin the world.")
                 .define("subLevelViews", true);
         CLIENT_SPEC = client.build();
     }

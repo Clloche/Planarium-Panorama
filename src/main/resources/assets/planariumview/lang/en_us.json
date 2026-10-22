@@ -64,7 +64,7 @@
   "planariumview.config.cave_fog.dark": "Dark",
   "planariumview.config.reset.tooltip": "Puts every option back to its default value. It is saved right away: it can't be undone.",
   "planariumview.config.sub_levels": "Sable / Create Aeronautics",
-  "planariumview.config.sub_levels.tooltip": "Show Sable structures in the giant scenery and miniature.\n\nOFF: they are no longer drawn or captured for you. If the Planarium is on a moving structure, the scenery still follows its movement.",
+  "planariumview.config.sub_levels.tooltip": "Show Sable structures in the giant scenery and miniature.\n\nOFF: they are no longer drawn or captured for you. If the Planarium is on a moving structure, the scenery still follows its movement.\n\nIf ships do not reappear after switching this back ON, leave and rejoin the world.",
   "planariumview.config.lunar_events": "Enhanced Celestials 2 - Lunar events",
   "planariumview.config.lunar_events.tooltip": "The jar's moon follows the lunar event of the Planarium's world: blood moon, blue moon, harvest moon... (moon color, size and texture, and the tint of the light). Needs the synced sky (Lighting not OFF)."
 }

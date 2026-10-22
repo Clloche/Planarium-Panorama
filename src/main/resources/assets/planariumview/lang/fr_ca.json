@@ -64,7 +64,7 @@
   "planariumview.config.cave_fog.dark": "Sombre",
   "planariumview.config.reset.tooltip": "Remet toutes les options à leur valeur par défaut. C'est sauvegardé tout de suite : on ne peut pas revenir en arrière.",
   "planariumview.config.sub_levels": "Sable / Create Aeronautics",
-  "planariumview.config.sub_levels.tooltip": "Affiche les structures Sable dans le décor géant et la miniature.\n\nOFF : elles ne sont plus dessinées ni capturées pour toi. Si le Planarium est sur une structure qui bouge, le décor suit quand même son déplacement.",
+  "planariumview.config.sub_levels.tooltip": "Affiche les structures Sable dans le décor géant et la miniature.\n\nOFF : elles ne sont plus dessinées ni capturées pour toi. Si le Planarium est sur une structure qui bouge, le décor suit quand même son déplacement.\n\nSi les vaisseaux ne réapparaissent pas après avoir remis l'option sur ON, quitte puis rejoins le monde.",
   "planariumview.config.lunar_events": "Enhanced Celestials 2 - Événements lunaires",
   "planariumview.config.lunar_events.tooltip": "La lune du bocal suit l'événement lunaire du monde du Planarium : lune de sang, lune bleue, lune des moissons... (couleur, taille et texture de la lune, et teinte de la lumière). Demande le ciel synchronisé (Éclairage pas à OFF)."
 }
