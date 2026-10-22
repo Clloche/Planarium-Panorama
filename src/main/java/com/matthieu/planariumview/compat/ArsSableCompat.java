@@ -4,14 +4,13 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.server.level.ServerLevel;
 
-import java.lang.reflect.Method;
 import java.util.Optional;
 import java.util.UUID;
 
 /** Reads Ars Sable's per-player entry, which survives movement and world reloads. */
 public final class ArsSableCompat {
     private static boolean initialized;
-    private static Method from, getForPlayer, trackedPos, sublevelId;
+    private static SafeReflect.Call from, getForPlayer, trackedPos, sublevelId;
 
     public record Entry(GlobalPos position, UUID body) {}
 
@@ -23,10 +22,10 @@ public final class ArsSableCompat {
             try {
                 Class<?> data = Class.forName("com.hollingsworth.ars_sable.common.SublevelPosData");
                 Class<?> entry = Class.forName("com.hollingsworth.ars_sable.common.SublevelPosData$Entry");
-                getForPlayer = data.getMethod("getForPlayer", UUID.class);
-                trackedPos = entry.getMethod("trackedPos");
-                sublevelId = entry.getMethod("sublevelId");
-                from = data.getMethod("from", ServerLevel.class);
+                getForPlayer = SafeReflect.find(data, "getForPlayer", UUID.class);
+                trackedPos = SafeReflect.find(entry, "trackedPos");
+                sublevelId = SafeReflect.find(entry, "sublevelId");
+                from = SafeReflect.find(data, "from", ServerLevel.class);
             } catch (ClassNotFoundException ignored) {
                 // Ars Sable is optional, independently of Sable itself.
             } catch (ReflectiveOperationException | LinkageError e) {

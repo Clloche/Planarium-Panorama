@@ -9,7 +9,6 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4d;
 import org.slf4j.Logger;
 
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -20,13 +19,13 @@ public final class SubLevelCompat {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static boolean initialized;
     private static boolean available;
-    private static Method container, all, containing, pose, bake, bounds, plot, localBounds, uniqueId, removed;
-    private static Method loadedChunks, chunk, minX, minY, minZ, maxX, maxY, maxZ, worldBounds;
+    private static SafeReflect.Call container, all, containing, pose, bake, bounds, plot, localBounds, uniqueId, removed;
+    private static SafeReflect.Call loadedChunks, chunk, minX, minY, minZ, maxX, maxY, maxZ, worldBounds;
     private static Object visitorTicket;
-    private static Method addTicket, removeTicket, allTickets, infoTickets, ticketType, ticketKey;
-    private static Method trackingPlayers;
-    private static Method byId, holdingMap, snatch, trackingData, trackingPoints, pointBody, pointPointer;
-    private static Method generatePoint, getPoint, setPoint, removePoint, pointPosition;
+    private static SafeReflect.Call addTicket, removeTicket, allTickets, infoTickets, ticketType, ticketKey;
+    private static SafeReflect.Call trackingPlayers;
+    private static SafeReflect.Call byId, holdingMap, snatch, trackingData, trackingPoints, pointBody, pointPointer;
+    private static SafeReflect.Call generatePoint, getPoint, setPoint, removePoint, pointPosition;
 
     public record Body(Object handle, UUID id, Matrix4d transform, AABB bounds, BlockPos min, BlockPos max,
                        List<LevelChunk> chunks) {
@@ -47,59 +46,58 @@ public final class SubLevelCompat {
                 Class<?> plots = Class.forName("dev.ryanhcode.sable.sublevel.plot.LevelPlot");
                 Class<?> poses = Class.forName("dev.ryanhcode.sable.companion.math.Pose3dc");
                 Class<?> boxes = Class.forName("dev.ryanhcode.sable.companion.math.BoundingBox3ic");
-                container = containers.getMethod("getContainer", Level.class);
-                all = containers.getMethod("getAllSubLevels");
-                containing = containers.getMethod("getPlot", net.minecraft.world.level.ChunkPos.class);
-                pose = bodies.getMethod("logicalPose");
-                bake = poses.getMethod("bakeIntoMatrix", Matrix4d.class);
-                bounds = bodies.getMethod("boundingBox");
-                worldBounds = Class.forName("dev.ryanhcode.sable.companion.math.BoundingBox3dc").getMethod("toMojang");
-                plot = bodies.getMethod("getPlot");
-                uniqueId = bodies.getMethod("getUniqueId");
-                removed = bodies.getMethod("isRemoved");
-                localBounds = plots.getMethod("getBoundingBox");
-                loadedChunks = plots.getMethod("getLoadedChunks");
-                chunk = Class.forName("dev.ryanhcode.sable.sublevel.plot.PlotChunkHolder").getMethod("getChunk");
-                minX = boxes.getMethod("minX"); minY = boxes.getMethod("minY"); minZ = boxes.getMethod("minZ");
-                maxX = boxes.getMethod("maxX"); maxY = boxes.getMethod("maxY"); maxZ = boxes.getMethod("maxZ");
+                container = SafeReflect.find(containers, "getContainer", Level.class);
+                all = SafeReflect.find(containers, "getAllSubLevels");
+                containing = SafeReflect.find(containers, "getPlot", net.minecraft.world.level.ChunkPos.class);
+                pose = SafeReflect.find(bodies, "logicalPose");
+                bake = SafeReflect.find(poses, "bakeIntoMatrix", Matrix4d.class);
+                bounds = SafeReflect.find(bodies, "boundingBox");
+                worldBounds = SafeReflect.find(Class.forName("dev.ryanhcode.sable.companion.math.BoundingBox3dc"), "toMojang");
+                plot = SafeReflect.find(bodies, "getPlot");
+                uniqueId = SafeReflect.find(bodies, "getUniqueId");
+                removed = SafeReflect.find(bodies, "isRemoved");
+                localBounds = SafeReflect.find(plots, "getBoundingBox");
+                loadedChunks = SafeReflect.find(plots, "getLoadedChunks");
+                chunk = SafeReflect.find(Class.forName("dev.ryanhcode.sable.sublevel.plot.PlotChunkHolder"), "getChunk");
+                minX = SafeReflect.find(boxes, "minX"); minY = SafeReflect.find(boxes, "minY"); minZ = SafeReflect.find(boxes, "minZ");
+                maxX = SafeReflect.find(boxes, "maxX"); maxY = SafeReflect.find(boxes, "maxY"); maxZ = SafeReflect.find(boxes, "maxZ");
                 Class<?> server = Class.forName("dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer");
                 Class<?> serverBody = Class.forName("dev.ryanhcode.sable.sublevel.ServerSubLevel");
-                trackingPlayers = serverBody.getMethod("getTrackingPlayers");
+                trackingPlayers = SafeReflect.find(serverBody, "getTrackingPlayers");
                 Class<?> tickets = Class.forName("dev.ryanhcode.sable.api.sublevel.ticket.SubLevelLoadingTicketType");
-                visitorTicket = tickets.getMethod("create", net.minecraft.resources.ResourceLocation.class,
+                visitorTicket = SafeReflect.find(tickets, "create", net.minecraft.resources.ResourceLocation.class,
                         com.mojang.serialization.Codec.class).invoke(null,
                         net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("planariumview", "visitor"),
                         com.mojang.serialization.Codec.STRING);
-                addTicket = server.getMethod("addForceLoadTicket", serverBody, tickets, Object.class);
-                removeTicket = server.getMethod("removeForceLoadTicket", serverBody, tickets, Object.class);
-                allTickets = server.getMethod("getAllTickets");
-                infoTickets = Class.forName("dev.ryanhcode.sable.api.sublevel.ticket.SubLevelTicketInfo").getMethod("tickets");
+                addTicket = SafeReflect.find(server, "addForceLoadTicket", serverBody, tickets, Object.class);
+                removeTicket = SafeReflect.find(server, "removeForceLoadTicket", serverBody, tickets, Object.class);
+                allTickets = SafeReflect.find(server, "getAllTickets");
+                infoTickets = SafeReflect.find(Class.forName("dev.ryanhcode.sable.api.sublevel.ticket.SubLevelTicketInfo"), "tickets");
                 Class<?> ticket = Class.forName("dev.ryanhcode.sable.api.sublevel.ticket.SubLevelLoadingTicket");
-                ticketType = ticket.getMethod("type");
-                ticketKey = ticket.getMethod("key");
-                byId = containers.getMethod("getSubLevel", UUID.class);
-                holdingMap = server.getMethod("getHoldingChunkMap");
+                ticketType = SafeReflect.find(ticket, "type");
+                ticketKey = SafeReflect.find(ticket, "key");
+                byId = SafeReflect.find(containers, "getSubLevel", UUID.class);
+                holdingMap = SafeReflect.find(server, "getHoldingChunkMap");
                 Class<?> pointer = Class.forName("dev.ryanhcode.sable.sublevel.storage.holding.GlobalSavedSubLevelPointer");
-                snatch = Class.forName("dev.ryanhcode.sable.sublevel.storage.holding.SubLevelHoldingChunkMap")
-                        .getMethod("snatchAndLoad", pointer, UUID.class);
+                snatch = SafeReflect.find(Class.forName("dev.ryanhcode.sable.sublevel.storage.holding.SubLevelHoldingChunkMap"), "snatchAndLoad", pointer, UUID.class);
                 Class<?> points = Class.forName("dev.ryanhcode.sable.sublevel.tracking_points.SubLevelTrackingPointSavedData");
                 Class<?> point = Class.forName("dev.ryanhcode.sable.sublevel.tracking_points.TrackingPoint");
-                trackingData = points.getMethod("getOrLoad", net.minecraft.server.level.ServerLevel.class);
-                trackingPoints = points.getMethod("getAllTrackingPoints");
-                pointBody = point.getMethod("subLevelID");
-                pointPointer = point.getMethod("lastSavedSubLevelPointer");
-                pointPosition = point.getMethod("point");
-                generatePoint = points.getMethod("generateTrackingPoint", Vec3.class, serverBody);
-                getPoint = points.getMethod("getTrackingPoint", UUID.class);
-                setPoint = points.getMethod("setTrackingPoint", UUID.class, point);
-                removePoint = points.getMethod("removeTrackingPoint", UUID.class);
+                trackingData = SafeReflect.find(points, "getOrLoad", net.minecraft.server.level.ServerLevel.class);
+                trackingPoints = SafeReflect.find(points, "getAllTrackingPoints");
+                pointBody = SafeReflect.find(point, "subLevelID");
+                pointPointer = SafeReflect.find(point, "lastSavedSubLevelPointer");
+                pointPosition = SafeReflect.find(point, "point");
+                generatePoint = SafeReflect.find(points, "generateTrackingPoint", Vec3.class, serverBody);
+                getPoint = SafeReflect.find(points, "getTrackingPoint", UUID.class);
+                setPoint = SafeReflect.find(points, "setTrackingPoint", UUID.class, point);
+                removePoint = SafeReflect.find(points, "removeTrackingPoint", UUID.class);
                 available = true;
                 LOGGER.info("[Planarium Panorama] Sable sub-level support enabled");
             } catch (ClassNotFoundException e) {
                 if (!"dev.ryanhcode.sable.api.sublevel.SubLevelContainer".equals(e.getMessage())) {
                     LOGGER.warn("[Planarium Panorama] Sable API class is missing; sub-level support disabled", e);
                 }
-            } catch (ReflectiveOperationException | LinkageError e) {
+            } catch (ReflectiveOperationException | LinkageError | RuntimeException e) {
                 LOGGER.warn("[Planarium Panorama] Unsupported Sable API; sub-level support disabled", e);
             }
         }
@@ -134,7 +132,7 @@ public final class SubLevelCompat {
                 Object owner = container.invoke(null, level);
                 Object value = owner == null ? null : containing.invoke(owner, new net.minecraft.world.level.ChunkPos(pos));
                 if (value != null) {
-                    Object body = value.getClass().getMethod("getSubLevel").invoke(value);
+                    Object body = SafeReflect.find(value.getClass(), "getSubLevel").invoke(value);
                     bake.invoke(pose.invoke(body), transform);
                 }
             } catch (ReflectiveOperationException | LinkageError e) {
@@ -196,7 +194,7 @@ public final class SubLevelCompat {
         try {
             Object owner = container.invoke(null, level);
             Object storage = owner == null ? null : containing.invoke(owner, new net.minecraft.world.level.ChunkPos(pos));
-            Object body = storage == null ? null : storage.getClass().getMethod("getSubLevel").invoke(storage);
+            Object body = storage == null ? null : SafeReflect.find(storage.getClass(), "getSubLevel").invoke(storage);
             if (body == previous) return body;
             releaseAnchor(level, player, previous);
             if (body != null) {
@@ -289,8 +287,7 @@ public final class SubLevelCompat {
                 }
             }
             if (changed) {
-                Object saved = Class.forName("dev.ryanhcode.sable.sublevel.storage.SubLevelTicketsSavedData")
-                        .getMethod("getOrLoad", net.minecraft.server.level.ServerLevel.class).invoke(null, level);
+                Object saved = SafeReflect.find(Class.forName("dev.ryanhcode.sable.sublevel.storage.SubLevelTicketsSavedData"), "getOrLoad", net.minecraft.server.level.ServerLevel.class).invoke(null, level);
                 ((net.minecraft.world.level.saveddata.SavedData) saved).setDirty();
             }
         } catch (ReflectiveOperationException | LinkageError e) {

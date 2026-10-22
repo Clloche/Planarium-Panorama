@@ -41,6 +41,17 @@ neoForge {
             client()
             gameDirectory = project.file('run')
         }
+        // Deuxieme joueur, dans son propre dossier (autres options et sauvegardes).
+        client2 {
+            client()
+            gameDirectory = project.file('run-client2')
+            programArguments.addAll('--username', 'Testeur2')
+        }
+        server {
+            server()
+            gameDirectory = project.file('run-server')
+            programArgument('--nogui')
+        }
     }
 }
 

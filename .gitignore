@@ -5,3 +5,6 @@ run/
 .idea/
 
 src/test/
+
+run-client2/
+run-server/

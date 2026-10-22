@@ -12,7 +12,6 @@ import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.slf4j.Logger;
 
-import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -25,8 +24,8 @@ import java.util.UUID;
 public final class LunarServer {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static Boolean present;
-    private static Method forecastOf;
-    private static Method save;
+    private static com.matthieu.planariumview.compat.SafeReflect.Call forecastOf;
+    private static com.matthieu.planariumview.compat.SafeReflect.Call save;
     private static final Map<UUID, CompoundTag> LAST_SENT = new HashMap<>();
 
     private LunarServer() {
@@ -38,9 +37,8 @@ public final class LunarServer {
             if (ModList.get() != null && ModList.get().isLoaded("enhancedcelestials2core")) {
                 try {
                     Class<?> main = Class.forName("dev.corgitaco.enhancedcelestials2core.EnhancedCelestials");
-                    forecastOf = main.getMethod("lunarForecastWorldData", Level.class);
-                    save = Class.forName("dev.corgitaco.enhancedcelestials2core.api.lunarevent.LunarForecast")
-                            .getMethod("save");
+                    forecastOf = com.matthieu.planariumview.compat.SafeReflect.find(main, "lunarForecastWorldData", Level.class);
+                    save = com.matthieu.planariumview.compat.SafeReflect.find(Class.forName("dev.corgitaco.enhancedcelestials2core.api.lunarevent.LunarForecast"), "save");
                     present = true;
                 } catch (Throwable e) {
                     LOGGER.info("[Planarium Panorama] Enhanced Celestials : version non reconnue, evenements lunaires ignores");
