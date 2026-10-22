@@ -539,6 +539,9 @@ public final class SkySync {
      * l'obscurite si l'option le demande (voir blackCave et ClientView.drawCaveDome).
      */
     public static boolean underground(ClientLevel level) {
+        Minecraft mc = Minecraft.getInstance();
+        if (skyActive(level) && com.matthieu.planariumview.client.scenery.OutsideFluidView.fogAt(
+                mc.gameRenderer.getMainCamera().getPosition()) != net.minecraft.world.level.material.FogType.NONE) return false;
         return skyActive(level) && outsideSky >= 0 && outsideSky < 8 && WeatherView.roofedAtPlanarium()
                 && WeatherView.openSkyFraction() < 0.15F && ClientView.openSkyShare() < 0.01F;
     }

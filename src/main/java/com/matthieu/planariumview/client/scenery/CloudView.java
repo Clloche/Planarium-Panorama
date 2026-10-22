@@ -22,6 +22,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
+import org.joml.Matrix4d;
+import org.joml.Vector3f;
 import org.slf4j.Logger;
 
 import java.io.InputStream;
@@ -62,6 +64,13 @@ final class CloudView {
             return;
         }
         BlockPos planarium = info.origin().offset(radius, radius, radius);
+        BlockPos moving = SubLevelView.anchorPosition();
+        if (moving != null) planarium = moving;
+        Matrix4f placement = new Matrix4f(new Matrix4d()
+                .translation(-ClientView.ARS_OFFSET * ClientView.GIANT,
+                        -ClientView.ARS_OFFSET * ClientView.GIANT - ClientView.Y_SHIFT,
+                        -ClientView.ARS_OFFSET * ClientView.GIANT)
+                .scale(ClientView.GIANT).mul(SubLevelView.sourceFrame(planarium, 0)));
         // Distance d'affichage du bocal, en blocs du monde d'origine.
         float far = mc.gameRenderer.getDepthFar();
         float reach = far / ClientView.GIANT;
@@ -96,7 +105,7 @@ final class CloudView {
         float fadeStart = far * 0.55F;
 
         BufferBuilder builder = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        Builder out = new Builder(builder, camera, fadeStart, fadeEnd);
+        Builder out = new Builder(builder, camera, placement, fadeStart, fadeEnd);
         for (int i = ci - n; i <= ci + n; i++) {
             for (int j = cj - n; j <= cj + n; j++) {
                 if (!filled(i, j)) {
@@ -138,11 +147,7 @@ final class CloudView {
         buffer.upload(mesh);
 
         // Meme passage dans le bocal que le decor geant.
-        Matrix4f pose = new Matrix4f(modelView)
-                .translate(-ClientView.ARS_OFFSET * ClientView.GIANT,
-                        -ClientView.ARS_OFFSET * ClientView.GIANT - ClientView.Y_SHIFT,
-                        -ClientView.ARS_OFFSET * ClientView.GIANT)
-                .scale(ClientView.GIANT);
+        Matrix4f pose = new Matrix4f(modelView).mul(placement);
 
         RenderSystem.enableDepthTest();
         RenderSystem.disableCull();
@@ -195,12 +200,15 @@ final class CloudView {
     private static final class Builder {
         private final BufferBuilder builder;
         private final Vec3 camera;
+        private final Matrix4f placement;
+        private final Vector3f point = new Vector3f();
         private final float fadeStart;
         private final float fadeEnd;
 
-        public Builder(BufferBuilder builder, Vec3 camera, float fadeStart, float fadeEnd) {
+        public Builder(BufferBuilder builder, Vec3 camera, Matrix4f placement, float fadeStart, float fadeEnd) {
             this.builder = builder;
             this.camera = camera;
+            this.placement = placement;
             this.fadeStart = fadeStart;
             this.fadeEnd = fadeEnd;
         }
@@ -215,9 +223,10 @@ final class CloudView {
 
         private void vertex(float x, float y, float z, float r, float g, float b, float shade) {
             // Position dans le bocal, pour l'effacement au loin.
-            double px = (x - ClientView.ARS_OFFSET) * ClientView.GIANT - camera.x;
-            double py = (y - ClientView.ARS_OFFSET) * ClientView.GIANT - ClientView.Y_SHIFT - camera.y;
-            double pz = (z - ClientView.ARS_OFFSET) * ClientView.GIANT - camera.z;
+            placement.transformPosition(point.set(x, y, z));
+            double px = point.x - camera.x;
+            double py = point.y - camera.y;
+            double pz = point.z - camera.z;
             float distance = (float) Math.sqrt(px * px + py * py + pz * pz);
             float fade = Mth.clamp((fadeEnd - distance) / (fadeEnd - fadeStart), 0.0F, 1.0F);
             builder.addVertex(x, y, z).setColor(r * shade, g * shade, b * shade, 0.8F * fade);

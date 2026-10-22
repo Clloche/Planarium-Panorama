@@ -158,6 +158,10 @@ public final class AmbientSoundsCompat {
         set(environment, "raining", raining && open && precip != 2 && precip != 0);
         set(environment, "snowing", snowing);
         set(environment, "thundering", SkySync.thunderLevel(level) > 0.9F && !snowing);
+        if (Minecraft.getInstance().player != null && !Minecraft.getInstance().player.isUnderWater()) {
+            set(environment, "underwater", com.matthieu.planariumview.client.scenery.OutsideFluidView.fogAt(
+                    Minecraft.getInstance().player.getEyePosition()) == net.minecraft.world.level.material.FogType.WATER ? 1.0 : 0.0);
+        }
         try {
             Object terrain = get(environment, "terrain");
             double average = ((Number) get(terrain, "averageHeight")).doubleValue();

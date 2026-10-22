@@ -7,11 +7,17 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.world.phys.AABB;
 import org.joml.Matrix4d;
 import org.joml.Matrix4dc;
+import org.joml.Quaterniond;
 import org.joml.Vector3d;
 
 /** Double precision is essential: Sable's storage plots can be millions of blocks from the origin. */
 public final class SubLevelTransforms {
     private SubLevelTransforms() {
+    }
+
+    /** Direction-only inverse, shared by the sky and the terrain's moving reference frame. */
+    public static Quaterniond inverseRotation(Matrix4dc anchor) {
+        return anchor.getUnnormalizedRotation(new Quaterniond()).normalize().conjugate();
     }
 
     public static ListTag write(Matrix4dc matrix) {

@@ -642,6 +642,7 @@ public final class ClientView {
      */
     private static void tickSceneryAmbience(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
         com.matthieu.planariumview.client.jar.SubLevelLight.tick();
+        OutsideFluidView.tick();
         Minecraft mc = Minecraft.getInstance();
         // Cascades du decor avec les sons de Dynamic Surroundings (integration DS et sons d'ambiance du decor).
         // En vol, le decor normal est cache (voir FlightView) : pas de sons, flaques ni particules a son ancienne place.
@@ -859,6 +860,19 @@ public final class ClientView {
     /** Faux monde du decor geant et rayon du Planarium (pour les particules du decor), ou null. */
     public static LitRenderingWorld sceneryWorld() {
         return renderData != null && renderData.fakeRenderingWorld instanceof LitRenderingWorld lit ? lit : null;
+    }
+
+    /** Compatibility fallback for a server without the small live fluid sample. */
+    static FluidState outsideFluid(Vec3 camera) {
+        LitRenderingWorld world = sceneryWorld();
+        if (world == null || lastInfo == null) return net.minecraft.world.level.material.Fluids.EMPTY.defaultFluidState();
+        org.joml.Vector3d local = new org.joml.Vector3d(camera.x / GIANT + ARS_OFFSET,
+                (camera.y + Y_SHIFT) / GIANT + ARS_OFFSET, camera.z / GIANT + ARS_OFFSET);
+        SubLevelView.sourceFrame(lastInfo.origin(), currentRadius).invert().transformPosition(local);
+        BlockPos pos = BlockPos.containing(local.x, local.y, local.z);
+        FluidState fluid = world.getCapturedBlockState(pos).getFluidState();
+        return !fluid.isEmpty() && local.y < pos.getY() + fluid.getHeight(world, pos)
+                ? fluid : net.minecraft.world.level.material.Fluids.EMPTY.defaultFluidState();
     }
 
     static int sceneryVersion() {
@@ -1146,7 +1160,9 @@ public final class ClientView {
             SceneryParticles.prepareHues();
             if (renderData != null) {
                 GiantSprites.markActive();
-                draw(renderData, event);
+                SceneryClip.begin(event.getCamera(), event.getModelViewMatrix());
+                try { draw(renderData, event); }
+                finally { SceneryClip.end(); }
             }
         } catch (Exception e) {
             LOGGER.error("[Planarium View] Erreur de rendu, vue desactivee", e);
@@ -1814,7 +1830,7 @@ public final class ClientView {
                     section.sortStates.put(type, mesh.sortQuads(data.getByteBuffer(type),
                             VertexSorting.byDistance(sortPos)));
                 }
-                VertexBuffer buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+                VertexBuffer buffer = new ClippedVertexBuffer();
                 buffer.bind();
                 buffer.upload(mesh);
                 VertexBuffer.unbind();
@@ -2275,6 +2291,7 @@ public final class ClientView {
      * sur la vraie distance d'affichage (sans l'extension de Voxy, qui le repousserait tres loin).
      */
     public static void applySceneryFog() {
+        if (OutsideFluidView.applyFog(Minecraft.getInstance().gameRenderer.getMainCamera())) return;
         Config.Fog mode = Config.FOG.get();
         if (mode == Config.Fog.OFF) {
             RenderSystem.setShaderFogStart(Float.MAX_VALUE / 2);

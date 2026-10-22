@@ -12,6 +12,7 @@
     "DsCeilingScannerMixin",
     "DsDimensionLibraryMixin",
     "DsBiomeVariablesMixin",
+    "DsPlayerVariablesMixin",
     "DsWeatherVariablesMixin",
     "DsFireflyParticleMixin",
     "DsFireflyLightsMixin",

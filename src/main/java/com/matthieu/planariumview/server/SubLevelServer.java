@@ -5,6 +5,7 @@ import com.matthieu.planariumview.compat.SubLevelCompat;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.SubLevelPayload;
 import com.matthieu.planariumview.network.SubLevelTransforms;
+import com.matthieu.planariumview.network.OutsideFluids;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.core.Vec3i;
@@ -171,7 +172,7 @@ public final class SubLevelServer {
                         SCENES.remove(new Key(viewer, entry.getKey().location(), true));
                         ServerPlayer player = server.getPlayerList().getPlayer(viewer);
                         if (player != null && player.connection.hasChannel(SubLevelPayload.TYPE)) {
-                            frames(player, entry.getKey().location(), true, new ListTag(), new Matrix4d(), now);
+                            frames(player, entry.getKey().location(), true, new ListTag(), new Matrix4d(), now, miniature.level);
                         }
                     }
                     miniature.close();
@@ -227,7 +228,7 @@ public final class SubLevelServer {
             boolean movingJar = hidden != null && (anchor.m30() != hidden.getX()
                     || anchor.m31() != hidden.getY() || anchor.m32() != hidden.getZ());
             if (!miniature && (movingJar || now % 20 == 0)) {
-                frames(player, dimension, false, new ListTag(), anchor, now);
+                frames(player, dimension, false, new ListTag(), anchor, now, source);
             }
             return;
         }
@@ -321,7 +322,7 @@ public final class SubLevelServer {
         // Nothing moved: the client already has this complete list. Resent once per second in case one was lost.
         boolean unchanged = frames.equals(scene.lastFrames) && anchor.equals(scene.lastAnchor) && now - scene.lastFramesAt < 20;
         if (!quiet && !unchanged) {
-            frames(player, dimension, miniature, frames, anchor, now);
+            frames(player, dimension, miniature, frames, anchor, now, source);
             scene.sent = !frames.isEmpty();
             scene.lastFrames = frames;
             scene.lastAnchor = new Matrix4d(anchor);
@@ -332,11 +333,13 @@ public final class SubLevelServer {
     }
 
     private static void frames(ServerPlayer player, ResourceLocation dimension, boolean miniature, ListTag frames,
-                               Matrix4d anchor, long tick) {
+                               Matrix4d anchor, long tick, ServerLevel source) {
         CompoundTag packet = new CompoundTag();
         packet.put("frames", frames);
         packet.put("anchor", SubLevelTransforms.write(anchor));
         packet.putLong("tick", tick);
+        // An optional NBT field preserves the existing scene protocol for older clients and servers.
+        if (!miniature) packet.put("fluids", OutsideFluids.capture(source, anchor));
         PacketDistributor.sendToPlayer(player, new SubLevelPayload(dimension, miniature, packet));
     }
 

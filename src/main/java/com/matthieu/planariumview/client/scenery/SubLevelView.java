@@ -11,6 +11,7 @@ import com.matthieu.planariumview.client.mini.MiniOutsideLight;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.SubLevelPayload;
 import com.matthieu.planariumview.network.SubLevelTransforms;
+import com.matthieu.planariumview.network.OutsideFluids;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import com.mojang.logging.LogUtils;
@@ -81,6 +82,7 @@ public final class SubLevelView {
 
     private static final class Scene {
         final Pose anchor = new Pose();
+        OutsideFluids fluids;
         final Map<String, Part> parts = new HashMap<>();
         long revision, lightingRevision = -1;
         Map<Long, SubLevelLighting.Section> lighting = Map.of();
@@ -265,8 +267,7 @@ public final class SubLevelView {
         if (!Config.subLevelViews()) {
             // A moving jar still needs its reference frame for the ordinary terrain panorama.
             if (!payload.miniature() && payload.scene().contains("anchor", Tag.TAG_LIST)) {
-                OUTSIDE.computeIfAbsent(payload.dimension(), ignored -> new Scene()).anchor
-                        .receive(SubLevelTransforms.read(payload.scene(), "anchor"));
+                receiveAnchor(OUTSIDE.computeIfAbsent(payload.dimension(), ignored -> new Scene()), payload.scene());
             }
             return;
         }
@@ -299,7 +300,7 @@ public final class SubLevelView {
             var frames = tag.getList("frames", Tag.TAG_COMPOUND);
             if (frames.size() > 256) throw new IllegalArgumentException("Too many sub-level sections");
             Set<String> visible = new HashSet<>();
-            scene.anchor.receive(SubLevelTransforms.read(tag, "anchor"));
+            receiveAnchor(scene, tag);
             for (int i = 0; i < frames.size(); i++) {
                 CompoundTag frame = frames.getCompound(i);
                 String id = frame.getString("id");
@@ -314,6 +315,30 @@ public final class SubLevelView {
                 return true;
             });
         }
+    }
+
+    private static void receiveAnchor(Scene scene, CompoundTag tag) {
+        scene.anchor.receive(SubLevelTransforms.read(tag, "anchor"));
+        scene.fluids = tag.contains("fluids", Tag.TAG_LIST)
+                ? OutsideFluids.read(tag.getList("fluids", Tag.TAG_COMPOUND)) : null;
+    }
+
+    /** Sky directions use the terrain's inverse rotation, without its translation or scale. */
+    public static Matrix4f sky(Matrix4f view) {
+        Scene scene = outside();
+        if (scene == null || scene.anchor.to == null) return view;
+        Quaterniond rotation = SubLevelTransforms.inverseRotation(scene.anchor.current());
+        return new Matrix4f(view).rotate(new org.joml.Quaternionf(rotation));
+    }
+
+    /** Null means an older server has no fluid sample; an empty state is a known dry location. */
+    public static net.minecraft.world.level.material.FluidState outsideFluid(Vec3 camera) {
+        Scene scene = outside();
+        if (scene == null || scene.anchor.to == null || scene.fluids == null) return null;
+        Vector3d local = new Vector3d(camera.x / ClientView.GIANT + ClientView.ARS_OFFSET,
+                (camera.y + ClientView.Y_SHIFT) / ClientView.GIANT + ClientView.ARS_OFFSET,
+                camera.z / ClientView.GIANT + ClientView.ARS_OFFSET);
+        return scene.fluids.at(scene.anchor.current().transformPosition(local));
     }
 
     /** Repositions an already-built terrain mesh around a moving jar. */
@@ -525,7 +550,7 @@ public final class SubLevelView {
                     if (entry.getKey() == RenderType.translucent()) {
                         sorting.put(entry.getKey(), mesh.sortQuads(data.getByteBuffer(entry.getKey()), VertexSorting.DISTANCE_TO_ORIGIN));
                     }
-                    VertexBuffer buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+                    VertexBuffer buffer = new ClippedVertexBuffer();
                     buffers.put(entry.getKey(), buffer);
                     buffer.bind();
                     buffer.upload(mesh);

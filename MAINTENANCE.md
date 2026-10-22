@@ -106,6 +106,15 @@ dimension). Vérifier à chaque version s'il est encore nécessaire ; sans dange
 
 Tests :
 - Vaisseau visible dans le décor géant et la miniature, qui bouge et tourne (90°, 180°, 45°).
+- Planarium incliné : soleil, lune, étoiles et nuages alignés avec le décor (lacet, tangage et roulis).
+- Planarium immergé par le mouvement du vaisseau : brouillard d'eau ou de lave, ambiance sous-marine dans l'eau,
+  puis retour à l'air en ressortant. Le joueur reste physiquement au sec dans le bocal. Les effets des liquides
+  personnalisés ne sont pas encore pris en charge ; le petit échantillon de fluides voyage dans le champ NBT
+  facultatif `fluids` des poses Sable, y compris quand les copies de structures sont désactivées.
+- Découpe du décor contre le volume intérieur du bocal (`ClippedVertexBuffer`, `JarClip`) : liquide traversant
+  une paroi avec un roulis de 70°, puis tangage et déplacement. Les faces extérieures et leurs UV doivent rester
+  intactes ; le sol du bocal reste visible. Vérifier aussi le passage au décor en vol et le retour à la photo normale.
+  Cette découpe concerne les maillages du décor, pas les rendus spéciaux de block entities (volant d'Aeronautics).
 - Planarium sur un vaisseau : déplacement (décor en vol), arrêt (photo normale puis anneau lointain 5 s plus tard).
 - Sortie du bocal pendant que le vaisseau bouge, puis retour.
 - Déconnexion à l'intérieur du bocal sur un vaisseau, puis reconnexion : le vaisseau et la vue reviennent.

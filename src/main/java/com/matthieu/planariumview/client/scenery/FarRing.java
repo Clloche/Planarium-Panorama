@@ -381,7 +381,7 @@ public final class FarRing {
                 if (entry.getKey() == RenderType.translucent()) {
                     mesh.sortQuads(bytes(entry.getKey()), VertexSorting.byDistance(sortPos));
                 }
-                VertexBuffer buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+                VertexBuffer buffer = new ClippedVertexBuffer();
                 result.put(entry.getKey(), buffer);
                 buffer.bind();
                 buffer.upload(mesh);
