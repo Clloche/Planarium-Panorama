@@ -33,6 +33,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexBuffer;
 import com.mojang.blaze3d.vertex.VertexSorting;
 import com.mojang.logging.LogUtils;
@@ -1964,7 +1965,7 @@ public final class ClientView {
                         rt -> new BufferBuilder(data.getByteBuffer(rt), rt.mode(), rt.format()));
                 try {
                     dispatcher.renderLiquid(pos.pos, data.fakeRenderingWorld,
-                            new LiquidBlockVertexConsumer(fluidBuilder, matrix, pos.pos), pos.state, fluidState);
+                            new LiquidBlockVertexConsumer(new GridSnapConsumer(fluidBuilder), matrix, pos.pos), pos.state, fluidState);
                 } catch (Exception e) {
                     LOGGER.debug("[Planarium View] Liquide ignore", e);
                 }
@@ -1980,10 +1981,12 @@ public final class ClientView {
                 if (renderState.getRenderShape() != RenderShape.MODEL) {
                     continue;
                 }
+                // Sommets sur une grille fixe : pas de fentes entre les blocs voisins (voir GridSnapConsumer).
+                VertexConsumer snapped = new GridSnapConsumer(builder);
                 if (renderState.getFluidState().isEmpty() && isModel && !(model instanceof JarClippedModel)) {
                     // Bloc couvert de neige de Snow! Real Magic : le vrai bloc, puis la neige (voir SnowRealMagicCompat).
                     final CulledStatePos culled = pos;
-                    final BufferBuilder snowTarget = builder;
+                    final VertexConsumer snowTarget = snapped;
                     final RenderType layer = renderType;
                     boolean snowy = SnowRealMagicCompat.render(data.fakeRenderingWorld, renderState, pos.pos, renderType, matrix,
                             (partState, partModel, pose) -> PlanariumRenderer.tesselateBlock(culled, modelRenderer,
@@ -1998,7 +2001,7 @@ public final class ClientView {
                     try {
                         // Couleur de Contraption Lights prise devant chaque face (voir FaceHueConsumer).
                         com.mojang.blaze3d.vertex.VertexConsumer faces = com.matthieu.planariumview.compat.ColorCompat.building()
-                                ? new FaceHueConsumer(builder, data.fakeRenderingWorld, pos.pos) : builder;
+                                ? new FaceHueConsumer(snapped, data.fakeRenderingWorld, pos.pos) : snapped;
                         PlanariumRenderer.tesselateBlock(pos, modelRenderer, data.fakeRenderingWorld, model, renderState,
                                 pos.pos, matrix, faces, random, renderState.getSeed(pos.pos),
                                 OverlayTexture.NO_OVERLAY, ModelData.EMPTY, renderType);

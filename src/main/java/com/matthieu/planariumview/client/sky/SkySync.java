@@ -542,6 +542,11 @@ public final class SkySync {
         Minecraft mc = Minecraft.getInstance();
         if (skyActive(level) && com.matthieu.planariumview.client.scenery.OutsideFluidView.fogAt(
                 mc.gameRenderer.getMainCamera().getPosition()) != net.minecraft.world.level.material.FogType.NONE) return false;
+        return closedCave(level);
+    }
+
+    /** Caverne fermee autour du Planarium, qu'il soit sous l'eau ou non (voir underground). */
+    private static boolean closedCave(ClientLevel level) {
         return skyActive(level) && outsideSky >= 0 && outsideSky < 8 && WeatherView.roofedAtPlanarium()
                 && WeatherView.openSkyFraction() < 0.15F && ClientView.openSkyShare() < 0.01F;
     }
@@ -619,6 +624,15 @@ public final class SkySync {
     }
 
     private static String lastCaveState = "";
+
+    /**
+     * Comme blackCave, mais pour un Planarium sous l'eau dans une caverne fermee : le brouillard de l'eau devient noir
+     * lui aussi (option Sombre), au lieu du bleu de vanilla. En pleine mer, la surface reste visible : pas de noir.
+     */
+    public static boolean blackWater(ClientLevel level) {
+        return Config.darkCaves() && !customBiomeFog() && closedCave(level) && outsideSky < 5
+                && WeatherView.openSkyFraction() < 0.10F && ClientView.openSkyShare() <= 0.0F;
+    }
 
     public static boolean isActive(ClientLevel level) {
         return dim != null && level != null && Config.syncSky() && level.dimension().location().equals(dim);

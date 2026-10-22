@@ -350,7 +350,7 @@ public final class FarRing {
                         RenderType fluidType = ItemBlockRenderTypes.getRenderLayer(fluid);
                         BufferBuilder builder = buffers.computeIfAbsent(fluidType,
                                 type -> new BufferBuilder(bytes(type), type.mode(), type.format()));
-                        dispatcher.renderLiquid(pos, world, new LiquidBlockVertexConsumer(builder, matrix, pos), state, fluid);
+                        dispatcher.renderLiquid(pos, world, new LiquidBlockVertexConsumer(giantCoordinates ? new GridSnapConsumer(builder) : builder, matrix, pos), state, fluid);
                     }
                     if (state.getRenderShape() != RenderShape.MODEL) continue;
                     BakedModel model = dispatcher.getBlockModel(state);
@@ -359,7 +359,9 @@ public final class FarRing {
                     for (RenderType type : model.getRenderTypes(state, random, ModelData.EMPTY)) {
                         BufferBuilder builder = buffers.computeIfAbsent(type,
                                 layer -> new BufferBuilder(bytes(layer), layer.mode(), layer.format()));
-                        VertexConsumer faces = ColorCompat.building() ? new FaceHueConsumer(builder, world, pos) : builder;
+                        // Sommets sur une grille fixe : pas de fentes entre les blocs voisins (voir GridSnapConsumer).
+                        VertexConsumer target = giantCoordinates ? new GridSnapConsumer(builder) : builder;
+                        VertexConsumer faces = ColorCompat.building() ? new FaceHueConsumer(target, world, pos) : target;
                         modelRenderer.tesselateBlock(world, model, state, pos, matrix, faces, true, random, seed,
                                 OverlayTexture.NO_OVERLAY, ModelData.EMPTY, type);
                     }
