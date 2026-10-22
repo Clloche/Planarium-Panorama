@@ -27,6 +27,9 @@ final class ClippedVertexBuffer extends VertexBuffer {
 
     ClippedVertexBuffer() { super(Usage.STATIC); }
 
+    /** Diagnostic temporaire : decoupes et relectures de la carte graphique depuis la derniere image. */
+    static int rebuilds, readbacks;
+
     @Override public void upload(MeshData mesh) {
         releaseClip();
         state = mesh.drawState();
@@ -41,12 +44,21 @@ final class ClippedVertexBuffer extends VertexBuffer {
             min.min(point); max.max(point);
         }
         bounds = new AABB(min.x,min.y,min.z,max.x,max.y,max.z);
+        // Copie des sommets gardee jusqu'au premier dessin : la relire depuis la carte graphique (glGetBufferSubData)
+        // bloquait l'image (gels d'une demi-seconde). Liberee des que la section s'avere loin du bocal.
+        source = MemoryUtil.memAlloc(sourceBytes).order(ByteOrder.nativeOrder());
+        MemoryUtil.memCopy(vertices, source);
         super.upload(mesh);
         sourceId = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
     }
 
+    private void releaseSource() {
+        if (source != null) { MemoryUtil.memFree(source); source=null; }
+    }
+
     @Override public void drawWithShader(Matrix4f model, Matrix4f projection, ShaderInstance shader) {
         if (SceneryClip.fromView == null || state.mode() != VertexFormat.Mode.QUADS) {
+            releaseSource();
             super.drawWithShader(model,projection,shader);
             return;
         }
@@ -60,7 +72,8 @@ final class ClippedVertexBuffer extends VertexBuffer {
             super.drawWithShader(model,projection,shader);
             return;
         }
-        if (lastTransform == null || !lastTransform.equals(transform,1e-4)) rebuild(transform);
+        // Tolerance en unites du bocal : les erreurs d'arrondi de la camera ne doivent pas tout redecouper a chaque image.
+        if (lastTransform == null || !lastTransform.equals(transform,1e-2)) rebuild(transform);
         if (!empty) {
             clipped.bind();
             try { clipped.drawWithShader(model,projection,shader); }
@@ -69,7 +82,9 @@ final class ClippedVertexBuffer extends VertexBuffer {
     }
 
     private void rebuild(Matrix4d transform) {
+        rebuilds++;
         if (source == null) {
+            readbacks++;
             source = MemoryUtil.memAlloc(sourceBytes).order(ByteOrder.nativeOrder());
             int previous = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
             try {

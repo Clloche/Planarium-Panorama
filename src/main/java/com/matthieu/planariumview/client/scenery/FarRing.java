@@ -381,7 +381,8 @@ public final class FarRing {
                 if (entry.getKey() == RenderType.translucent()) {
                     mesh.sortQuads(bytes(entry.getKey()), VertexSorting.byDistance(sortPos));
                 }
-                VertexBuffer buffer = new ClippedVertexBuffer();
+                // Pas de decoupe : l'anneau lointain commence bien au-dela du bocal et ne peut pas le traverser.
+                VertexBuffer buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
                 result.put(entry.getKey(), buffer);
                 buffer.bind();
                 buffer.upload(mesh);

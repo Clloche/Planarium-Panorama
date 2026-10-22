@@ -1094,6 +1094,35 @@ public final class ClientView {
         }
     }
 
+    // ---- Diagnostic temporaire des images lentes (a retirer) ----
+    private static final long[] SLOW_T = new long[8];
+    private static final String[] SLOW_N = {"correction/photo", "sections en attente", "teintes", "tri translucide",
+            "anneau lointain (prep)", "vol (prep)", "dessin couches", "reste du dessin"};
+    private static long slowLast;
+    private static long slowLogAt;
+
+    private static void slowMark(int index) {
+        long now = System.nanoTime();
+        SLOW_T[index] += now - slowLast;
+        slowLast = now;
+    }
+
+    private static void slowReport(long start) {
+        long total = System.nanoTime() - start;
+        if (total > 40_000_000L && System.currentTimeMillis() - slowLogAt > 1000) {
+            slowLogAt = System.currentTimeMillis();
+            StringBuilder line = new StringBuilder();
+            for (int i = 0; i < SLOW_T.length; i++) {
+                if (SLOW_T[i] > 1_000_000L) line.append(SLOW_N[i]).append('=').append(SLOW_T[i] / 1_000_000L).append(" ms, ");
+            }
+            LOGGER.info("[Planarium Panorama] Image lente du decor : {} ms ({}decoupes={}, relectures={})",
+                    total / 1_000_000L, line, ClippedVertexBuffer.rebuilds, ClippedVertexBuffer.readbacks);
+        }
+        java.util.Arrays.fill(SLOW_T, 0L);
+        ClippedVertexBuffer.rebuilds = 0;
+        ClippedVertexBuffer.readbacks = 0;
+    }
+
     private static void onRenderStage(RenderLevelStageEvent event) {
         boolean sky = event.getStage() == RenderLevelStageEvent.Stage.AFTER_SKY;
         boolean blockEntities = event.getStage() == RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES;
@@ -1131,6 +1160,8 @@ public final class ClientView {
             return;
         }
         SkySync.giantLight(true, partialTick);
+        long slowStart = System.nanoTime();
+        slowLast = slowStart;
         try {
             // La distance d'affichage a change : on reconstruit le decor au nouveau rayon de vue.
             if (renderData != null && builtViewRadius != viewRadius()) {
@@ -1175,8 +1206,11 @@ public final class ClientView {
                     rebuild();
                 }
             }
+            slowMark(0);
             buildPendingSections(event.getCamera().getPosition());
+            slowMark(1);
             SceneryParticles.prepareHues();
+            slowMark(2);
             if (renderData != null) {
                 GiantSprites.markActive();
                 SceneryClip.begin(event.getCamera(), event.getModelViewMatrix());
@@ -1187,6 +1221,8 @@ public final class ClientView {
             LOGGER.error("[Planarium View] Erreur de rendu, vue desactivee", e);
             dispose();
         } finally {
+            slowMark(7);
+            slowReport(slowStart);
             SkySync.giantLight(false, partialTick);
         }
     }
@@ -2032,10 +2068,13 @@ public final class ClientView {
             Vec3 camera = event.getCamera().getPosition();
             for (SectionMesh section : sectionMeshes.values()) section.sort(camera);
         }
+        slowMark(3);
 
         Vec3 camera = event.getCamera().getPosition();
         FarRing.buildPending(camera);
+        slowMark(4);
         FlightView.update(camera);
+        slowMark(5);
         PoseStack poseStack = new PoseStack();
         poseStack.mulPose(event.getModelViewMatrix());
         poseStack.translate(-camera.x, -camera.y, -camera.z);
@@ -2090,6 +2129,7 @@ public final class ClientView {
                 }
             }
             poseStack.popPose();
+            slowMark(6);
             if (lastInfo != null) SubLevelView.drawOutside(event,
                     lastInfo.origin().offset(currentRadius, currentRadius, currentRadius), false);
             drawFogWall(poseStack, projectionMatrix, camera);
