@@ -34,6 +34,12 @@ import java.util.UUID;
 public final class FarRingServer {
     private static final Logger LOGGER = LogUtils.getLogger();
     /** Les tickets expirent seuls (30 s) si une capture est abandonnee sans les retirer. */
+    /**
+     * Cavernes sombres gardees dans l'anneau lointain quand le Planarium est a ciel ouvert : seulement a cette distance
+     * verticale de lui (surplombs, entrees de grottes). Plus bas ou plus haut, le relief les cache en general, et elles
+     * alourdiraient beaucoup la photo. Planarium sous un plafond (grotte) : toute la hauteur de l'anneau.
+     */
+    private static final int DARK_BAND = 24;
     private static final TicketType<UUID> TICKET = TicketType.create("planariumview_far", UUID::compareTo, 600);
     /** Un Planarium qui bouge doit rester immobile ce temps avant la capture de l'anneau. */
     private static final int STILL_TICKS = 100;
@@ -220,6 +226,8 @@ public final class FarRingServer {
         long workNanos;
         final int minX, minY, minZ, maxX, maxY, maxZ;
         final VisibleCapture visible;
+        /** Planarium sous un plafond (grotte, surplomb) : ses parois sombres se voient sur toute la hauteur. */
+        Boolean covered;
 
         Job(Key key, UUID owner, long now) {
             this.key = key;
@@ -268,6 +276,11 @@ public final class FarRingServer {
                         return false;
                     }
                     long chunkStart = System.nanoTime();
+                    if (covered == null) {
+                        covered = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING,
+                                key.center.getX(), key.center.getZ()) > key.center.getY() + 1;
+                    }
+                    final boolean underCeiling = covered;
                     visible.capture(level, chunk, minX, maxX, minY, maxY, minZ, maxZ, new VisibleCapture.Shape() {
                         @Override
                         public boolean contains(int x, int y, int z) {
@@ -277,6 +290,11 @@ public final class FarRingServer {
                         @Override
                         public boolean skip(int x, int y, int z) {
                             return inNear(x, y, z);
+                        }
+
+                        @Override
+                        public boolean darkVisible(int x, int y, int z) {
+                            return underCeiling || Math.abs(y - key.center.getY()) <= DARK_BAND;
                         }
                     });
                     index++;

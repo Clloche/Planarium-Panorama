@@ -37,6 +37,14 @@ final class VisibleCapture {
         default boolean skip(int x, int y, int z) {
             return false;
         }
+
+        /**
+         * Vrai si une case sans lumiere (caverne noire) peut quand meme se voir du bocal : ce qui l'entoure est alors
+         * envoye. Sinon, les cavernes sombres sont ignorees (on ne les voit pas, et ca allege la photo).
+         */
+        default boolean darkVisible(int x, int y, int z) {
+            return false;
+        }
     }
 
     private final int originX, originY, originZ;
@@ -130,8 +138,11 @@ final class VisibleCapture {
                         if (state.getBlock() instanceof LiquidBlock && neighbor.getFluidState().getType().isSame(state.getFluidState().getType())) {
                             continue;
                         }
-                        // Une case sans aucune lumiere (caverne noire) : ce qui l'entoure ne se voit pas du bocal.
-                        if (level.getBrightness(LightLayer.SKY, next) == 0 && level.getBrightness(LightLayer.BLOCK, next) == 0) {
+                        // Une case sans aucune lumiere (caverne noire) : en general, ce qui l'entoure ne se voit pas du
+                        // bocal. Sauf pres de la hauteur du Planarium (Planarium dans une grotte ou pres d'un surplomb) :
+                        // sans ces blocs, on voyait le ciel a travers les parois sombres.
+                        if (level.getBrightness(LightLayer.SKY, next) == 0 && level.getBrightness(LightLayer.BLOCK, next) == 0
+                                && !shape.darkVisible(next.getX(), next.getY(), next.getZ())) {
                             continue;
                         }
                         visible = true;
