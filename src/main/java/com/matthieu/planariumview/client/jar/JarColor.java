@@ -55,7 +55,7 @@ public final class JarColor {
      * Ne modifie jamais le tableau recu (il peut etre partage) : on renvoie une copie corrigee, gardee en cache.
      */
     public static short[] apply(short[] original, int sx, int sy, int sz) {
-        if (failed || !Config.coloredLight()) {
+        if (failed || !Config.jarColoredLight()) {
             return original;
         }
         if (sx < 0 || sx > 1 || sy < 0 || sy > 2 || sz < 0 || sz > 1) {
@@ -111,7 +111,7 @@ public final class JarColor {
 
     /** Vrai si de la lumiere coloree du dehors entre dans le bocal. */
     public static boolean hasColor() {
-        return !failed && Config.coloredLight() && cells() != null;
+        return !failed && Config.jarColoredLight() && cells() != null;
     }
 
     static int revision() {

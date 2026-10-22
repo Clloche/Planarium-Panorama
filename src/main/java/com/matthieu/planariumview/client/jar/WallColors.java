@@ -95,7 +95,7 @@ public final class WallColors {
     private static int colorAt(BlockPos pos) {
         ClientLevel level = Minecraft.getInstance().level;
         ResourceLocation current = dim;
-        if (current == null || level == null || !Config.coloredLight() || !level.dimension().location().equals(current)) {
+        if (current == null || level == null || !Config.jarColoredLight() || !level.dimension().location().equals(current)) {
             return PASS;
         }
         int face = JarWalls.faceAt(pos.getX(), pos.getY(), pos.getZ(), light);

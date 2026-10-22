@@ -129,7 +129,7 @@ public final class ProjectorLighting {
      */
     private static int tagged(ClientLevel level, int blockU, int bx, int by, int bz) {
         int packed = 240 << 16 | blockU;
-        if (colorTagMissing || !Config.coloredLight()) {
+        if (colorTagMissing || !Config.jarColoredLight()) {
             return packed;
         }
         int x = Mth.clamp(bx, MIN_XZ, MAX_XZ);
@@ -166,7 +166,7 @@ public final class ProjectorLighting {
      */
     private static int corner(ClientLevel level, int blockU, double wx, double wy, double wz, int axis) {
         int base = 240 << 16 | blockU;
-        if (colorTagMissing || !Config.coloredLight()) {
+        if (colorTagMissing || !Config.jarColoredLight()) {
             return base;
         }
         long key = ((((long) Math.round(wx * 2) & 0xFFF) << 40) | (((long) Math.round(wy * 2) & 0xFFF) << 28)

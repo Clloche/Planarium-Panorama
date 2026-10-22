@@ -67,7 +67,7 @@ public final class SubLevelLight {
         byte[] light = changedLevel ? null : previous.light;
         boolean sample = lastSample == Long.MIN_VALUE || level.getGameTime() - lastSample >= 20;
         boolean changedLight = revision != JarLight.revision();
-        boolean changedColor = colorRevision != JarColor.revision() || colored != Config.coloredLight();
+        boolean changedColor = colorRevision != JarColor.revision() || colored != Config.jarColoredLight();
         if (sample && !bodies.isEmpty()) {
             byte[] next = readLight(level);
             changedLight |= !Arrays.equals(light, next);
@@ -84,7 +84,7 @@ public final class SubLevelLight {
         if (changedLight || changedColor) remeshed.clear();
         revision = JarLight.revision();
         colorRevision = JarColor.revision();
-        colored = Config.coloredLight();
+        colored = Config.jarColoredLight();
         if (sample || changedLight || changedColor || changedLevel) {
             colorEpoch++;
             colorSections.clear();
@@ -101,7 +101,7 @@ public final class SubLevelLight {
     /** Called after Contraption Lights computes a plot section, including when it returns a cached section. */
     static short[] colors(short[] original, int sx, int sy, int sz) {
         Snapshot current = snapshot;
-        if (current == null || current.level != Minecraft.getInstance().level || !Config.coloredLight()) return original;
+        if (current == null || current.level != Minecraft.getInstance().level || !Config.jarColoredLight()) return original;
         AABB section = new AABB((double) sx * 16, (double) sy * 16, (double) sz * 16,
                 (double) sx * 16 + 16, (double) sy * 16 + 16, (double) sz * 16 + 16);
         for (Frame frame : current.frames) {

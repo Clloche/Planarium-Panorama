@@ -25,7 +25,20 @@ public final class ClTag {
      * (on enleve d'abord toute couleur deja ajoutee). Comme Contraption Lights pour les blocs speciaux hors des chunks.
      */
     public static int retag(int packed, BlockAndTintGetter level, BlockPos pos) {
-        if (missing || !Config.coloredLight()) {
+        return retag(packed, level, pos, false);
+    }
+
+    /** Pour le vrai monde du bocal : la couleur reste, quelle que soit l'option du decor et de la miniature. */
+    public static int retagJar(int packed, BlockAndTintGetter level, BlockPos pos) {
+        return retag(packed, level, pos, true);
+    }
+
+    private static boolean allowed(boolean jar) {
+        return !missing && (jar ? Config.jarColoredLight() : Config.coloredLight());
+    }
+
+    private static int retag(int packed, BlockAndTintGetter level, BlockPos pos, boolean jar) {
+        if (!allowed(jar)) {
             return packed;
         }
         int pure = packed & 0x00F000F0;
@@ -38,7 +51,7 @@ public final class ClTag {
             }
             // Pour Flywheel (et les chunks), Contraption Lights utilise la version "baked" de sa couleur.
             if ((boolean) baking.invokeExact()) {
-                return tagBaked(pure, level, pos);
+                return bake(pure, level, pos);
             }
             return (int) tag.invokeExact(pure, level, pos);
         } catch (Throwable e) {
@@ -48,20 +61,25 @@ public final class ClTag {
     }
 
     /** Comme retag, pour les copies du monde qui servent a construire les chunks (toujours la version "baked"). */
-    public static int retagBaked(int packed, BlockAndTintGetter level, BlockPos pos) {
-        if (missing || !Config.coloredLight()) {
+    public static int retagBakedJar(int packed, BlockAndTintGetter level, BlockPos pos) {
+        if (!allowed(true)) {
             return packed;
         }
-        return tagBaked(packed & 0x00F000F0, level, pos);
+        return bake(packed & 0x00F000F0, level, pos);
     }
 
     private ClTag() {
     }
 
+    /** Decor geant et miniature : selon l'option. */
     public static int tagBaked(int packed, BlockAndTintGetter level, BlockPos pos) {
-        if (missing || !Config.coloredLight()) {
+        if (!allowed(false)) {
             return packed;
         }
+        return bake(packed, level, pos);
+    }
+
+    private static int bake(int packed, BlockAndTintGetter level, BlockPos pos) {
         try {
             if (tagBaked == null) {
                 Class<?> feature = Class.forName("xyz.atmerek.contraptionlights.light.color.ColorLightFeature");

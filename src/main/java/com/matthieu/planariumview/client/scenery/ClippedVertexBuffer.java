@@ -27,9 +27,6 @@ final class ClippedVertexBuffer extends VertexBuffer {
 
     ClippedVertexBuffer() { super(Usage.STATIC); }
 
-    /** Diagnostic temporaire : decoupes et relectures de la carte graphique depuis la derniere image. */
-    static int rebuilds, readbacks;
-
     @Override public void upload(MeshData mesh) {
         releaseClip();
         state = mesh.drawState();
@@ -82,9 +79,7 @@ final class ClippedVertexBuffer extends VertexBuffer {
     }
 
     private void rebuild(Matrix4d transform) {
-        rebuilds++;
         if (source == null) {
-            readbacks++;
             source = MemoryUtil.memAlloc(sourceBytes).order(ByteOrder.nativeOrder());
             int previous = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
             try {
