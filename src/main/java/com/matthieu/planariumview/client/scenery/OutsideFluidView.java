@@ -36,9 +36,19 @@ public final class OutsideFluidView {
         return fluid.is(FluidTags.WATER) ? FogType.WATER : fluid.is(FluidTags.LAVA) ? FogType.LAVA : FogType.NONE;
     }
 
+    /**
+     * Vrai pendant que Minecraft calcule le champ de vision : le joueur est au sec dans le bocal, donc pas de zoom
+     * sous-marin (il toucherait aussi l'interieur du bocal et pomperait quand la surface de l'eau traverse le bocal).
+     */
+    private static boolean fovQuery;
+
+    public static void fovQuery(boolean active) {
+        fovQuery = active;
+    }
+
     public static FogType visualFog(Camera camera) {
         Minecraft mc = Minecraft.getInstance();
-        if (!Config.syncSky() || !SkySync.inKnownJar(mc.level)) return FogType.NONE;
+        if (fovQuery || !Config.syncSky() || !SkySync.inKnownJar(mc.level)) return FogType.NONE;
         Vec3 position = camera.getPosition();
         BlockPos pos = BlockPos.containing(position);
         FluidState actual = mc.level.getFluidState(pos);

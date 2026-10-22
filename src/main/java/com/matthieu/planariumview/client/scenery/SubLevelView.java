@@ -338,7 +338,18 @@ public final class SubLevelView {
         Vector3d local = new Vector3d(camera.x / ClientView.GIANT + ClientView.ARS_OFFSET,
                 (camera.y + ClientView.Y_SHIFT) / ClientView.GIANT + ClientView.ARS_OFFSET,
                 camera.z / ClientView.GIANT + ClientView.ARS_OFFSET);
-        return scene.fluids.at(scene.anchor.current().transformPosition(local));
+        Matrix4d anchor = scene.anchor.current();
+        var fluid = scene.fluids.at(anchor.transformPosition(new Vector3d(local)));
+        boolean inPlanarium = local.x >= 0 && local.x < 1 && local.y >= 0 && local.y < 1 && local.z >= 0 && local.z < 1;
+        if (!fluid.isEmpty() || !inPlanarium) return fluid;
+        // Le bas du bocal est dans la case du Planarium, jamais "waterlogged" (et Sable y cache l'eau du monde) :
+        // elle compte comme remplie si ses voisines le sont a la meme hauteur, sinon comme la case au-dessus.
+        double[][] sides = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (double[] side : sides) {
+            fluid = scene.fluids.at(anchor.transformPosition(new Vector3d(local).add(side[0], 0, side[1])));
+            if (!fluid.isEmpty()) return fluid;
+        }
+        return scene.fluids.at(anchor.transformPosition(new Vector3d(local.x, 1.05, local.z)));
     }
 
     /** Repositions an already-built terrain mesh around a moving jar. */

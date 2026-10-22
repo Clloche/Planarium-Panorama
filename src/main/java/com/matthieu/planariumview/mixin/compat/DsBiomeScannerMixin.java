@@ -10,6 +10,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
@@ -17,6 +18,45 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  */
 @Mixin(targets = "org.orecruncher.dsurround.processing.scanner.BiomeScanner", remap = false)
 public abstract class DsBiomeScannerMixin {
+
+    /** Dernier etat connu "bocal sous l'eau", pour refaire l'analyse quand il change. */
+    private boolean planariumview$outsideWater;
+
+    private static boolean planariumview$submerged() {
+        net.minecraft.client.player.LocalPlayer player = net.minecraft.client.Minecraft.getInstance().player;
+        return player != null && OutsideAmbience.active()
+                && com.matthieu.planariumview.client.scenery.OutsideFluidView.fogAt(player.getEyePosition())
+                == net.minecraft.world.level.material.FogType.WATER;
+    }
+
+    /**
+     * Bocal sous l'eau : Dynamic Surroundings joue l'ambiance sous-marine (riviere, ocean, ocean profond selon le biome
+     * du dehors) au lieu de celle du biome. Il ne refait son analyse que si le joueur change de bloc ou de biome :
+     * on la force quand le bocal entre dans l'eau ou en sort.
+     */
+    @Inject(method = "tick", at = @At("HEAD"), require = 0)
+    private void planariumview$rescanOnImmersion(long tickCount, CallbackInfo ci) {
+        boolean water = planariumview$submerged();
+        if (water == planariumview$outsideWater) {
+            return;
+        }
+        planariumview$outsideWater = water;
+        try {
+            java.lang.reflect.Field field = this.getClass().getDeclaredField("surveyedBiome");
+            field.setAccessible(true);
+            field.set(this, null);
+        } catch (Throwable e) {
+            // Autre version de Dynamic Surroundings : l'analyse suivra au prochain changement de bloc.
+        }
+    }
+
+    @Redirect(method = "tick", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/world/entity/player/Player;isEyeInFluid(Lnet/minecraft/tags/TagKey;)Z"), require = 0)
+    private boolean planariumview$eyeInWater(net.minecraft.world.entity.player.Player player,
+                                             net.minecraft.tags.TagKey<net.minecraft.world.level.material.Fluid> tag) {
+        return player.isEyeInFluid(tag)
+                || (tag == net.minecraft.tags.FluidTags.WATER && planariumview$submerged());
+    }
 
     @Redirect(method = {"tick", "resolveBiome"},
             at = @At(value = "INVOKE",

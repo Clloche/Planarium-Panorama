@@ -862,16 +862,35 @@ public final class ClientView {
         return renderData != null && renderData.fakeRenderingWorld instanceof LitRenderingWorld lit ? lit : null;
     }
 
-    /** Compatibility fallback for a server without the small live fluid sample. */
+    /**
+     * Liquide du decor a la position de la camera : Planarium pose au sol (et repli pour un serveur sans l'echantillon
+     * de liquide des structures Sable).
+     */
     static FluidState outsideFluid(Vec3 camera) {
         LitRenderingWorld world = sceneryWorld();
         if (world == null || lastInfo == null) return net.minecraft.world.level.material.Fluids.EMPTY.defaultFluidState();
         org.joml.Vector3d local = new org.joml.Vector3d(camera.x / GIANT + ARS_OFFSET,
                 (camera.y + Y_SHIFT) / GIANT + ARS_OFFSET, camera.z / GIANT + ARS_OFFSET);
-        SubLevelView.sourceFrame(lastInfo.origin(), currentRadius).invert().transformPosition(local);
-        BlockPos pos = BlockPos.containing(local.x, local.y, local.z);
+        org.joml.Matrix4d toCapture = SubLevelView.sourceFrame(lastInfo.origin(), currentRadius).invert();
+        FluidState fluid = capturedFluid(world, toCapture, local);
+        boolean inPlanarium = local.x >= 0 && local.x < 1 && local.y >= 0 && local.y < 1 && local.z >= 0 && local.z < 1;
+        if (!fluid.isEmpty() || !inPlanarium) return fluid;
+        // Le bas du bocal est dans la case du Planarium, qui n'est jamais "waterlogged" : elle compte comme remplie
+        // si ses voisines le sont a la meme hauteur, sinon comme la case au-dessus (sinon l'eau clignote en montant).
+        double[][] sides = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (double[] side : sides) {
+            fluid = capturedFluid(world, toCapture, new org.joml.Vector3d(local).add(side[0], 0, side[1]));
+            if (!fluid.isEmpty()) return fluid;
+        }
+        return capturedFluid(world, toCapture, new org.joml.Vector3d(local.x, 1.05, local.z));
+    }
+
+    /** Liquide de la photo du decor en un point (coordonnees relatives au Planarium), avec la hauteur de sa surface. */
+    private static FluidState capturedFluid(LitRenderingWorld world, org.joml.Matrix4d toCapture, org.joml.Vector3d local) {
+        org.joml.Vector3d point = toCapture.transformPosition(new org.joml.Vector3d(local));
+        BlockPos pos = BlockPos.containing(point.x, point.y, point.z);
         FluidState fluid = world.getCapturedBlockState(pos).getFluidState();
-        return !fluid.isEmpty() && local.y < pos.getY() + fluid.getHeight(world, pos)
+        return !fluid.isEmpty() && point.y < pos.getY() + fluid.getHeight(world, pos)
                 ? fluid : net.minecraft.world.level.material.Fluids.EMPTY.defaultFluidState();
     }
 

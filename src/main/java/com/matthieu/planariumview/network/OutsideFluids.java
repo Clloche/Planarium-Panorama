@@ -22,8 +22,9 @@ public final class OutsideFluids {
     private OutsideFluids(Map<Long, Cell> cells) { this.cells = Map.copyOf(cells); }
 
     public static ListTag capture(BlockGetter level, Matrix4dc anchor) {
-        // The glass occupies local Y 1..2. Include the base and a margin for the camera near plane.
-        AABB bounds = SubLevelTransforms.bounds(anchor, new AABB(0, 0, 0, 1, 2.25, 1).inflate(0.25));
+        // The glass occupies local Y 1..2; the jar's lower part is inside the Planarium cell itself, which is never
+        // waterlogged. Sample its horizontal neighbours too, plus a margin for the camera near plane.
+        AABB bounds = SubLevelTransforms.bounds(anchor, new AABB(-1, 0, -1, 2, 2.25, 2).inflate(0.25));
         ListTag result = new ListTag();
         BlockPos min = BlockPos.containing(bounds.minX, bounds.minY, bounds.minZ);
         BlockPos max = BlockPos.containing(bounds.maxX, bounds.maxY, bounds.maxZ);
