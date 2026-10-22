@@ -29,7 +29,7 @@ public abstract class FogWeatherScopeMixin {
             target = "Lnet/minecraft/client/player/LocalPlayer;getWaterVision()F"))
     private static float planariumview$waterVision(LocalPlayer player) {
         return OutsideFluidView.visualFog(Minecraft.getInstance().gameRenderer.getMainCamera()) == FogType.WATER
-                ? 1.0F : player.getWaterVision();
+                ? OutsideFluidView.waterVision() : player.getWaterVision();
     }
 
     @Inject(method = "setupColor", at = @At("HEAD"), require = 0)

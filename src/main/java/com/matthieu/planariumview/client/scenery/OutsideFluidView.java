@@ -75,8 +75,27 @@ public final class OutsideFluidView {
         float lavaShare = lava / (float) SAMPLES;
         if (jarState == FogType.WATER && waterShare >= LEAVE) return jarState;
         if (jarState == FogType.LAVA && lavaShare >= LEAVE) return jarState;
+        FogType previous = jarState;
         jarState = lavaShare >= ENTER ? FogType.LAVA : waterShare >= ENTER ? FogType.WATER : FogType.NONE;
+        if (jarState == FogType.WATER && previous != FogType.WATER) submergedSince = tick;
         return jarState;
+    }
+
+    /** Moment ou le bocal est entre dans l'eau (temps du jeu), pour l'adaptation de la vue comme en vanilla. */
+    private static long submergedSince;
+
+    /**
+     * Adaptation a l'eau, meme courbe que LocalPlayer.getWaterVision : la vue s'eclaircit pendant 30 secondes apres
+     * l'entree dans l'eau (le brouillard recule de 24 a 96 blocs).
+     */
+    public static float waterVision() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || jarFluid() != FogType.WATER) return 1.0F;
+        long time = mc.level.getGameTime() - submergedSince;
+        if (time >= 600) return 1.0F;
+        float first = net.minecraft.util.Mth.clamp(time / 100.0F, 0.0F, 1.0F);
+        float second = time < 100 ? 0.0F : net.minecraft.util.Mth.clamp((time - 100) / 500.0F, 0.0F, 1.0F);
+        return first * 0.6F + second * 0.39999998F;
     }
 
     /**
@@ -99,13 +118,26 @@ public final class OutsideFluidView {
         return fogAt(position);
     }
 
-    /** Fluid fog distances are in outside blocks, whereas the scenery is enlarged by GIANT. */
+    /**
+     * Brouillard du liquide sur le decor, comme FogRenderer en vanilla pour un joueur dans le liquide (debut a -8 blocs,
+     * fin a 96 blocs fois l'adaptation a l'eau, plus proche dans les marais), en blocs du monde agrandis par GIANT.
+     */
     public static boolean applyFog(Camera camera) {
         FogType fluid = visualFog(camera);
         if (fluid == FogType.NONE) return false;
-        float end = (fluid == FogType.WATER ? 96 : 2) * ClientView.GIANT;
-        end = Math.min(end, (ClientView.edgeRadius() + 0.5F) * ClientView.GIANT);
-        RenderSystem.setShaderFogStart(fluid == FogType.WATER ? 0 : 0.25F * ClientView.GIANT);
+        float start;
+        float end;
+        if (fluid == FogType.WATER) {
+            start = -8.0F;
+            end = 96.0F * Math.max(0.25F, waterVision());
+            var biome = com.matthieu.planariumview.client.sound.OutsideAmbience.knownBiomeHolder();
+            if (biome != null && biome.is(net.minecraft.tags.BiomeTags.HAS_CLOSER_WATER_FOG)) end *= 0.85F;
+        } else {
+            start = 0.25F;
+            end = 2.0F;
+        }
+        end = Math.min(end * ClientView.GIANT, (ClientView.edgeRadius() + 0.5F) * ClientView.GIANT);
+        RenderSystem.setShaderFogStart(start * ClientView.GIANT);
         RenderSystem.setShaderFogEnd(end);
         RenderSystem.setShaderFogShape(FogShape.SPHERE);
         return true;
