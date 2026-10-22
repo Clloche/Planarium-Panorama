@@ -11,8 +11,14 @@ import java.util.function.Consumer;
 
 /** Subtracts the actual pocket volume from exterior faces, preserving partial faces and texture coordinates. */
 public final class JarClip {
-    public static final AABB INTERIOR = new AABB(-1, 0, -1, 33, 33, 33);
-    private static final double[] LIMITS = {-1, 33, 0, 33, -1, 33};
+    /**
+     * Interieur du bocal ou l'on peut se trouver, entre les parois de verre (x et z de 0 a 32, y du plancher au plafond).
+     * Les parois elles-memes (x, z = -1 et 32) n'en font pas partie : le decor juste derriere le verre se voit au travers.
+     * Avant, elles etaient comprises, et la face de chaque bloc du decor colle au bocal (a 32,08) etait coupee : on
+     * voyait a travers ces blocs.
+     */
+    public static final AABB INTERIOR = new AABB(0, 0, 0, 32, 32, 32);
+    private static final double[] LIMITS = {0, 32, 0, 32, 0, 32};
 
     private JarClip() {}
 
