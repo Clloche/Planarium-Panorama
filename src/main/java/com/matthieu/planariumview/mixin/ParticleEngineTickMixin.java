@@ -36,8 +36,16 @@ public abstract class ParticleEngineTickMixin {
     @org.spongepowered.asm.mixin.Unique
     private static int planariumview$fogDepth;
 
-    /** Brouillard du decor geant pour les particules (voir ClientView.particleFog). */
-    @Inject(method = "render", at = @At("HEAD"), require = 0)
+    /**
+     * Brouillard du decor geant pour les particules (voir ClientView.particleFog). NeoForge dessine les particules par
+     * sa propre version de render (avec le frustum et un filtre de types) : un simple "render" ne visait que la version
+     * vanilla, et les particules du decor gardaient le brouillard du bocal (couleur du brouillard a 3 ou 4 blocs).
+     * Les deux versions sont visees ; la profondeur evite de l'appliquer deux fois quand l'une appelle l'autre.
+     */
+    @Inject(method = {
+            "render(Lnet/minecraft/client/renderer/LightTexture;Lnet/minecraft/client/Camera;F)V",
+            "render(Lnet/minecraft/client/renderer/LightTexture;Lnet/minecraft/client/Camera;FLnet/minecraft/client/renderer/culling/Frustum;Ljava/util/function/Predicate;)V"
+    }, at = @At("HEAD"), require = 0)
     private void planariumview$sceneryFog(CallbackInfo ci) {
         if (planariumview$fogDepth++ > 0) {
             return;
@@ -54,7 +62,10 @@ public abstract class ParticleEngineTickMixin {
         }
     }
 
-    @Inject(method = "render", at = @At("RETURN"), require = 0)
+    @Inject(method = {
+            "render(Lnet/minecraft/client/renderer/LightTexture;Lnet/minecraft/client/Camera;F)V",
+            "render(Lnet/minecraft/client/renderer/LightTexture;Lnet/minecraft/client/Camera;FLnet/minecraft/client/renderer/culling/Frustum;Ljava/util/function/Predicate;)V"
+    }, at = @At("RETURN"), require = 0)
     private void planariumview$restoreFog(CallbackInfo ci) {
         if (--planariumview$fogDepth > 0) {
             return;

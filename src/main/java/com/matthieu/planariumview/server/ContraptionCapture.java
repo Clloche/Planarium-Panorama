@@ -48,12 +48,20 @@ final class ContraptionCapture {
      * qui change quand un bloc assemble change (porte ouverte, levier, contenu...).
      */
     record Moving(UUID id, Matrix4d toPlot, Map<BlockPos, StructureTemplate.StructureBlockInfo> blocks, Set<Long> sections,
-                  int minX, int maxX, long signature) {
+                  int minX, int maxX, long signature, Bearing bearing) {
+    }
+
+    /**
+     * Bloc qui fait tourner la contraption (roulement, helice...) et l'angle de la contraption. Le client tourne la tete
+     * de ce bloc avec cet angle : sa copie avancait a sa propre vitesse et se decalait des voiles.
+     */
+    record Bearing(BlockPos pos, float angle) {
     }
 
     private static boolean checked, failed;
-    private static Class<?> entityType;
-    private static SafeReflect.Call getContraption, getBlocks, toGlobalVector;
+    private static Class<?> entityType, controlledType;
+    private static SafeReflect.Call getContraption, getBlocks, toGlobalVector, getAngle;
+    private static java.lang.reflect.Field controllerPos;
 
     private ContraptionCapture() {
     }
@@ -67,6 +75,16 @@ final class ContraptionCapture {
                 getContraption = SafeReflect.find(entityType, "getContraption");
                 getBlocks = SafeReflect.find(contraption, "getBlocks");
                 toGlobalVector = SafeReflect.find(entityType, "toGlobalVector", Vec3.class, float.class);
+                // Facultatif : sans eux, les contraptions s'affichent quand meme, sans tete de roulement synchronisee.
+                try {
+                    controlledType = Class.forName("com.simibubi.create.content.contraptions.ControlledContraptionEntity");
+                    getAngle = SafeReflect.find(controlledType, "getAngle", float.class);
+                    controllerPos = controlledType.getDeclaredField("controllerPos");
+                    controllerPos.setAccessible(true);
+                } catch (ReflectiveOperationException | LinkageError | RuntimeException e) {
+                    LOGGER.debug("[Planarium Panorama] Create bearing angles unavailable", e);
+                    controlledType = null;
+                }
             } catch (ClassNotFoundException | LinkageError ignored) {
                 failed = true;
             } catch (ReflectiveOperationException e) {
@@ -114,12 +132,22 @@ final class ContraptionCapture {
                     signature += mix(hash);
                 }
                 if (sections.isEmpty()) continue;
-                result.add(new Moving(entity.getUUID(), toPlot, blocks, sections, minX, maxX, signature));
+                result.add(new Moving(entity.getUUID(), toPlot, blocks, sections, minX, maxX, signature, bearing(entity)));
             } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
                 LOGGER.debug("[Planarium Panorama] Contraption skipped", e);
             }
         }
         return result;
+    }
+
+    private static Bearing bearing(Entity entity) {
+        if (controlledType == null || !controlledType.isInstance(entity)) return null;
+        try {
+            BlockPos pos = (BlockPos) controllerPos.get(entity);
+            return pos == null ? null : new Bearing(pos.immutable(), (float) getAngle.invoke(entity, 1.0F));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            return null;
+        }
     }
 
     private static long mix(long value) {

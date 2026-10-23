@@ -386,8 +386,9 @@ public final class SubLevelServer {
                     visible.add(id);
                     Part part = scene.parts.computeIfAbsent(id, ignored -> new Part());
                     // Unique origin far below the world: never mistaken for a real section of the plot on the client.
+                    // part.origin stays null: dirty() compares plot positions, which a fake origin never matches.
+                    // Changes inside the contraption go through its signature, changes around it through worldBounds.
                     BlockPos origin = local.offset(offsetX, CONTRAPTION_Y, 0);
-                    part.origin = origin;
                     part.worldBounds = worldBox;
                     // The pose changes every update while it turns: only block changes (or the backup) recapture it.
                     boolean urgent = part.previous == null || part.capturedSignature != moving.signature()
@@ -409,6 +410,13 @@ public final class SubLevelServer {
                     frame.putString("group", groupId);
                     frame.put("group_pose", SubLevelTransforms.write(group));
                     frame.putIntArray("local", new int[]{local.getX(), local.getY(), local.getZ()});
+                    if (moving.bearing() != null) {
+                        // The block turning it, in its plot section: the client turns that block's head with this angle.
+                        BlockPos bearing = moving.bearing().pos();
+                        frame.putString("bearing_part", body.id() + "/" + SectionPos.of(bearing).asLong());
+                        frame.putIntArray("bearing_pos", new int[]{bearing.getX() & 15, bearing.getY() & 15, bearing.getZ() & 15});
+                        frame.putFloat("bearing_angle", moving.bearing().angle());
+                    }
                     frames.add(frame);
                 }
             }

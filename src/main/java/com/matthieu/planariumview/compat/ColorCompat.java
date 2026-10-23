@@ -57,13 +57,11 @@ public final class ColorCompat {
 
     /**
      * Une construction imbriquee restaure la precedente a son end(), meme si elle est desactivee.
-     * Sans faux monde redirige, {@code suppress} empeche Contraption Lights de calculer les couleurs aux positions du
-     * vrai bocal. Les sections du vol utilisent aussi ce mode pour eviter de rechercher les sources a chaque section.
+     * Sans faux monde redirige ({@code view} nulle), Contraption Lights ne calcule aucune couleur (voir suppressed) :
+     * sinon il le ferait aux positions du vrai bocal. Les sections du vol utilisent aussi ce mode pour eviter de
+     * rechercher les sources a chaque section.
      */
-    private record Context(Context previous, SourceView view, int offsetX, int offsetZ, boolean suppress) {
-        Context(Context previous, SourceView view, int offsetX, int offsetZ) {
-            this(previous, view, offsetX, offsetZ, view == null);
-        }
+    private record Context(Context previous, SourceView view, int offsetX, int offsetZ) {
     }
 
     private ColorCompat() {
@@ -127,13 +125,13 @@ public final class ColorCompat {
      * dont Contraption Lights devrait rechercher les sources de lumiere. La lumiere vanilla reste inchangee.
      */
     public static void beginWithoutColor() {
-        CONTEXT.set(new Context(CONTEXT.get(), null, 0, 0, true));
+        CONTEXT.set(new Context(CONTEXT.get(), null, 0, 0));
     }
 
     /** Vrai pendant une construction ou Contraption Lights ne doit rien colorer (voir ClColorFeatureMixin). */
     public static boolean suppressed() {
         Context context = CONTEXT.get();
-        return context != null && context.suppress();
+        return context != null && context.view() == null;
     }
 
     public static void begin(BlockAndTintGetter fakeWorld) {

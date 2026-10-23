@@ -53,7 +53,9 @@ final class HueKeepingBuffers {
 
         @Override
         public VertexConsumer setUv2(int u, int v) {
-            if ((u & ~LEVEL_BITS) == 0 && (v & ~LEVEL_BITS) == 0) {
+            // Pleine lumiere (LightTexture.FULL_BRIGHT : flammes, trappe allumee, tuyaux chauds) : une lueur, pas une
+            // surface eclairee. Avec la couleur du bloc, elle prenait la teinte des torches et paraissait terne.
+            if ((u & ~LEVEL_BITS) == 0 && (v & ~LEVEL_BITS) == 0 && !(u == LEVEL_BITS && v == LEVEL_BITS)) {
                 // Lumiere sans couleur : celle du bloc.
                 u |= hueU;
                 v |= hueV;

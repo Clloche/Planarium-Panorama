@@ -5,6 +5,7 @@ import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer;
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer.StructureRenderData;
 import com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos;
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
+import com.matthieu.planariumview.compat.BearingAngles;
 import com.matthieu.planariumview.compat.ColorCompat;
 import com.matthieu.planariumview.compat.SwingingLanternsCompat;
 import com.matthieu.planariumview.client.mini.MiniOutsideLight;
@@ -96,8 +97,38 @@ public final class SubLevelView {
         }
     }
 
+    /**
+     * Angle of a Create bearing that turns a contraption (see ContraptionCapture.Bearing), interpolated like the poses
+     * (same instant, same 100 ms): its copied head follows the contraption instead of spinning at its own pace.
+     */
+    private static final class Turn {
+        final String part;
+        final BlockPos pos;
+        float from, to;
+        long received;
+        boolean known;
+
+        Turn(String part, BlockPos pos) {
+            this.part = part;
+            this.pos = pos;
+        }
+
+        void receive(float angle, long now) {
+            from = known ? current(now) : angle;
+            to = angle;
+            known = true;
+            received = now;
+        }
+
+        float current(long now) {
+            double alpha = Math.max(0.0, Math.min(1.0, (now - received) / 100_000_000.0));
+            return from + net.minecraft.util.Mth.wrapDegrees(to - from) * (float) alpha;
+        }
+    }
+
     private static final class Scene {
         final Pose anchor = new Pose();
+        final Map<String, Turn> turns = new HashMap<>();
         OutsideFluids fluids;
         final Map<String, Part> parts = new HashMap<>();
         final Map<String, Pose> groups = new HashMap<>();
@@ -322,6 +353,7 @@ public final class SubLevelView {
             if (frames.size() > 256) throw new IllegalArgumentException("Too many sub-level sections");
             Set<String> visible = new HashSet<>();
             Set<String> groups = new HashSet<>();
+            Set<String> turns = new HashSet<>();
             long now = System.nanoTime();
             receiveAnchor(scene, tag, now);
             for (int i = 0; i < frames.size(); i++) {
@@ -340,6 +372,16 @@ public final class SubLevelView {
                 }
                 scene.parts.computeIfAbsent(id, ignored -> new Part(scene)).pose.receive(
                         SubLevelTransforms.read(frame, "pose"), group, local, now);
+                int[] at = frame.getIntArray("bearing_pos");
+                if (frame.contains("bearing_angle", Tag.TAG_FLOAT) && at.length == 3) {
+                    String part = frame.getString("bearing_part");
+                    String key = part + "@" + at[0] + "," + at[1] + "," + at[2];
+                    // Every section of a contraption repeats its bearing: one update per packet.
+                    if (turns.add(key)) {
+                        scene.turns.computeIfAbsent(key, ignored -> new Turn(part, new BlockPos(at[0], at[1], at[2])))
+                                .receive(frame.getFloat("bearing_angle"), now);
+                    }
+                }
             }
             scene.parts.entrySet().removeIf(entry -> {
                 if (visible.contains(entry.getKey())) return false;
@@ -349,6 +391,7 @@ public final class SubLevelView {
                 return true;
             });
             scene.groups.keySet().retainAll(groups);
+            scene.turns.keySet().retainAll(turns);
         }
     }
 
@@ -493,6 +536,13 @@ public final class SubLevelView {
             specialBuffers = MultiBufferSource.immediate(new ByteBufferBuilder(262144));
         }
         MultiBufferSource buffers = supplied != null ? supplied : specialBuffers;
+        if (special) {
+            for (Turn turn : scene.turns.values()) {
+                Part part = scene.parts.get(turn.part);
+                Mesh mesh = part == null ? null : part.cached(tile);
+                if (mesh != null) BearingAngles.set(mesh.data.fakeRenderingWorld.blockEntityMap.get(turn.pos), turn.current(now));
+            }
+        }
         for (Part part : scene.parts.values()) {
             if (part.pose.to == null) continue;
             boolean rebuild = part.needsBuild(tile);

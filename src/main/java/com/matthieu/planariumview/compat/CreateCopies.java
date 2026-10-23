@@ -31,7 +31,13 @@ public final class CreateCopies {
     private static boolean checked;
 
     public record Context(PlanariumRenderingWorld world, UnaryOperator<Vec3> source, Vec3 camera, boolean ticking) {}
-    private static final class Seen { int rendered, ticked = -1; }
+    private static final class Seen {
+        int rendered, ticked = -1;
+        /** Camera at the last render, in this copy world's block coordinates (see tick). */
+        Vec3 camera;
+    }
+    /** Stand-in camera entity while a copy world ticks (never added to a level). */
+    private static net.minecraft.world.entity.Marker cameraProxy;
     private static final class Hooks {
         final Method markVirtual, tick;
         boolean failed;
@@ -48,6 +54,35 @@ public final class CreateCopies {
     };
 
     private CreateCopies() {}
+
+    /** Create's virtual-mode flag of a smart block entity (null if this Create version names it otherwise). */
+    private static final ClassValue<java.lang.reflect.Field> VIRTUAL_FLAG = new ClassValue<>() {
+        @Override protected java.lang.reflect.Field computeValue(Class<?> type) {
+            for (Class<?> at = type; at != null && at != BlockEntity.class; at = at.getSuperclass()) {
+                try {
+                    java.lang.reflect.Field field = at.getDeclaredField("virtualMode");
+                    if (field.getType() != boolean.class) return null;
+                    field.setAccessible(true);
+                    return field;
+                } catch (NoSuchFieldException ignored) {
+                } catch (RuntimeException | LinkageError e) {
+                    return null;
+                }
+            }
+            return null;
+        }
+    };
+
+    /** Sets the flag; true if it was set before (so it must be restored). */
+    private static boolean setVirtual(java.lang.reflect.Field field, BlockEntity entity, boolean value) {
+        try {
+            boolean before = field.getBoolean(entity);
+            field.setBoolean(entity, value);
+            return before;
+        } catch (IllegalAccessException | RuntimeException e) {
+            return false;
+        }
+    }
 
     private static boolean supported(BlockEntity entity) {
         if (!checked) {
@@ -85,6 +120,19 @@ public final class CreateCopies {
         seen.ticked = ticks;
         Context previous = context;
         context = new Context(world, source, null, true);
+        // Machines often fade or skip their sounds by the distance from Minecraft's camera entity to themselves
+        // (Simulated's portable engine: silent beyond 8 blocks). For a copy, that compared the real camera in the jar
+        // with the copy's local position: heard by chance near the jar's corner, then silent. While the copy ticks, the
+        // camera entity stands where the camera is in this copy's coordinates (from its last render).
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        net.minecraft.world.entity.Entity realCamera = mc.cameraEntity;
+        if (seen.camera != null && mc.level != null) {
+            if (cameraProxy == null || cameraProxy.level() != mc.level) {
+                cameraProxy = new net.minecraft.world.entity.Marker(net.minecraft.world.entity.EntityType.MARKER, mc.level);
+            }
+            cameraProxy.setPos(seen.camera);
+            mc.cameraEntity = cameraProxy;
+        }
         try {
             com.matthieu.planariumview.client.scenery.CopyParticles.capture(world, () -> {
                 for (BlockEntity entity : world.blockEntityMap.values()) {
@@ -105,7 +153,10 @@ public final class CreateCopies {
                     }
                 }
             });
-        } finally { context = previous; }
+        } finally {
+            mc.cameraEntity = realCamera;
+            context = previous;
+        }
     }
 
     /** Miniature animation remains active with scenery sounds and particles turned off. */
@@ -130,7 +181,8 @@ public final class CreateCopies {
             return;
         }
         attach(entity, world, world);
-        VISIBLE.computeIfAbsent(world, ignored -> new Seen()).rendered = ticks;
+        Seen seen = VISIBLE.computeIfAbsent(world, ignored -> new Seen());
+        seen.rendered = ticks;
         if (world instanceof com.matthieu.planariumview.client.scenery.LitRenderingWorld lit) {
             Vec3 eye = net.minecraft.client.Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
             var at = entity.getBlockPos();
@@ -143,6 +195,7 @@ public final class CreateCopies {
         Vector3f local = new Matrix4f(pose.last().pose()).invert().transformPosition(new Vector3f());
         Vec3 camera = new Vec3(local.x + entity.getBlockPos().getX(), local.y + entity.getBlockPos().getY(),
                 local.z + entity.getBlockPos().getZ());
+        seen.camera = camera;
         Context previous = context;
         context = new Context(world, null, camera, false);
         // Aeronautics draws its flame immediately and changes GL state instead of using the supplied buffers.
@@ -150,8 +203,14 @@ public final class CreateCopies {
         boolean depth = flame && GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
         boolean cull = flame && GL11.glIsEnabled(GL11.GL_CULL_FACE);
         var shader = flame ? RenderSystem.getShader() : null;
+        // Simulated draws a lit portable engine like a Ponder scene when the copy is virtual: shaded glow parts and no
+        // emissive hatch. Its renderer only reads the flag for that, so the copy is drawn as a real one.
+        java.lang.reflect.Field virtual = entity.getClass().getName().endsWith(".PortableEngineBlockEntity")
+                ? VIRTUAL_FLAG.get(entity.getClass()) : null;
+        boolean wasVirtual = virtual != null && setVirtual(virtual, entity, false);
         try { renderer.render(entity, partialTick, pose, buffers, light, overlay); }
         finally {
+            if (wasVirtual) setVirtual(virtual, entity, true);
             context = previous;
             if (flame) {
                 if (depth) RenderSystem.enableDepthTest(); else RenderSystem.disableDepthTest();
