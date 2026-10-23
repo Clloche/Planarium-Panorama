@@ -55,8 +55,15 @@ public final class ColorCompat {
     private static final AtomicLong NEXT_SLOT = new AtomicLong();
     private static final ThreadLocal<Context> CONTEXT = new ThreadLocal<>();
 
-    /** Une construction imbriquee doit restaurer la precedente a son end(), meme si elle est desactivee. */
-    private record Context(Context previous, SourceView view, int offsetX, int offsetZ) {
+    /**
+     * Une construction imbriquee restaure la precedente a son end(), meme si elle est desactivee.
+     * Sans faux monde redirige, {@code suppress} empeche Contraption Lights de calculer les couleurs aux positions du
+     * vrai bocal. Les sections du vol utilisent aussi ce mode pour eviter de rechercher les sources a chaque section.
+     */
+    private record Context(Context previous, SourceView view, int offsetX, int offsetZ, boolean suppress) {
+        Context(Context previous, SourceView view, int offsetX, int offsetZ) {
+            this(previous, view, offsetX, offsetZ, view == null);
+        }
     }
 
     private ColorCompat() {
@@ -113,6 +120,20 @@ public final class ColorCompat {
         Context saved = scope == null ? null : scope.context;
         CONTEXT.set(saved == null || !Config.coloredLight() ? new Context(previous, null, 0, 0)
                 : new Context(previous, saved.view(), saved.offsetX(), saved.offsetZ()));
+    }
+
+    /**
+     * Construction sans lumiere coloree (sections du decor en vol) : chaque section est un petit faux monde a part,
+     * dont Contraption Lights devrait rechercher les sources de lumiere. La lumiere vanilla reste inchangee.
+     */
+    public static void beginWithoutColor() {
+        CONTEXT.set(new Context(CONTEXT.get(), null, 0, 0, true));
+    }
+
+    /** Vrai pendant une construction ou Contraption Lights ne doit rien colorer (voir ClColorFeatureMixin). */
+    public static boolean suppressed() {
+        Context context = CONTEXT.get();
+        return context != null && context.suppress();
     }
 
     public static void begin(BlockAndTintGetter fakeWorld) {

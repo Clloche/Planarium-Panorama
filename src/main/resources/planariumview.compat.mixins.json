@@ -24,6 +24,7 @@
     "DsSereneSeasonsMixin",
     "DsVanillaSeasonsMixin",
     "ClColorSectionMixin",
+    "ClColorFeatureMixin",
     "FwLightDataCollectorMixin",
     "YaclOptionListMixin",
     "YaclGroupHeaderMixin",

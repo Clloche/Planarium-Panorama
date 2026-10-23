@@ -448,7 +448,12 @@ public final class FarRing {
         float giant = ClientView.GIANT;
         long tessStart = System.nanoTime();
         Map<net.minecraft.world.level.block.Block, long[]> perBlock = DIAG_SECTIONS ? new IdentityHashMap<>() : null;
-        ColorCompat.begin(world);
+        // Sections du vol (ni a l'echelle geante, ni decoupees) : sans lumiere coloree, voir ColorCompat.beginWithoutColor.
+        if (!giantCoordinates && !clip) {
+            ColorCompat.beginWithoutColor();
+        } else {
+            ColorCompat.begin(world);
+        }
         try {
             // Cache de Minecraft pour la lumiere et l'ombrage des positions voisines, partage entre les faces.
             // Indexe par position seulement : vide a la fin de chaque construction pour ne pas melanger les mondes.

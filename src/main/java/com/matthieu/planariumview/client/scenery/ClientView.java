@@ -1169,8 +1169,22 @@ public final class ClientView {
                 SkySync.giantLight(true, partialTick);
                 try {
                     if (!FlightView.active()) drawBlockEntities(renderData, event);
-                    if (lastInfo != null) SubLevelView.drawOutside(event,
-                            lastInfo.origin().offset(currentRadius, currentRadius, currentRadius), true);
+                    if (lastInfo != null) {
+                        // Blocs speciaux des structures Sable (roue, machines de Create) : le brouillard du decor geant,
+                        // comme les blocs speciaux du decor. Avec celui du bocal, ils disparaissaient a quelques blocs.
+                        float fogStart = RenderSystem.getShaderFogStart();
+                        float fogEnd = RenderSystem.getShaderFogEnd();
+                        com.mojang.blaze3d.shaders.FogShape fogShape = RenderSystem.getShaderFogShape();
+                        applySceneryFog();
+                        try {
+                            SubLevelView.drawOutside(event,
+                                    lastInfo.origin().offset(currentRadius, currentRadius, currentRadius), true);
+                        } finally {
+                            RenderSystem.setShaderFogStart(fogStart);
+                            RenderSystem.setShaderFogEnd(fogEnd);
+                            RenderSystem.setShaderFogShape(fogShape);
+                        }
+                    }
                 } catch (Exception e) {
                     LOGGER.debug("[Planarium View] Erreur de rendu des blocs speciaux", e);
                 } finally {
