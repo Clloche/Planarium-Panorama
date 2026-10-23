@@ -19,13 +19,12 @@ Includes :
 - **Outside sounds:** explosions, blocks, mobs and jukebox music from around the Planarium, heard from their direction.
 - **Sable sub-levels and Create Aeronautics (experimental):** moving structures in the giant scenery and the miniature, including Planariums placed on a moving structure.
 
-Everything can be changed in game: **Mods** > **Planarium Panorama** > **Config** or in the config files.
+Settings are available in game: **Mods** > **Planarium Panorama** > **Config** or in the config files.
 
 ## Optional integrations
 
 The mods are detected automatically and their integration can be turned on or off in the config : 
 - [AmbientSounds](https://www.curseforge.com/minecraft/mc-mods/ambientsounds)
-- [Contraption Lights](https://www.curseforge.com/minecraft/mc-mods/contraption-lights) (Colored light)
 - [Dynamic Surroundings](https://www.curseforge.com/minecraft/mc-mods/dynamic-surroundings)
 - [Enhanced Celestials 2](https://www.curseforge.com/minecraft/mc-mods/enhanced-celestials-2-default-lunar-events)
 - Sable / Create Aeronautics (WIP)
@@ -36,6 +35,7 @@ Planarium Panorama is made to be compatible with as many mods as possible. This 
 
 | Mod and version | Status | Details |
 |---|:---:|---|
+| [Contraption Lights](https://www.curseforge.com/minecraft/mc-mods/contraption-lights)<br>v1.5.2 | ✅ | Colored lighting in the giant scenery, miniature and jar interior is enabled automatically when installed |
 | [Create](https://www.curseforge.com/minecraft/mc-mods/create) / [Flywheel](https://modrinth.com/mod/flywheel)<br>Create v6.0.10 + Flywheel v1.0.6 | ✅ | |
 | [Falling Leaves](https://www.curseforge.com/minecraft/mc-mods/falling-leaves-forge)<br>v2.6.0| ✅ | |
 | [NeoVoxy (JohnSnow)](https://github.com/NHblock-Johnsnow/neo-voxy-multiversion)<br>v0.5.0-alpha.12 | ✅ | The giant scenery can go past the render distance |

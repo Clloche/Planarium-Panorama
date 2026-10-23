@@ -228,10 +228,10 @@ public final class FarRingServer {
 
     /**
      * Un bloc a change dans le monde : on note sa position dans les photos gardees qui le contiennent (hors du rayon
-     * detaille, qui n'est pas dans la photo). Au-dela de {@link #MAX_CHANGED_POSITIONS} positions differentes, la
-     * photo est oubliee. Le joueur deja dans le bocal garde son anneau fige.
+     * detaille, qui n'est pas dans la photo, sauf les sources lumineuses). Au-dela de {@link #MAX_CHANGED_POSITIONS}
+     * positions differentes, la photo est oubliee. Le joueur deja dans le bocal garde son anneau fige.
      */
-    static void blockChanged(ResourceKey<Level> source, BlockPos pos) {
+    static void blockChanged(ResourceKey<Level> source, BlockPos pos, boolean lightChanged) {
         if (CACHE.isEmpty()) {
             return;
         }
@@ -240,6 +240,14 @@ public final class FarRingServer {
             Map.Entry<Key, Cached> entry = iterator.next();
             Key key = entry.getKey();
             int dx = pos.getX() - key.center.getX(), dy = pos.getY() - key.center.getY(), dz = pos.getZ() - key.center.getZ();
+            // Une source de lumiere eclaire jusqu'a 15 blocs, meme depuis le rayon detaille : la lumiere de la photo
+            // n'est plus juste (feu de camp retire, lampe ajoutee). Oubliee tout de suite, sans attendre les 256 positions.
+            if (lightChanged && key.source.equals(source) && Math.abs(dy) <= key.height + 16
+                    && (long) dx * dx + (long) dz * dz <= (long) (key.far + 15) * (key.far + 15)) {
+                LOGGER.info("[Planarium Panorama] Anneau lointain : photo gardee invalidee (source de lumiere modifiee)");
+                iterator.remove();
+                continue;
+            }
             // Meme cylindre que la capture de l'anneau (voir Job.inBox) : les coins du carre ne comptent pas.
             if (!key.source.equals(source) || Math.abs(dy) > key.height + 1
                     || (long) dx * dx + (long) dz * dz > (long) key.far * key.far + key.far) continue;

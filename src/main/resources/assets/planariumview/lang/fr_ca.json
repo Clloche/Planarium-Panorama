@@ -21,8 +21,6 @@
   "planariumview.config.lighting.full": "Complet",
   "planariumview.config.biome": "Effets de biome",
   "planariumview.config.biome.tooltip": "Le décor et le bocal prennent les vrais biomes autour du Planarium : couleurs de l'herbe, des feuilles et de l'eau, et dans le bocal la musique, les sons d'ambiance et les particules du biome.",
-  "planariumview.config.color": "Contraption Lights - Lumière colorée",
-  "planariumview.config.color.tooltip": "Lumière colorée de Contraption Lights sur le décor géant et la miniature. À l'intérieur du bocal, la lumière colorée fonctionne toujours, comme dans le reste du monde.",
   "planariumview.pack.real_light": "Planarium Panorama - vraie lumière",
   "planariumview.config.default": "Par défaut : %s",
   "planariumview.config.ambience": "Dynamic Surroundings - Ambiance extérieure",

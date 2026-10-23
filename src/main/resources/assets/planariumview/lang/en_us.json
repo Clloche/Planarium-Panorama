@@ -21,8 +21,6 @@
   "planariumview.config.lighting.full": "Full",
   "planariumview.config.biome": "Biome effects",
   "planariumview.config.biome.tooltip": "The scenery and the jar take on the real biomes around the Planarium: grass, leaves and water colors, and inside the jar the biome's music, ambient sounds and particles.",
-  "planariumview.config.color": "Contraption Lights - Colored light",
-  "planariumview.config.color.tooltip": "Contraption Lights colored light on the giant scenery and the miniature. Inside the jar, colored light always works, like in the rest of the world.",
   "planariumview.pack.real_light": "Planarium Panorama - real lighting",
   "planariumview.config.default": "Default: %s",
   "planariumview.config.ambience": "Dynamic Surroundings - Outside ambience",

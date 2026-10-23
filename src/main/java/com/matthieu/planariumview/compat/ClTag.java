@@ -25,20 +25,7 @@ public final class ClTag {
      * (on enleve d'abord toute couleur deja ajoutee). Comme Contraption Lights pour les blocs speciaux hors des chunks.
      */
     public static int retag(int packed, BlockAndTintGetter level, BlockPos pos) {
-        return retag(packed, level, pos, false);
-    }
-
-    /** Pour le vrai monde du bocal : la couleur reste, quelle que soit l'option du decor et de la miniature. */
-    public static int retagJar(int packed, BlockAndTintGetter level, BlockPos pos) {
-        return retag(packed, level, pos, true);
-    }
-
-    private static boolean allowed(boolean jar) {
-        return !missing && (jar ? Config.jarColoredLight() : Config.coloredLight());
-    }
-
-    private static int retag(int packed, BlockAndTintGetter level, BlockPos pos, boolean jar) {
-        if (!allowed(jar)) {
+        if (!allowed()) {
             return packed;
         }
         int pure = packed & 0x00F000F0;
@@ -60,9 +47,18 @@ public final class ClTag {
         }
     }
 
+    /** Meme compatibilite automatique pour le vrai monde du bocal. */
+    public static int retagJar(int packed, BlockAndTintGetter level, BlockPos pos) {
+        return retag(packed, level, pos);
+    }
+
+    private static boolean allowed() {
+        return !missing && Config.coloredLight();
+    }
+
     /** Comme retag, pour les copies du monde qui servent a construire les chunks (toujours la version "baked"). */
     public static int retagBakedJar(int packed, BlockAndTintGetter level, BlockPos pos) {
-        if (!allowed(true)) {
+        if (!allowed()) {
             return packed;
         }
         return bake(packed & 0x00F000F0, level, pos);
@@ -71,9 +67,9 @@ public final class ClTag {
     private ClTag() {
     }
 
-    /** Decor geant et miniature : selon l'option. */
+    /** Decor geant et miniature : compatibilite automatique avec Contraption Lights. */
     public static int tagBaked(int packed, BlockAndTintGetter level, BlockPos pos) {
-        if (!allowed(false)) {
+        if (!allowed()) {
             return packed;
         }
         return bake(packed, level, pos);

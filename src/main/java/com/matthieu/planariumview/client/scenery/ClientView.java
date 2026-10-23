@@ -1915,6 +1915,8 @@ public final class ClientView {
                 RenderType type = entry.getKey();
                 MeshData mesh = entry.getValue().build();
                 if (mesh == null) continue;
+                // Sommets sur une grille fixe : pas de fentes entre les blocs voisins (voir GridSnap).
+                GridSnap.snapMesh(mesh);
                 // Boite des vrais sommets avant l'envoi a la carte graphique (upload libere le maillage).
                 SceneryFrustum.include(section.box, mesh);
                 if (type == RenderType.translucent()) {
@@ -2036,7 +2038,7 @@ public final class ClientView {
                         rt -> new BufferBuilder(data.getByteBuffer(rt), rt.mode(), rt.format()));
                 try {
                     dispatcher.renderLiquid(pos.pos, data.fakeRenderingWorld,
-                            new LiquidBlockVertexConsumer(new GridSnapConsumer(fluidBuilder), matrix, pos.pos), pos.state, fluidState);
+                            new LiquidBlockVertexConsumer(fluidBuilder, matrix, pos.pos), pos.state, fluidState);
                 } catch (Exception e) {
                     LOGGER.debug("[Planarium View] Liquide ignore", e);
                 }
@@ -2052,8 +2054,8 @@ public final class ClientView {
                 if (renderState.getRenderShape() != RenderShape.MODEL) {
                     continue;
                 }
-                // Sommets sur une grille fixe : pas de fentes entre les blocs voisins (voir GridSnapConsumer).
-                VertexConsumer snapped = new GridSnapConsumer(builder);
+                // Sommets mis sur une grille fixe a la fin de la section (voir GridSnap.snapMesh).
+                VertexConsumer snapped = builder;
                 if (renderState.getFluidState().isEmpty() && isModel && !(model instanceof JarClippedModel)) {
                     // Bloc couvert de neige de Snow! Real Magic : le vrai bloc, puis la neige (voir SnowRealMagicCompat).
                     final CulledStatePos culled = pos;

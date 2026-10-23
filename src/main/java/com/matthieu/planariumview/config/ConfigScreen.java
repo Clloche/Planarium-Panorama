@@ -49,7 +49,6 @@ public final class ConfigScreen {
         Minecraft mc = Minecraft.getInstance();
         // Sur un serveur multijoueur, le rayon et le rafraichissement sont decides par le serveur.
         boolean serverSide = mc.level != null && mc.getSingleplayerServer() == null;
-        boolean clPresent = Config.CONTRAPTION_LIGHTS.present();
         boolean dsPresent = Config.DYNAMIC_SURROUNDINGS.present();
         boolean asPresent = Config.AMBIENT_SOUNDS_MOD.present();
         boolean ecPresent = Config.ENHANCED_CELESTIALS.present();
@@ -132,8 +131,6 @@ public final class ConfigScreen {
                         .formatValue(ConfigScreen::caveFogLabel))
                 .build();
 
-        Option<Boolean> color = integration("color", "Contraption Lights", clPresent,
-                Config.COLORED_LIGHT.getDefault(), Config.COLORED_LIGHT::get, Config.COLORED_LIGHT::set);
         Option<Boolean> ambience = integration("ambience", "Dynamic Surroundings", dsPresent,
                 Config.OUTSIDE_AMBIENCE.getDefault(), Config.OUTSIDE_AMBIENCE::get, Config.OUTSIDE_AMBIENCE::set);
         Option<Boolean> ambientSounds = integration("ambient_sounds", "AmbientSounds", asPresent,
@@ -153,7 +150,6 @@ public final class ConfigScreen {
         gated.add(new Gated(fog, () -> true));
         gated.add(new Gated(caveFog, () -> true));
         gated.add(new Gated(neighbors, () -> true));
-        gated.add(new Gated(color, () -> clPresent));
         gated.add(new Gated(ambience, () -> dsPresent));
         gated.add(new Gated(ambientSounds, () -> asPresent));
         gated.add(new Gated(lunar, () -> ecPresent));
@@ -204,7 +200,7 @@ public final class ConfigScreen {
 
         dirty = false;
         for (Option<?> option : List.of(master, lighting, radius, farRadius, biome, weather, sceneryAmbience, sceneryParticles, worldSounds,
-                clouds, fog, blockUpdates, refresh, color, ambience, ambientSounds, lunar, subLevels, caveFog, neighbors)) {
+                clouds, fog, blockUpdates, refresh, ambience, ambientSounds, lunar, subLevels, caveFog, neighbors)) {
             autoSave(option);
         }
 
@@ -256,7 +252,6 @@ public final class ConfigScreen {
                         .name(Component.translatable(KEY + "section.integrations"))
                         // Par ordre alphabetique des mods.
                         .option(ambientSounds)
-                        .option(color)
                         .option(ambience)
                         .option(lunar)
                         .option(subLevels)

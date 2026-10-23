@@ -192,11 +192,12 @@ public final class ServerView {
             return;
         }
         SubLevelServer.dirty(serverLevel, pos);
-        FarRingServer.blockChanged(serverLevel.dimension(), pos);
+        // Deux sources peuvent emettre autant de lumiere, mais avec des couleurs differentes (mods compris).
+        boolean lightSourceChanged = previous != next
+                && (previous.getLightEmission(level, pos) > 0 || next.getLightEmission(level, pos) > 0);
+        FarRingServer.blockChanged(serverLevel.dimension(), pos, lightSourceChanged);
         NeighborPocketsServer.blockChanged(serverLevel.dimension());
         FlightServer.blockChanged(serverLevel.dimension(), pos);
-        boolean lightSourceChanged = previous.getLightEmission(level, pos) != next.getLightEmission(level, pos)
-                && (previous.getLightEmission(level, pos) > 0 || next.getLightEmission(level, pos) > 0);
         for (Track track : TRACKS.values()) {
             if (!track.source.dimension().equals(level.dimension())) {
                 continue;

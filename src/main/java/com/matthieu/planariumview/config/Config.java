@@ -27,7 +27,6 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue SCENERY_AMBIENCE;
     public static final ModConfigSpec.BooleanValue SCENERY_PARTICLES;
     public static final ModConfigSpec.BooleanValue WORLD_SOUNDS;
-    public static final ModConfigSpec.BooleanValue COLORED_LIGHT;
     public static final ModConfigSpec.BooleanValue OUTSIDE_AMBIENCE;
     public static final ModConfigSpec.BooleanValue AMBIENT_SOUNDS;
     public static final ModConfigSpec.BooleanValue LUNAR_EVENTS;
@@ -116,10 +115,6 @@ public final class Config {
                         "While ON, the detail radius around the Planarium keeps running as if you were there (machines, mobs, furnaces).",
                         "OFF: that area is paused while no player is there; only the scenery's ambient sounds remain.")
                 .define("worldSounds", true);
-        COLORED_LIGHT = client
-                .comment("Colored light from Contraption Lights on the giant scenery and the miniature (if the mod is installed).",
-                        "Inside the jar itself, colored light always follows Contraption Lights.")
-                .define("coloredLight", true);
         OUTSIDE_AMBIENCE = client
                 .comment("Dynamic Surroundings plays the ambience of the Planarium's surroundings inside the jar (biome sounds,",
                         "or silence if the Planarium is sheltered, or cave sounds if it is underground), and its biome fog colors show in the jar.",
@@ -260,17 +255,17 @@ public final class Config {
         return worldSounds();
     }
 
-    /** Option "Contraption Lights" : couleurs sur le decor geant et la miniature seulement. */
+    /** Compatibilite automatique avec Contraption Lights pour le decor geant et la miniature. */
     public static boolean coloredLight() {
-        return enabled() && COLORED_LIGHT.get() && CONTRAPTION_LIGHTS.present();
+        return enabled() && CONTRAPTION_LIGHTS.present();
     }
 
     /**
      * Couleurs a l'interieur du bocal (lumiere du dehors par les parois, parois, structures Sable du bocal) :
-     * independantes de l'option, comme dans le reste du monde avec Contraption Lights.
+     * compatibilite automatique, comme pour le decor et la miniature.
      */
     public static boolean jarColoredLight() {
-        return enabled() && CONTRAPTION_LIGHTS.present();
+        return coloredLight();
     }
 
     public static boolean subLevelViews() {

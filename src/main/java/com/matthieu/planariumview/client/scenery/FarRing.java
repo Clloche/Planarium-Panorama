@@ -470,7 +470,7 @@ public final class FarRing {
                         RenderType fluidType = ItemBlockRenderTypes.getRenderLayer(fluid);
                         BufferBuilder builder = buffers.computeIfAbsent(fluidType,
                                 type -> new BufferBuilder(bytes(type), type.mode(), type.format()));
-                        dispatcher.renderLiquid(pos, world, new LiquidBlockVertexConsumer(giantCoordinates ? new GridSnapConsumer(builder) : builder, matrix, pos), state, fluid);
+                        dispatcher.renderLiquid(pos, world, new LiquidBlockVertexConsumer(builder, matrix, pos), state, fluid);
                     }
                     if (state.getRenderShape() != RenderShape.MODEL) continue;
                     BakedModel model = dispatcher.getBlockModel(state);
@@ -479,8 +479,7 @@ public final class FarRing {
                     for (RenderType type : model.getRenderTypes(state, random, ModelData.EMPTY)) {
                         BufferBuilder builder = buffers.computeIfAbsent(type,
                                 layer -> new BufferBuilder(bytes(layer), layer.mode(), layer.format()));
-                        // Sommets sur une grille fixe : pas de fentes entre les blocs voisins (voir GridSnapConsumer).
-                        VertexConsumer target = giantCoordinates ? new GridSnapConsumer(builder) : builder;
+                        VertexConsumer target = builder;
                         VertexConsumer faces = ColorCompat.building() ? new FaceHueConsumer(target, world, pos) : target;
                         modelRenderer.tesselateBlock(world, model, state, pos, matrix, faces, true, random, seed,
                                 OverlayTexture.NO_OVERLAY, ModelData.EMPTY, type);
@@ -510,6 +509,8 @@ public final class FarRing {
                 long stageStart = System.nanoTime();
                 MeshData mesh = entry.getValue().build();
                 if (mesh == null) continue;
+                // Sommets sur une grille fixe : pas de fentes entre les blocs voisins (voir GridSnap).
+                if (giantCoordinates) GridSnap.snapMesh(mesh);
                 // Boite des sommets avant l'envoi a la carte graphique (upload libere le maillage).
                 SceneryFrustum.include(box, mesh);
                 lastMeshNanos += System.nanoTime() - stageStart;
@@ -563,7 +564,31 @@ public final class FarRing {
 
         /** Monde de l'anneau : la boite autour du Planarium. */
         static FarWorld ring(int far, int height, BlockPos center) {
-            return new FarWorld(center.offset(-far, -height, -far), 2 * height, 0);
+            FarWorld world = new FarWorld(center.offset(-far, -height, -far), 2 * height, 0);
+            world.ringFar = far;
+            world.ringHeight = height;
+            world.ringCenter = center.immutable();
+            return world;
+        }
+
+        /** Anneau seulement : rayon, demi-hauteur et centre, pour lire le decor detaille au milieu (voir nearLocal). */
+        private int ringFar, ringHeight;
+        private BlockPos ringCenter;
+
+        /**
+         * Position dans le faux monde du decor detaille si cette case de l'anneau en fait partie (meme centre et meme
+         * forme que le trou de l'anneau), sinon null. L'anneau n'a pas ces cases (le serveur les saute) : sans elles,
+         * Contraption Lights ne voyait pas les lampes et feux du decor detaille, et la couleur s'arretait au rayon de
+         * detail. Les faces et l'ombrage du bord de l'anneau lisent aussi les vrais blocs au lieu d'une approximation.
+         */
+        @Nullable
+        private BlockPos nearLocal(BlockPos pos) {
+            if (ringCenter == null) return null;
+            int radius = ClientView.nearRadius();
+            int rx = pos.getX() - ringFar, ry = pos.getY() - ringHeight, rz = pos.getZ() - ringFar;
+            if (radius <= 0 || Math.abs(ry) > radius || !ClientView.inDetail(rx, rz, radius)) return null;
+            if (!ringCenter.equals(ClientView.nearCenter())) return null;
+            return new BlockPos(rx + radius, ry + radius, rz + radius);
         }
 
         FarWorld(BlockPos origin, int skyAbove, int biomeShift) {
@@ -599,6 +624,9 @@ public final class FarRing {
             long key = pos.asLong();
             BlockState state = states.get(key);
             if (state != null) return state;
+            BlockPos near = nearLocal(pos);
+            LitRenderingWorld nearWorld = near != null ? ClientView.sceneryWorld() : null;
+            if (nearWorld != null) return nearWorld.getBlockState(near);
             if (solid.contains(key)) return SOLID;
             return water.contains(key) ? Blocks.WATER.defaultBlockState() : Blocks.AIR.defaultBlockState();
         }
@@ -622,6 +650,10 @@ public final class FarRing {
             byte value = light.get(pos.asLong());
             // 0xFF also means full sky and block light; it is unknown only when the entry is absent.
             if (value == -1 && !light.containsKey(pos.asLong())) {
+                // Case du decor detaille : sa vraie lumiere (lampes et feux du centre).
+                BlockPos near = nearLocal(pos);
+                LitRenderingWorld nearWorld = near != null ? ClientView.sceneryWorld() : null;
+                if (nearWorld != null) return nearWorld.getBrightness(layer, near);
                 // Case inconnue : le ciel au-dessus de la boite, l'obscurite dedans (sous le sol).
                 return layer == LightLayer.SKY && pos.getY() > skyAbove ? 15 : 0;
             }
