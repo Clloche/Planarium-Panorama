@@ -15,7 +15,10 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.slf4j.Logger;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -26,24 +29,45 @@ import java.util.Map;
  * ni de mises a jour.
  *
  * Les poches sont placees dans le repere du bocal (decalage du voisin x GIANT), pas dans celui du terrain : sur une
- * structure Sable, elles bougent donc avec elle, en vol aussi.
+ * structure Sable, elles bougent donc avec elle, en vol aussi. Construites section par section (16 x 16 x 16) avec un
+ * petit budget par image, comme l'anneau lointain.
  */
 public final class NeighborPockets {
     private static final Logger LOGGER = LogUtils.getLogger();
+    private static final long BUDGET_NANOS = 2_000_000L;
     /** Positions locales des blocs recus : 0 = case {@link NeighborPocketsPayload#ORIGIN} de la poche. */
     private static final BlockPos ORIGIN = NeighborPocketsPayload.ORIGIN;
 
     private static final class Pocket {
         final BlockPos offset;
         final FarRing.FarWorld world;
-        final List<BlockPos> blocks;
-        Map<RenderType, VertexBuffer> buffers;
+        final Map<Long, List<BlockPos>> pendingBlocks;
+        final ArrayDeque<Long> pending = new ArrayDeque<>();
+        final Map<Long, Map<RenderType, VertexBuffer>> sections = new HashMap<>();
 
-        Pocket(BlockPos offset, FarRing.FarWorld world, List<BlockPos> blocks) {
+        Pocket(BlockPos offset, FarRing.FarWorld world, Map<Long, List<BlockPos>> pendingBlocks) {
             this.offset = offset;
             this.world = world;
-            this.blocks = blocks;
+            this.pendingBlocks = pendingBlocks;
+            pending.addAll(pendingBlocks.keySet());
         }
+
+        /** Coin de la poche dans le repere du bocal. */
+        double baseX() {
+            return offset.getX() * (double) ClientView.GIANT + ORIGIN.getX();
+        }
+
+        double baseY() {
+            return offset.getY() * (double) ClientView.GIANT + ORIGIN.getY();
+        }
+
+        double baseZ() {
+            return offset.getZ() * (double) ClientView.GIANT + ORIGIN.getZ();
+        }
+    }
+
+    /** Une section a dessiner dans la couche translucide, avec sa distance a la camera. */
+    private record Translucent(VertexBuffer buffer, Matrix4f model, double distance) {
     }
 
     private static ResourceLocation pocket;
@@ -59,10 +83,12 @@ public final class NeighborPockets {
         }
         try {
             for (NeighborPocketsPayload.Entry entry : payload.entries()) {
-                List<BlockPos> blocks = new ArrayList<>();
+                Map<Long, List<BlockPos>> bySection = new HashMap<>();
                 // Au-dessus de la boite (2 cases au-dessus du plafond de verre) : le ciel de la poche.
-                FarRing.FarWorld world = FarRing.fill(new FarRing.FarWorld(ORIGIN, 34, 0), entry.data(), blocks::add);
-                pockets.add(new Pocket(entry.offset(), world, blocks));
+                FarRing.FarWorld world = FarRing.fill(new FarRing.FarWorld(ORIGIN, 34, 0), entry.data(),
+                        pos -> bySection.computeIfAbsent(BlockPos.asLong(pos.getX() >> 4, pos.getY() >> 4, pos.getZ() >> 4),
+                                ignored -> new ArrayList<>()).add(pos));
+                pockets.add(new Pocket(entry.offset(), world, bySection));
             }
             pocket = payload.pocketDim();
             LOGGER.info("[Planarium Panorama] Planariums voisins recus : {}", pockets.size());
@@ -75,7 +101,7 @@ public final class NeighborPockets {
     /** Oublie les poches (sortie du bocal, decor efface, nouvelle photo). */
     public static void clear() {
         for (Pocket entry : pockets) {
-            if (entry.buffers != null) entry.buffers.values().forEach(VertexBuffer::close);
+            entry.sections.values().forEach(buffers -> buffers.values().forEach(VertexBuffer::close));
         }
         pockets.clear();
         pocket = null;
@@ -94,53 +120,74 @@ public final class NeighborPockets {
 
     /** Dans le cylindre du decor detaille actuellement dessine (rayon limite par le brouillard, voir viewRadius). */
     private static boolean inView(BlockPos offset) {
-        int view = ClientView.viewRadius();
         return Math.abs(offset.getY()) <= ClientView.nearRadius()
-                && DetailShape.horizontal(offset.getX(), offset.getZ(), view);
+                && DetailShape.horizontal(offset.getX(), offset.getZ(), ClientView.viewRadius());
     }
 
-    /** Construit au plus une poche par image (quelques milliers de blocs). */
+    /** Construit des sections dans le budget de l'image (au moins une), la poche la plus proche d'abord. */
     static void buildPending(Vec3 camera) {
         if (!visible()) return;
+        long start = System.nanoTime();
         int shown = shown();
         for (int i = 0; i < shown; i++) {
             Pocket entry = pockets.get(i);
-            if (entry.buffers != null) continue;
-            BlockPos offset = entry.offset;
-            float giant = ClientView.GIANT;
-            Vec3 local = camera.subtract(offset.getX() * giant, offset.getY() * giant, offset.getZ() * giant);
-            try {
-                long start = System.nanoTime();
-                // Sommets en coordonnees de la poche voisine (locale + ORIGIN).
-                entry.buffers = FarRing.buildPocket(entry.world, entry.blocks, -ORIGIN.getX(), -ORIGIN.getY(), -ORIGIN.getZ(), local);
-                LOGGER.debug("[Planarium Panorama] Planarium voisin {} construit : {} blocs, {} ms", offset,
-                        entry.blocks.size(), (System.nanoTime() - start) / 1_000_000L);
-            } catch (RuntimeException e) {
-                LOGGER.debug("[Planarium Panorama] Planarium voisin ignore", e);
-                entry.buffers = Map.of();
+            Vec3 local = camera.subtract(entry.offset.getX() * (double) ClientView.GIANT,
+                    entry.offset.getY() * (double) ClientView.GIANT, entry.offset.getZ() * (double) ClientView.GIANT);
+            while (!entry.pending.isEmpty()) {
+                if (System.nanoTime() - start >= BUDGET_NANOS) return;
+                Long key = entry.pending.poll();
+                List<BlockPos> blocks = entry.pendingBlocks.remove(key);
+                if (blocks == null) continue;
+                try {
+                    // Sommets en coordonnees de la poche voisine (locale + ORIGIN).
+                    entry.sections.put(key, FarRing.buildPocket(entry.world, blocks,
+                            -ORIGIN.getX(), -ORIGIN.getY(), -ORIGIN.getZ(), local));
+                } catch (RuntimeException e) {
+                    LOGGER.debug("[Planarium Panorama] Section d'un Planarium voisin ignoree", e);
+                }
             }
-            return;
         }
     }
 
     /**
      * Dessine une couche (l'etat de rendu est deja en place, voir ClientView.draw). {@code jarPose} : vue de la camera
-     * en coordonnees du bocal, sans le placement du terrain.
+     * en coordonnees du bocal, sans le placement du terrain ; {@code camera} : position de la camera dans le bocal.
+     * La couche translucide (verre, eau) va du plus loin au plus proche, toutes poches confondues : sinon le verre d'un
+     * bocal pouvait cacher l'eau ou le verre d'un bocal derriere lui.
      */
-    static void drawLayer(RenderType type, Matrix4f jarPose, Matrix4f projection) {
+    static void drawLayer(RenderType type, Matrix4f jarPose, Matrix4f projection, Vec3 camera) {
         if (!visible()) return;
         int shown = shown();
         float giant = ClientView.GIANT;
+        boolean translucent = type == RenderType.translucent();
+        List<Translucent> sorted = translucent ? new ArrayList<>() : null;
         try {
             for (int i = 0; i < shown; i++) {
                 Pocket entry = pockets.get(i);
-                if (entry.buffers == null || !inView(entry.offset)) continue;
-                VertexBuffer buffer = entry.buffers.get(type);
-                if (buffer == null || buffer.getFormat() == null) continue;
+                if (entry.sections.isEmpty() || !inView(entry.offset)) continue;
                 Matrix4f model = new Matrix4f(jarPose).translate(entry.offset.getX() * giant,
                         entry.offset.getY() * giant, entry.offset.getZ() * giant);
-                buffer.bind();
-                buffer.drawWithShader(model, projection, RenderSystem.getShader());
+                for (Map.Entry<Long, Map<RenderType, VertexBuffer>> section : entry.sections.entrySet()) {
+                    VertexBuffer buffer = section.getValue().get(type);
+                    if (buffer == null || buffer.getFormat() == null) continue;
+                    if (translucent) {
+                        long key = section.getKey();
+                        double dx = entry.baseX() + BlockPos.getX(key) * 16 + 8 - camera.x;
+                        double dy = entry.baseY() + BlockPos.getY(key) * 16 + 8 - camera.y;
+                        double dz = entry.baseZ() + BlockPos.getZ(key) * 16 + 8 - camera.z;
+                        sorted.add(new Translucent(buffer, model, dx * dx + dy * dy + dz * dz));
+                        continue;
+                    }
+                    buffer.bind();
+                    buffer.drawWithShader(model, projection, RenderSystem.getShader());
+                }
+            }
+            if (translucent) {
+                sorted.sort(Comparator.comparingDouble(Translucent::distance).reversed());
+                for (Translucent section : sorted) {
+                    section.buffer().bind();
+                    section.buffer().drawWithShader(section.model(), projection, RenderSystem.getShader());
+                }
             }
         } finally {
             VertexBuffer.unbind();

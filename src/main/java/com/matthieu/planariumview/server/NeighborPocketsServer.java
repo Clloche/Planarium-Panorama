@@ -226,7 +226,9 @@ public final class NeighborPocketsServer {
                 long start = System.nanoTime();
                 FarRingPayload.Data data = capture(level, loaded);
                 CaptureBudget.spend(System.nanoTime() - start);
-                CACHE.put(neighbor.pocket(), data);
+                // Seulement une poche complete : une photo trouee (chunks pas charges a temps) serait reutilisee
+                // aux entrees suivantes. Elle est quand meme envoyee cette fois-ci.
+                if (loaded.size() == chunks().size()) CACHE.put(neighbor.pocket(), data);
                 results.add(data);
                 index++;
             }

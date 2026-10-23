@@ -46,7 +46,8 @@ public final class FarRingServer {
     /** Temps max d'attente des chunks d'une capture (ceux qui manquent encore sont laisses vides). */
     private static final int LOAD_WAIT_TICKS = 400;
 
-    private record Key(ResourceKey<Level> source, BlockPos center, int near, int far, int height) {
+    /** {@code round} : le client coupe son decor detaille en cylindre (meme version), sinon en cube (ancien client). */
+    private record Key(ResourceKey<Level> source, BlockPos center, int near, int far, int height, boolean round) {
     }
 
     /** Photos deja prises, reutilisees par une nouvelle entree (ou un autre joueur) tant qu'elles sont recentes. */
@@ -116,7 +117,9 @@ public final class FarRingServer {
             }
             return;
         }
-        Key want = new Key(source.dimension(), center, near, far, Math.max(near, far));
+        // Un client qui connait les Planariums voisins coupe aussi son decor detaille en cylindre (voir DetailShape).
+        boolean round = player.connection.hasChannel(com.matthieu.planariumview.network.NeighborPocketsPayload.TYPE);
+        Key want = new Key(source.dimension(), center, near, far, Math.max(near, far), round);
         if (state.job != null) {
             if (!state.job.key.equals(want)) {
                 cancel(player.server, state);
@@ -333,9 +336,11 @@ public final class FarRingServer {
 
         private boolean inNear(int x, int y, int z) {
             BlockPos c = key.center;
-            // Meme cylindre que le decor detaille cote client (voir DetailShape) : les coins sont dans l'anneau.
-            return Math.abs(y - c.getY()) <= key.near
-                    && com.matthieu.planariumview.DetailShape.horizontal(x - c.getX(), z - c.getZ(), key.near);
+            if (Math.abs(y - c.getY()) > key.near) return false;
+            // Meme cylindre que le decor detaille cote client (voir DetailShape) : les coins sont dans l'anneau. Un
+            // ancien client dessine tout le cube : l'anneau saute alors le cube, sinon les coins seraient en double.
+            return key.round ? com.matthieu.planariumview.DetailShape.horizontal(x - c.getX(), z - c.getZ(), key.near)
+                    : Math.abs(x - c.getX()) <= key.near && Math.abs(z - c.getZ()) <= key.near;
         }
 
         FarRingPayload.Data result() {

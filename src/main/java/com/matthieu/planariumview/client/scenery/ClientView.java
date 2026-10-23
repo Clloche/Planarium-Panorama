@@ -471,7 +471,26 @@ public final class ClientView {
      * anneau, les coins sont vides : on s'arrete au cylindre.
      */
     public static boolean liveArea(double dx, double dz, double view) {
-        if (FarRing.visible()) return Math.abs(dx) <= view && Math.abs(dz) <= view;
+        if (FarRing.visible() || !roundDetail) return Math.abs(dx) <= view && Math.abs(dz) <= view;
+        return com.matthieu.planariumview.DetailShape.horizontal(dx, dz, view);
+    }
+
+    /**
+     * Vrai si le serveur connait le decor detaille en cylindre (meme version : il connait aussi les Planariums voisins).
+     * Un ancien serveur exclut encore tout le cube de son anneau lointain : on garde alors le cube, sinon les 4 coins
+     * seraient vides. Le serveur fait le meme choix de son cote (voir FarRingServer).
+     */
+    private static boolean roundDetail;
+
+    private static void updateRoundDetail() {
+        net.minecraft.client.multiplayer.ClientPacketListener connection = Minecraft.getInstance().getConnection();
+        roundDetail = connection != null
+                && connection.hasChannel(com.matthieu.planariumview.network.NeighborPocketsPayload.TYPE);
+    }
+
+    /** Colonne (dx, dz) du decor detaille : cercle (voir DetailShape), ou carre avec un ancien serveur. */
+    public static boolean inDetail(int dx, int dz, int view) {
+        if (!roundDetail) return Math.abs(dx) <= view && Math.abs(dz) <= view;
         return com.matthieu.planariumview.DetailShape.horizontal(dx, dz, view);
     }
 
@@ -1244,7 +1263,8 @@ public final class ClientView {
         int view = viewRadius();
         builtViewRadius = view;
         // Decor detaille en cylindre (voir DetailShape) : les coins sont dessines par l'anneau lointain.
-        data.statePosCache.removeIf(p -> !com.matthieu.planariumview.DetailShape.horizontal(p.pos.getX() - radius, p.pos.getZ() - radius, view));
+        updateRoundDetail();
+        data.statePosCache.removeIf(p -> !inDetail(p.pos.getX() - radius, p.pos.getZ() - radius, view));
         PuddlesCompat.prepare(lit, info);
 
         long specialLightNanos;
@@ -1507,7 +1527,7 @@ public final class ClientView {
 
             // 2. Blocs a dessiner (memes filtres que la construction complete).
             boolean kept = !pos.equals(planarium) && !pos.equals(above) && (view < 0
-                    || com.matthieu.planariumview.DetailShape.horizontal(pos.getX() - radius, pos.getZ() - radius, Math.min(view, radius)));
+                    || inDetail(pos.getX() - radius, pos.getZ() - radius, Math.min(view, radius)));
             CulledStatePos statePos = statePosByPos.get(pos);
             SectionPos section = SectionPos.of(pos);
             if (change.state() == null || !kept) {
@@ -1686,7 +1706,7 @@ public final class ClientView {
     private static boolean visibleSceneryPos(BlockPos pos, int radius, int view) {
         return !(pos.getX() == radius && pos.getZ() == radius
                 && (pos.getY() == radius || pos.getY() == radius + 1))
-                && (view < 0 || com.matthieu.planariumview.DetailShape.horizontal(pos.getX() - radius, pos.getZ() - radius, view));
+                && (view < 0 || inDetail(pos.getX() - radius, pos.getZ() - radius, view));
     }
 
     /** Une flaque change : retesseler son voisinage avec le meme budget que les mises a jour du serveur. */
@@ -2089,7 +2109,7 @@ public final class ClientView {
                 renderType.setupRenderState();
                 try {
                     // Planariums voisins : dans le repere du bocal, aussi en vol (ils bougent avec la structure).
-                    NeighborPockets.drawLayer(renderType, jarPose, projectionMatrix);
+                    NeighborPockets.drawLayer(renderType, jarPose, projectionMatrix, camera);
                     if (flight) {
                         // En vol : les sections du vol a la place du decor normal (et sans anneau lointain).
                         FlightView.drawLayer(renderType, projectionMatrix);
