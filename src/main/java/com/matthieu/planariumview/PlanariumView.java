@@ -90,6 +90,11 @@ public class PlanariumView {
                 com.matthieu.planariumview.network.FarRingPayload.TYPE,
                 com.matthieu.planariumview.network.FarRingPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.FarRing.receive(payload)));
+        // Facultatif : interieur des Planariums voisins (photo figee, purement visuelle).
+        event.registrar("4").optional().playToClient(
+                com.matthieu.planariumview.network.NeighborPocketsPayload.TYPE,
+                com.matthieu.planariumview.network.NeighborPocketsPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.NeighborPockets.receive(payload)));
         event.registrar("4").playToClient(
                 SkyPayload.TYPE,
                 SkyPayload.STREAM_CODEC,

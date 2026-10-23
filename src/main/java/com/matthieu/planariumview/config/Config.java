@@ -33,6 +33,7 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue LUNAR_EVENTS;
     public static final ModConfigSpec.BooleanValue SUB_LEVEL_VIEWS;
     public static final ModConfigSpec.EnumValue<CaveFog> CAVE_FOG;
+    public static final ModConfigSpec.IntValue NEIGHBOR_PLANARIUMS;
 
     static {
         ModConfigSpec.Builder common = new ModConfigSpec.Builder();
@@ -137,6 +138,11 @@ public final class Config {
                         "OFF stops their captures for this player. Physical structures, their interior lighting and Ars Sable still work.",
                         "If ships do not reappear after switching this back ON, leave and rejoin the world.")
                 .define("subLevelViews", true);
+        NEIGHBOR_PLANARIUMS = client
+                .comment("Inside of the other Planariums in the detail radius, at real size where they stand in the scenery",
+                        "(a frozen snapshot of their blocks and light, taken when entering the jar: purely visual).",
+                        "Number shown, nearest first. 0 = OFF.")
+                .defineInRange("neighborPlanariums", 4, 0, 10);
         CLIENT_SPEC = client.build();
     }
 
@@ -221,6 +227,11 @@ public final class Config {
 
     public static boolean sceneryAmbience() {
         return enabled() && SCENERY_AMBIENCE.get();
+    }
+
+    /** Nombre de Planariums voisins dont on dessine l'interieur (0 = aucun). */
+    public static int neighborPlanariums() {
+        return enabled() ? NEIGHBOR_PLANARIUMS.get() : 0;
     }
 
     public static boolean sceneryParticles() {

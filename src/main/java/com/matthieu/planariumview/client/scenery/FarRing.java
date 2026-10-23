@@ -316,16 +316,25 @@ public final class FarRing {
      * l'echelle du decor geant (comme le decor proche). Aussi pour les sections du decor en vol (FlightView).
      */
     static Map<RenderType, VertexBuffer> build(FarWorld world, List<BlockPos> blocks, int offX, int offY, int offZ, Vec3 camera) {
-        return build(world, blocks, offX, offY, offZ, camera, true);
+        return build(world, blocks, offX, offY, offZ, camera, true, false);
     }
 
     /** Keep flight vertices in source block units; scale and place all sections together at draw time. */
     static Map<RenderType, VertexBuffer> buildFlight(FarWorld world, List<BlockPos> blocks, Vec3 localCamera) {
-        return build(world, blocks, 1, 1, 1, localCamera, false);
+        return build(world, blocks, 1, 1, 1, localCamera, false, false);
+    }
+
+    /**
+     * Poche d'un Planarium voisin (voir NeighborPockets) : sommets en coordonnees de sa poche, a l'echelle 1:1, places au
+     * dessin. Decoupes contre l'interieur du bocal : le mur de la poche voisine depasse un peu dans le notre.
+     */
+    static Map<RenderType, VertexBuffer> buildPocket(FarWorld world, List<BlockPos> blocks, int offX, int offY, int offZ,
+                                                      Vec3 localCamera) {
+        return build(world, blocks, offX, offY, offZ, localCamera, false, true);
     }
 
     private static Map<RenderType, VertexBuffer> build(FarWorld world, List<BlockPos> blocks,
-            int offX, int offY, int offZ, Vec3 camera, boolean giantCoordinates) {
+            int offX, int offY, int offZ, Vec3 camera, boolean giantCoordinates, boolean clip) {
         Map<RenderType, BufferBuilder> buffers = new IdentityHashMap<>();
         BlockRenderDispatcher dispatcher = Minecraft.getInstance().getBlockRenderer();
         ModelBlockRenderer modelRenderer = dispatcher.getModelRenderer();
@@ -383,8 +392,9 @@ public final class FarRing {
                 if (entry.getKey() == RenderType.translucent()) {
                     mesh.sortQuads(bytes(entry.getKey()), VertexSorting.byDistance(sortPos));
                 }
-                // Pas de decoupe : l'anneau lointain commence bien au-dela du bocal et ne peut pas le traverser.
-                VertexBuffer buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+                // Pas de decoupe pour l'anneau lointain et le vol : ils commencent bien au-dela du bocal. Seules les
+                // poches voisines touchent le bocal.
+                VertexBuffer buffer = clip ? new ClippedVertexBuffer() : new VertexBuffer(VertexBuffer.Usage.STATIC);
                 result.put(entry.getKey(), buffer);
                 buffer.bind();
                 buffer.upload(mesh);

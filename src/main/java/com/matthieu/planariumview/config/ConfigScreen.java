@@ -117,6 +117,13 @@ public final class ConfigScreen {
                 .controller(opt -> EnumControllerBuilder.create(opt).enumClass(Config.Fog.class)
                         .formatValue(ConfigScreen::fogLabel))
                 .build();
+        Option<Integer> neighbors = Option.<Integer>createBuilder()
+                .name(Component.translatable(KEY + "neighbors"))
+                .description(describe("neighbors", neighborsLabel(Config.NEIGHBOR_PLANARIUMS.getDefault())))
+                .binding(Config.NEIGHBOR_PLANARIUMS.getDefault(), Config.NEIGHBOR_PLANARIUMS::get, Config.NEIGHBOR_PLANARIUMS::set)
+                .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(0, 10).step(1)
+                        .formatValue(ConfigScreen::neighborsLabel))
+                .build();
         Option<Config.CaveFog> caveFog = Option.<Config.CaveFog>createBuilder()
                 .name(Component.translatable(KEY + "cave_fog"))
                 .description(describe("cave_fog", caveFogLabel(Config.CAVE_FOG.getDefault())))
@@ -145,6 +152,7 @@ public final class ConfigScreen {
         gated.add(new Gated(clouds, () -> true));
         gated.add(new Gated(fog, () -> true));
         gated.add(new Gated(caveFog, () -> true));
+        gated.add(new Gated(neighbors, () -> true));
         gated.add(new Gated(color, () -> clPresent));
         gated.add(new Gated(ambience, () -> dsPresent));
         gated.add(new Gated(ambientSounds, () -> asPresent));
@@ -196,7 +204,7 @@ public final class ConfigScreen {
 
         dirty = false;
         for (Option<?> option : List.of(master, lighting, radius, farRadius, biome, weather, sceneryAmbience, sceneryParticles, worldSounds,
-                clouds, fog, blockUpdates, refresh, color, ambience, ambientSounds, lunar, subLevels, caveFog)) {
+                clouds, fog, blockUpdates, refresh, color, ambience, ambientSounds, lunar, subLevels, caveFog, neighbors)) {
             autoSave(option);
         }
 
@@ -209,6 +217,7 @@ public final class ConfigScreen {
                         // Le rayon de vue est decide par le serveur en multijoueur (grise, voir sa description).
                         .option(radius)
                         .option(farRadius)
+                        .option(neighbors)
                         .group(OptionGroup.createBuilder()
                                 .name(Component.translatable(KEY + "group.updates"))
                                 .collapsed(false)
@@ -402,6 +411,10 @@ public final class ConfigScreen {
 
     private static Component blockUpdatesLabel(Integer seconds) {
         return seconds == 0 ? Component.translatable(KEY + "block_updates.off") : Component.translatable(KEY + "block_updates.value", seconds);
+    }
+
+    private static Component neighborsLabel(Integer count) {
+        return count == 0 ? Component.translatable(KEY + "neighbors.off") : Component.translatable(KEY + "neighbors.value", count);
     }
 
     private static Component farRadiusLabel(Integer blocks) {

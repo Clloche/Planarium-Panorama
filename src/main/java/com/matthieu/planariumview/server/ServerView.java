@@ -193,6 +193,7 @@ public final class ServerView {
         }
         SubLevelServer.dirty(serverLevel, pos);
         FarRingServer.blockChanged(serverLevel.dimension(), pos);
+        NeighborPocketsServer.blockChanged(serverLevel.dimension());
         FlightServer.blockChanged(serverLevel.dimension(), pos);
         boolean lightSourceChanged = previous.getLightEmission(level, pos) != next.getLightEmission(level, pos)
                 && (previous.getLightEmission(level, pos) > 0 || next.getLightEmission(level, pos) > 0);
@@ -1459,6 +1460,7 @@ public final class ServerView {
                 FlightServer.tick(player, source, track.pocket, track.center, track.capturedCenter, Config.RADIUS.get(), track.hasFull);
             }
             FarRingServer.tick(player, source, track.pocket, track.capturedCenter, track.center, track.lastRadius, track.hasFull);
+            NeighborPocketsServer.tick(player, source, track.pocket, track.source.pos(), track.lastRadius, track.hasFull);
             if (!flightFirst) {
                 FlightServer.tick(player, source, track.pocket, track.center, track.capturedCenter, Config.RADIUS.get(), track.hasFull);
             }
@@ -1538,6 +1540,7 @@ public final class ServerView {
         for (UUID id : new ArrayList<>(TRACKS.keySet())) removeTrack(event.getServer(), id);
         SubLevelServer.clear();
         FarRingServer.clearAll();
+        NeighborPocketsServer.clearAll();
         FlightServer.clearAll();
     }
 
@@ -1610,6 +1613,7 @@ public final class ServerView {
         SubLevelServer.forgetOutside(id);
         LunarServer.forget(id);
         FarRingServer.forget(server, id);
+        NeighborPocketsServer.forget(server, id);
         FlightServer.forget(id);
         Track track = TRACKS.remove(id);
         if (track == null) {

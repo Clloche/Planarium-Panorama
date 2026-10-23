@@ -1045,6 +1045,7 @@ public final class ClientView {
     private static void dispose() {
         SubLevelView.clearOutside();
         FarRing.clear();
+        NeighborPockets.clear();
         FarRing.knownRadius = 0;
         FlightView.clear();
         shownEdge = -1.0F;
@@ -2050,6 +2051,7 @@ public final class ClientView {
 
         Vec3 camera = event.getCamera().getPosition();
         FarRing.buildPending(camera);
+        NeighborPockets.buildPending(camera);
         FlightView.update(camera);
         PoseStack poseStack = new PoseStack();
         poseStack.mulPose(event.getModelViewMatrix());
@@ -2076,6 +2078,8 @@ public final class ClientView {
             Matrix4f projectionMatrix = new Matrix4f(event.getProjectionMatrix());
             boolean flight = FlightView.active();
             FlightView.prepare(poseStack);
+            // Repere du bocal, sans le placement du terrain : les Planariums voisins y sont fixes (voir NeighborPockets).
+            Matrix4f jarPose = new Matrix4f(poseStack.last().pose());
             poseStack.pushPose();
             if (lastInfo != null) SubLevelView.terrain(poseStack,
                     lastInfo.origin().offset(currentRadius, currentRadius, currentRadius));
@@ -2084,6 +2088,8 @@ public final class ClientView {
                         ? translucentSections : sectionMeshes.entrySet();
                 renderType.setupRenderState();
                 try {
+                    // Planariums voisins : dans le repere du bocal, aussi en vol (ils bougent avec la structure).
+                    NeighborPockets.drawLayer(renderType, jarPose, projectionMatrix);
                     if (flight) {
                         // En vol : les sections du vol a la place du decor normal (et sans anneau lointain).
                         FlightView.drawLayer(renderType, projectionMatrix);
