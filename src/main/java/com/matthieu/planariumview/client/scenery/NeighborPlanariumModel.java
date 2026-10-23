@@ -31,6 +31,8 @@ final class NeighborPlanariumModel extends BakedModelWrapper<BakedModel> {
     private static final float EPSILON = 0.0001F;
     private static final int STEPS = 32;
     private static final int LIGHT_BITS = 0x00F000F0;
+    /** Recul de la face interieure du verre (1/512 de bloc : environ 0,06 unite a l'echelle du decor). */
+    private static final float INSET = 1.0F / 512;
     private static final int[] INTERPOLATED = {0, 1, 2, 4, 5};
     private final FarRing.FarWorld pocket;
     private final int sharedSides;
@@ -117,8 +119,16 @@ final class NeighborPlanariumModel extends BakedModelWrapper<BakedModel> {
         int stride = vertices.length / 4;
         int[] next = new int[vertices.length];
         int[] order = {0, 3, 2, 1};
+        // Un peu vers l'interieur du bocal : dans le meme plan que la face d'un bloc colle a cette paroi (mur de grotte),
+        // les deux faces se battaient pour la profondeur et le verre clignotait.
+        var inward = quad.getDirection().getOpposite().getNormal();
         for (int i = 0; i < 4; i++) {
             System.arraycopy(vertices, order[i] * stride, next, i * stride, stride);
+            for (int axis = 0; axis < 3; axis++) {
+                int step = axis == 0 ? inward.getX() : axis == 1 ? inward.getY() : inward.getZ();
+                if (step == 0) continue;
+                next[i * stride + axis] = Float.floatToRawIntBits(Float.intBitsToFloat(next[i * stride + axis]) + step * INSET);
+            }
             // Normale empaquetee (x, y, z en octets signes) a la fin de chaque sommet du format des blocs.
             if (stride >= 8) {
                 int normal = next[i * stride + 7];
