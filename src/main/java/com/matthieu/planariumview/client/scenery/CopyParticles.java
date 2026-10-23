@@ -107,6 +107,7 @@ public final class CopyParticles {
                             || at.getY() > 15 || at.getZ() < 0 || at.getZ() > 15)) continue;
                     if (entity.getClass().getName().endsWith(".HotAirBurnerBlockEntity")) burner(entity, emitter);
                     else if (entity.getClass().getName().endsWith("PropellerBlockEntity")) propeller(entity);
+                    else if (entity.getClass().getName().endsWith(".PortableEngineBlockEntity")) portableEngine(entity);
                 }
             } finally { LitRenderingWorld.captureSceneryParticles(null); }
         }
@@ -163,6 +164,30 @@ public final class CopyParticles {
             }
         } catch (ReflectiveOperationException | RuntimeException e) {
             if (FAILED.add(entity.getClass())) LogUtils.getLogger().warn("[Planarium Panorama] Burner preview particles unavailable", e);
+        }
+    }
+
+    private record PortableEngine(Method burnTime, Method particles) {
+        PortableEngine(Class<?> type) throws ReflectiveOperationException {
+            this(type.getMethod("getCurrentBurnTime"), type.getMethod("spawnParticles"));
+        }
+    }
+    private static final ClassValue<PortableEngine> PORTABLE_ENGINES = new ClassValue<>() {
+        @Override protected PortableEngine computeValue(Class<?> type) {
+            try { return new PortableEngine(type); }
+            catch (ReflectiveOperationException e) { throw new IllegalStateException(e); }
+        }
+    };
+
+    /** Simulated skips particles in virtual mode; reuse its exhaust positions, rates and superheated flames. */
+    private static void portableEngine(BlockEntity entity) {
+        if (entity.isRemoved() || FAILED.contains(entity.getClass())) return;
+        try {
+            PortableEngine hooks = PORTABLE_ENGINES.get(entity.getClass());
+            if (((Number) hooks.burnTime.invoke(entity)).intValue() <= 0) return;
+            hooks.particles.invoke(entity);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            if (FAILED.add(entity.getClass())) LogUtils.getLogger().warn("[Planarium Panorama] Portable engine preview particles unavailable", e);
         }
     }
 

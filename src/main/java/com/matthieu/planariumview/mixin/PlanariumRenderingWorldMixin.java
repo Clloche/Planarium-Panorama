@@ -26,6 +26,17 @@ public abstract class PlanariumRenderingWorldMixin {
     private static BlockState planariumview$glass;
     @Shadow private Level realWorld;
 
+    /** Snapshot worlds have no live entities. Portable engines query nearby players while animating their hatch. */
+    @Inject(method = {
+            "getEntities(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/phys/AABB;Ljava/util/function/Predicate;)Ljava/util/List;",
+            "getEntities(Lnet/minecraft/world/level/entity/EntityTypeTest;Lnet/minecraft/world/phys/AABB;Ljava/util/function/Predicate;)Ljava/util/List;"
+    }, at = @At("RETURN"), cancellable = true)
+    private void planariumview$emptyEntities(CallbackInfoReturnable<java.util.List<?>> cir) {
+        if (com.matthieu.planariumview.config.Config.enabled() && cir.getReturnValue() == null) {
+            cir.setReturnValue(java.util.List.of());
+        }
+    }
+
     /** Create consults the tick rate even for virtual client animations; Ars returns null here. */
     @Inject(method = "tickRateManager", at = @At("HEAD"), cancellable = true)
     private void planariumview$tickRate(CallbackInfoReturnable<TickRateManager> cir) {
