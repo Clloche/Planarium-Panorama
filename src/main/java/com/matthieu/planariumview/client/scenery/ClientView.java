@@ -2132,7 +2132,7 @@ public final class ClientView {
         try {
             Matrix4f projectionMatrix = new Matrix4f(event.getProjectionMatrix());
             boolean flight = FlightView.active();
-            FlightView.prepare(poseStack);
+            FlightView.prepare(poseStack, projectionMatrix);
             // Repere du bocal, sans le placement du terrain : les Planariums voisins y sont fixes (voir NeighborPockets).
             Matrix4f jarPose = new Matrix4f(poseStack.last().pose());
             poseStack.pushPose();

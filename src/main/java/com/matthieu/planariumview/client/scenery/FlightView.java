@@ -40,7 +40,8 @@ public final class FlightView {
     /** Bascule au plus tard apres ce temps, meme si le premier lot n'est pas complet ou construit. */
     private static final long SWITCH_TIMEOUT_NANOS = 3_000_000_000L;
 
-    private record Section(BlockPos origin, Map<RenderType, VertexBuffer> buffers) {
+    /** {@code box} : boite des vrais sommets (unites de bloc, autour de l'origine de la section), voir SceneryFrustum. */
+    private record Section(BlockPos origin, Map<RenderType, VertexBuffer> buffers, float[] box) {
     }
 
     private record DrawFrame(Section section, Matrix4f original, FlightFog.Frame fog) {}
@@ -60,6 +61,8 @@ public final class FlightView {
     private static final LinkedHashMap<Long, FarRingPayload.Data> pending = new LinkedHashMap<>();
     /** Matrice de chaque section pour l'image en cours (calculee une fois, utilisee par chaque couche). */
     private static final List<DrawFrame> frame = new ArrayList<>();
+    /** Champ de la camera pour les sections du vol (voir prepare). */
+    private static final SceneryFrustum frustum = new SceneryFrustum();
 
     private FlightView() {
     }
@@ -179,13 +182,18 @@ public final class FlightView {
         SubLevelView.terrainBlocks(placement, sectionMin);
         Vector3f localCamera = new Matrix4f(placement.last().pose()).invertAffine()
                 .transformPosition(new Vector3f((float) camera.x, (float) camera.y, (float) camera.z));
+        float[] box = SceneryFrustum.emptyBox();
         Map<RenderType, VertexBuffer> buffers = FarRing.buildFlight(world, blocks,
-                new Vec3(localCamera.x, localCamera.y, localCamera.z));
-        return new Section(sectionMin, buffers);
+                new Vec3(localCamera.x, localCamera.y, localCamera.z), box);
+        return new Section(sectionMin, buffers, box);
     }
 
-    /** Matrices de l'image : chaque section dans le cadre actuel du bocal. */
-    static void prepare(PoseStack poseStack) {
+    /**
+     * Matrices de l'image : chaque section dans le cadre actuel du bocal, seulement celles dans le champ de la camera.
+     * Une fois par image pour toutes les couches. Les sections hors champ restent construites (prets quand on tourne),
+     * et la couverture du brouillard compte toujours toutes les sections pretes.
+     */
+    static void prepare(PoseStack poseStack, Matrix4f projection) {
         frame.clear();
         // Sans cadre de reference, les sections (rangees par position dans le monde) ne peuvent pas etre placees.
         if (!drawing || !SubLevelView.hasAnchor()) {
@@ -199,10 +207,16 @@ public final class FlightView {
             SubLevelView.terrainBlocks(poseStack, origin);
             Matrix4f common = new Matrix4f(poseStack.last().pose());
             FlightFog.Frame fog = FlightFog.frame(common);
+            // Test dans le repere commun (le placement du vol, origine proche) : la boite de chaque section est decalee
+            // de la meme translation entiere que son dessin. Meme geometrie que le dessin, sans perte de precision.
+            frustum.update(common, projection);
             for (Section section : sections.values()) {
                 int x = section.origin().getX() - origin.getX();
                 int y = section.origin().getY() - origin.getY();
                 int z = section.origin().getZ() - origin.getZ();
+                float[] box = section.box();
+                if (box != null && !frustum.visible(new float[]{box[0] + x, box[1] + y, box[2] + z,
+                        box[3] + x, box[4] + y, box[5] + z})) continue;
                 frame.add(new DrawFrame(section, new Matrix4f(common).translate(x, y, z), fog.section(x, y, z)));
             }
         } finally {

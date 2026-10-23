@@ -339,8 +339,8 @@ public final class FarRing {
     }
 
     /** Keep flight vertices in source block units; scale and place all sections together at draw time. */
-    static Map<RenderType, VertexBuffer> buildFlight(FarWorld world, List<BlockPos> blocks, Vec3 localCamera) {
-        return build(world, blocks, 1, 1, 1, localCamera, false, false, null);
+    static Map<RenderType, VertexBuffer> buildFlight(FarWorld world, List<BlockPos> blocks, Vec3 localCamera, float[] box) {
+        return build(world, blocks, 1, 1, 1, localCamera, false, false, box);
     }
 
     /**
