@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyConstant;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Reutilise le shader de DS pour chaque echelle, sans changer ses lumieres du vrai monde. */
+/** DS avant 0.4.7 : reutilise le shader de DS pour chaque echelle, sans changer ses lumieres du vrai monde. */
 @Pseudo
 @Mixin(targets = "org.orecruncher.dsurround.effects.particles.FireflyLights", remap = false)
 public abstract class DsFireflyLightsMixin {

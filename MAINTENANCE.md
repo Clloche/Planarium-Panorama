@@ -192,15 +192,21 @@ ni animation de ses machines.
 - Les parois partagées avec les voisins affichés sont masquées. Le modèle du Planarium géant doit suivre les mêmes
   ouvertures ; son plancher et son verre utilisent la lumière de la poche correspondante.
 - Le ciel de la poche est combiné avec le plus fort niveau de ciel des six cases autour de son Planarium, lu dans
-  le décor reçu. Ce niveau est relu chaque seconde ; s'il change, les sections sont reconstruites dans le budget
-  habituel. Leurs listes de blocs sont conservées pour cela, et les anciens buffers restent affichés jusqu'à leur
-  remplacement, puis sont fermés. La photo des blocs de la poche reste figée.
+  le décor reçu. La lumière des lampes extérieures est aussi interpolée entre les dix faces et le centre avec
+  `JarLight.computeTable`, puis combinée au maximum avec la lumière des blocs de la photo, dans les coordonnées
+  de la poche. Le ciel et la table sont relus chaque seconde ; si l'un change, les sections sont reconstruites dans
+  le budget habituel. Leurs listes de blocs sont conservées pour cela, et les anciens buffers restent affichés
+  jusqu'à leur remplacement, puis sont fermés. La photo des blocs de la poche reste figée.
+  Les dix mesures des faces et celle du centre sont comparées avant tout recalcul de `JarLight.computeTable` :
+  à éclairage identique, la table existante est conservée. Un changement de ciel seul ne recalcule pas cette table.
 
 Tests : deux bocaux adjacents puis en diagonale, voisins à des hauteurs différentes, torche dans une poche,
 options 0/1/4/10 pendant la visite, plusieurs joueurs avec des limites différentes, sortie/rentrée après modification.
 Vérifier l'absence de verre noir, de mur opaque entre bocaux adjacents et de doublon de coque.
 Ouvrir puis fermer un plafond au-dessus d'un voisin : après réception du nouvel éclairage du décor, son intérieur
 doit suivre sans disparaître pendant la reconstruction des sections.
+Poser puis retirer une lampe à côté du Planarium voisin : son intérieur doit suivre la lumière extérieure reçue,
+tout en conservant celle des lampes placées dans sa poche.
 
 ### Flywheel (risque le plus grave)
 
@@ -309,6 +315,13 @@ couleurs du décor à réactiver. Les réglages du mod Contraption Lights resten
 et ses rendus spéciaux. Les modifications dans un monde existant invalident ses sections avec `blocksChanged`.
 Ne pas vider le cache global à chaque construction ni remplacer la source globale avec `setSource`.
 
+Couleur des sources portées : `JarWalls.findSources`, partagé par le bocal et `MiniOutsideLight`, résout le bloc
+lumineux avec `WrappedBlockLight.lightState(BlockGetter, BlockPos, BlockState)` par réflexion. Sans ce crochet,
+le repli Moonlight lit `IBlockHolder.getHeldBlock()` dans la block entity ; sans les deux, l'état d'origine reste
+utilisé. Le diagnostic des lanternes murales d'Amendments donnait `amendments:wall_lantern` et `#769CFF` :
+la couleur du support était utilisée au lieu de celle de la lanterne tenue. Vérifier une lanterne murale normale
+et une lanterne des âmes, dans le bocal et sa miniature, ainsi que le repli sur serveur dédié.
+
 Les sections du **terrain en vol** utilisent volontairement `beginWithoutColor()` pour éviter les recherches de
 sources à chaque section. Leur éclairage vanilla reste actif ; le décor normal et les copies de structures ont
 leur propre traitement. Ne pas présenter l'absence de couleur du terrain en vol comme une panne de l'intégration.
@@ -328,6 +341,29 @@ même si le joueur y est au sec. Sinon DS peut le recalculer ou inonder le journ
 Casse : surtout en silence.
 Tests : ambiance du biome du dehors dans le bocal, silence sous abri, sons de grotte sous terre, lucioles dans le décor,
 cascades du décor, pluie du dehors, immersion dans l'eau et la lave, sortie à l'air et absence de spam de brouillard.
+
+Audit DS 0.4.7 (sources fournies et signatures du JAR, pas encore validé en jeu) :
+
+- `FireflyLights` est remplacé par `PointLights.add(double, double, double, float, float, float, float, float)` ;
+  le dernier argument est le rayon. `DsPointLightsMixin` adapte ce rayon à l'échelle de la luciole copiée, dans le
+  lot natif de DS : même tri par distance et limite globale de 64 lumières. Les lots séparés et le chemin
+  `FireflyLights` restent pour 0.4.6. Les lumières du vrai monde gardent leur rayon natif.
+- `WeatherVariables` passe son intensité de pluie par le nouveau `WeatherSimulation`. Sans adaptation, ce simulateur
+  et `WindService` lisent la pluie nulle de la poche. `DsWeatherSimulationMixin` leur fournit la pluie et le tonnerre
+  synchronisés, avec les mêmes conditions d'activation que les variables météo existantes.
+- `DsDimensionInfoMixin` force `particleWeather()` à faux pour les dimensions de poche quand Planarium Panorama
+  est activé. La pluie en particules de DS reste ainsi hors de la poche, indépendamment de `SyncedEffects`,
+  de `NoSkyEffects` ou du ciel d'une dimension modifiée. Les simulateurs restent synchronisés pour l'ambiance.
+  Cette protection ne dépend pas de l'option d'ambiance ; désactiver le mod rend le choix normal à DS.
+- Les scanners de biome/plafond, les variables, les saisons, les signatures de brouillard, les champs de lucioles
+  et de cercles d'eau utilisés restent présents. Les sons `waterfall.0` à `waterfall.5` restent disponibles.
+- La pluie du décor géant reste dessinée par `WeatherView`. Les nouveaux effets DS (pluie sur les vitres, givre,
+  brouillard au sol) n'ont pas de projection ajoutée vers le décor géant par cette adaptation.
+
+Tests 0.4.7 à faire : lumières des lucioles aux deux échelles, sons et intensité météo sous la pluie et l'orage,
+retour au temps sec, intégration OFF, puis même contrôle des lucioles avec 0.4.6. Vérifier aussi l'absence de pluie
+DS à taille normale dans une poche qui ne contient pas de pluie réelle, avec ciel normal, sans ciel et ciel modifié,
+et avec l'ambiance extérieure désactivée. La pluie du décor doit suivre son option météo.
 
 ### AmbientSounds
 

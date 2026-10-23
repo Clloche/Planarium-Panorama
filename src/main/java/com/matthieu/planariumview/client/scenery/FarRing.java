@@ -566,6 +566,11 @@ public final class FarRing {
          * son interieur doit etre aussi sombre que l'endroit ou il se trouve (une grotte), comme une miniature.
          */
         int skyCap = -1;
+        /**
+         * Lumiere des lampes autour d'un Planarium voisin qui entre dans sa poche (JarLight.computeTable, en coordonnees
+         * de poche), ou null. Comme pour une miniature : sans elle, un voisin eclaire de dehors restait tout noir.
+         */
+        byte[] outsideBlock;
         private List<Holder<Biome>> biomes = List.of();
         private byte[] biomeGrid = new byte[0];
         private int quarts;
@@ -665,9 +670,17 @@ public final class FarRing {
                 LitRenderingWorld nearWorld = near != null ? ClientView.sceneryWorld() : null;
                 if (nearWorld != null) return nearWorld.getBrightness(layer, near);
                 // Case inconnue : le ciel au-dessus de la boite, l'obscurite dedans (sous le sol).
-                return layer == LightLayer.SKY ? sky(pos.getY() > skyAbove ? 15 : 0) : 0;
+                return layer == LightLayer.SKY ? sky(pos.getY() > skyAbove ? 15 : 0) : outsideBlock(pos);
             }
-            return layer == LightLayer.SKY ? sky((value >> 4) & 15) : value & 15;
+            return layer == LightLayer.SKY ? sky((value >> 4) & 15) : Math.max(value & 15, outsideBlock(pos));
+        }
+
+        private int outsideBlock(BlockPos pos) {
+            byte[] table = outsideBlock;
+            if (table == null) return 0;
+            int index = com.matthieu.planariumview.client.jar.JarLight.tableIndex(pos.getX() + origin.getX(),
+                    pos.getY() + origin.getY(), pos.getZ() + origin.getZ());
+            return index < 0 ? 0 : table[index];
         }
 
         private int sky(int value) {

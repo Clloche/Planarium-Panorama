@@ -1,6 +1,7 @@
 package com.matthieu.planariumview.mixin.compat;
 
 import com.matthieu.planariumview.client.sound.OutsideAmbience;
+import com.matthieu.planariumview.config.Config;
 
 import com.hollingsworth.arsnouveau.ArsNouveau;
 import net.minecraft.world.level.Level;
@@ -20,6 +21,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * - "Toujours dehors" : toujours faux. Planarium a l'air libre : le plafond du bocal ne compte pas comme toit
  *   (DsCeilingScannerMixin), mais un toit construit dans le bocal oui. Planarium abrite : le plafond compte
  *   (on est a l'interieur : pas de sons de biome).
+ * - DS 0.4.7 : pas de pluie en particules a l'echelle de la poche ; WeatherView dessine deja celle du decor geant.
  */
 @Mixin(targets = "org.orecruncher.dsurround.config.DimensionInfo", remap = false)
 public abstract class DsDimensionInfoMixin {
@@ -55,6 +57,14 @@ public abstract class DsDimensionInfoMixin {
         // Jamais "toujours dehors" : le plafond du bocal est ignore quand le Planarium est a l'air libre
         // (DsCeilingScannerMixin), et les toits construits dans le bocal comptent.
         if (this.planariumview$jar && OutsideAmbience.active()) {
+            cir.setReturnValue(false);
+        }
+    }
+
+    /** Toutes les poches, quels que soient leurs effets de ciel et les regles de dimension chargees par DS. */
+    @Inject(method = "particleWeather()Z", at = @At("HEAD"), cancellable = true, require = 0)
+    private void planariumview$particleWeather(CallbackInfoReturnable<Boolean> cir) {
+        if (this.planariumview$jar && Config.enabled()) {
             cir.setReturnValue(false);
         }
     }

@@ -87,13 +87,61 @@ public final class JarWalls {
                         int contribution = emission - pos.distManhattan(positions[f]);
                         if (contribution > best[f]) {
                             best[f] = contribution;
-                            states[f] = Block.getId(state);
+                            states[f] = Block.getId(lightState(level, pos, state));
                         }
                     }
                 }
             }
         }
         return states;
+    }
+
+    private static java.lang.invoke.MethodHandle wrappedLight, heldBlock;
+    private static Class<?> holderType;
+    private static boolean wrappedChecked;
+
+    /**
+     * Bloc dont la lumiere a la couleur : une lanterne accrochee au mur d'Amendments (bloc qui tient une lanterne), un
+     * bloc de Framed Blocks ou de Create... Avec le bloc porteur, la couleur venait de sa propre texture (bleue pour
+     * la lanterne murale), alors que Contraption Lights utilise celle de la lanterne tenue. Meme resolution que lui
+     * (WrappedBlockLight), sinon celle de Moonlight (IBlockHolder) sans lui.
+     */
+    private static BlockState lightState(net.minecraft.world.level.Level level, BlockPos pos, BlockState state) {
+        if (!wrappedChecked) {
+            wrappedChecked = true;
+            var lookup = java.lang.invoke.MethodHandles.publicLookup();
+            try {
+                wrappedLight = lookup.findStatic(Class.forName("xyz.atmerek.contraptionlights.light.WrappedBlockLight"),
+                        "lightState", java.lang.invoke.MethodType.methodType(BlockState.class,
+                                net.minecraft.world.level.BlockGetter.class, BlockPos.class, BlockState.class));
+            } catch (Throwable ignored) {
+            }
+            try {
+                holderType = Class.forName("net.mehvahdjukaar.moonlight.api.block.IBlockHolder");
+                heldBlock = lookup.findVirtual(holderType, "getHeldBlock", java.lang.invoke.MethodType.methodType(BlockState.class));
+            } catch (Throwable ignored) {
+                holderType = null;
+            }
+        }
+        if (wrappedLight != null) {
+            try {
+                BlockState wrapped = (BlockState) wrappedLight.invoke((net.minecraft.world.level.BlockGetter) level, pos, state);
+                if (wrapped != null) return wrapped;
+            } catch (Throwable e) {
+                wrappedLight = null; // classes client seulement sur un serveur dedie : on garde Moonlight
+            }
+        }
+        if (holderType != null && state.hasBlockEntity()) {
+            try {
+                var entity = level.getBlockEntity(pos);
+                if (holderType.isInstance(entity)) {
+                    BlockState held = (BlockState) heldBlock.invoke(entity);
+                    if (held != null && !held.isAir() && held.getLightEmission() > 0) return held;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return state;
     }
 
     /** Les faces auxquelles appartient une position de paroi. */

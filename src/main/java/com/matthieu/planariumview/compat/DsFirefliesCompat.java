@@ -161,6 +161,18 @@ public final class DsFirefliesCompat {
         return true;
     }
 
+    /**
+     * DS 0.4.7 et plus (PointLights) : chaque lumiere a son propre rayon. Une luciole du decor (geant ou miniature)
+     * garde le meme lot que celles du vrai monde, avec un rayon a son echelle. Vrai : ne pas l'ajouter (option OFF).
+     */
+    public static boolean skipPointLight() {
+        return rendering != null && !(Config.sceneryParticles() && Config.outsideAmbience());
+    }
+
+    public static float pointRadius(float radius) {
+        return rendering == null ? radius : radius * (float) rendering.scale();
+    }
+
     public static float lightRadius(float radius) {
         return radius * lightScale;
     }

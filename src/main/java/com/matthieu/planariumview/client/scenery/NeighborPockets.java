@@ -51,6 +51,9 @@ public final class NeighborPockets {
         boolean outsideRead;
         /** Derniere lecture de ce ciel : relu chaque seconde (un plafond ouvert ou ferme au-dessus du voisin). */
         long outsideCheckedAt;
+        /** Mesures utilisees pour la table des lampes : on ne la recalcule que si elles changent. */
+        int[] outsideFaces;
+        int outsideCenter = -1;
 
         Pocket(BlockPos offset, FarRing.FarWorld world, Map<Long, List<BlockPos>> pendingBlocks) {
             this.offset = offset;
@@ -168,8 +171,10 @@ public final class NeighborPockets {
                 if (!readOutside(entry, start)) continue;
             } else if (start - entry.outsideCheckedAt >= 1_000_000_000L) {
                 int skyCap = entry.world.skyCap;
-                if (readOutside(entry, start) && entry.world.skyCap != skyCap) {
-                    // Le ciel autour du voisin a change : ses sections sont refaites (les anciennes restent dessinees
+                byte[] outsideBlock = entry.world.outsideBlock;
+                if (readOutside(entry, start) && (entry.world.skyCap != skyCap
+                        || !java.util.Arrays.equals(entry.world.outsideBlock, outsideBlock))) {
+                    // La lumiere autour du voisin a change : ses sections sont refaites (les anciennes restent dessinees
                     // jusqu'a leur remplacement).
                     entry.pending.clear();
                     entry.pending.addAll(entry.pendingBlocks.keySet());
@@ -194,9 +199,10 @@ public final class NeighborPockets {
     }
 
     /**
-     * Ciel autour du bloc du Planarium voisin, dans le decor detaille (le plus clair de ses 6 voisins) : sa poche a un
-     * ciel plein, et son interieur restait eclaire comme en plein jour au fond d'une grotte. Faux si le decor n'est pas
-     * encore la (on reessaie a l'image suivante).
+     * Lumiere autour du bloc du Planarium voisin, dans le decor detaille, comme pour une miniature (MiniOutsideLight) :
+     * son ciel (le plus clair de ses 6 voisins), car sa poche a un ciel plein qui l'eclairait en plein jour au fond
+     * d'une grotte ; et la lumiere des lampes a cote de chacune de ses faces, qui entre dans la poche (JarLight).
+     * Faux si le decor n'est pas encore la (on reessaie a l'image suivante).
      */
     private static boolean readOutside(Pocket entry, long now) {
         LitRenderingWorld scenery = ClientView.sceneryWorld();
@@ -208,6 +214,19 @@ public final class NeighborPockets {
             sky = Math.max(sky, scenery.getBrightness(net.minecraft.world.level.LightLayer.SKY, at.relative(side)));
         }
         entry.world.skyCap = sky;
+        BlockPos[] positions = com.matthieu.planariumview.client.jar.JarWalls.samplePositions(at);
+        int[] faces = new int[positions.length];
+        int center = scenery.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, at);
+        boolean lit = center > 0;
+        for (int i = 0; i < positions.length; i++) {
+            faces[i] = scenery.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, positions[i]);
+            lit |= faces[i] > 0;
+        }
+        if (entry.outsideCenter != center || !java.util.Arrays.equals(entry.outsideFaces, faces)) {
+            entry.outsideFaces = faces;
+            entry.outsideCenter = center;
+            entry.world.outsideBlock = lit ? com.matthieu.planariumview.client.jar.JarLight.computeTable(faces, center) : null;
+        }
         entry.outsideRead = true;
         entry.outsideCheckedAt = now;
         return true;
