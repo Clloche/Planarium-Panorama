@@ -47,6 +47,10 @@ public final class NeighborPockets {
         final Map<Long, List<BlockPos>> pendingBlocks;
         final ArrayDeque<Long> pending = new ArrayDeque<>();
         final Map<Long, Map<RenderType, VertexBuffer>> sections = new HashMap<>();
+        /** Ciel de l'endroit du Planarium voisin deja lu dans le decor (voir FarRing.FarWorld.skyCap). */
+        boolean outsideRead;
+        /** Derniere lecture de ce ciel : relu chaque seconde (un plafond ouvert ou ferme au-dessus du voisin). */
+        long outsideCheckedAt;
 
         Pocket(BlockPos offset, FarRing.FarWorld world, Map<Long, List<BlockPos>> pendingBlocks) {
             this.offset = offset;
@@ -159,20 +163,54 @@ public final class NeighborPockets {
             Pocket entry = pockets.get(i);
             Vec3 local = camera.subtract(entry.offset.getX() * (double) ClientView.GIANT,
                     entry.offset.getY() * (double) ClientView.GIANT, entry.offset.getZ() * (double) ClientView.GIANT);
+            if (!entry.outsideRead) {
+                // Avant la premiere section : sans le decor autour, on ne sait pas encore s'il est dans le noir.
+                if (!readOutside(entry, start)) continue;
+            } else if (start - entry.outsideCheckedAt >= 1_000_000_000L) {
+                int skyCap = entry.world.skyCap;
+                if (readOutside(entry, start) && entry.world.skyCap != skyCap) {
+                    // Le ciel autour du voisin a change : ses sections sont refaites (les anciennes restent dessinees
+                    // jusqu'a leur remplacement).
+                    entry.pending.clear();
+                    entry.pending.addAll(entry.pendingBlocks.keySet());
+                }
+            }
             while (!entry.pending.isEmpty()) {
                 if (System.nanoTime() - start >= BUDGET_NANOS) return;
                 Long key = entry.pending.poll();
-                List<BlockPos> blocks = entry.pendingBlocks.remove(key);
+                // Les blocs restent gardes : la section peut etre refaite si la lumiere autour du voisin change.
+                List<BlockPos> blocks = entry.pendingBlocks.get(key);
                 if (blocks == null) continue;
                 try {
                     // Sommets en coordonnees de la poche voisine (locale + ORIGIN).
-                    entry.sections.put(key, FarRing.buildPocket(entry.world, blocks,
+                    Map<RenderType, VertexBuffer> previous = entry.sections.put(key, FarRing.buildPocket(entry.world, blocks,
                             -ORIGIN.getX(), -ORIGIN.getY(), -ORIGIN.getZ(), local));
+                    if (previous != null) previous.values().forEach(VertexBuffer::close);
                 } catch (RuntimeException e) {
                     LOGGER.debug("[Planarium Panorama] Section d'un Planarium voisin ignoree", e);
                 }
             }
         }
+    }
+
+    /**
+     * Ciel autour du bloc du Planarium voisin, dans le decor detaille (le plus clair de ses 6 voisins) : sa poche a un
+     * ciel plein, et son interieur restait eclaire comme en plein jour au fond d'une grotte. Faux si le decor n'est pas
+     * encore la (on reessaie a l'image suivante).
+     */
+    private static boolean readOutside(Pocket entry, long now) {
+        LitRenderingWorld scenery = ClientView.sceneryWorld();
+        if (scenery == null) return false;
+        int radius = ClientView.nearRadius();
+        BlockPos at = entry.offset.offset(radius, radius, radius);
+        int sky = 0;
+        for (Direction side : Direction.values()) {
+            sky = Math.max(sky, scenery.getBrightness(net.minecraft.world.level.LightLayer.SKY, at.relative(side)));
+        }
+        entry.world.skyCap = sky;
+        entry.outsideRead = true;
+        entry.outsideCheckedAt = now;
+        return true;
     }
 
     /**

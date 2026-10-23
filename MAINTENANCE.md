@@ -191,10 +191,16 @@ ni animation de ses machines.
   cette même structure. Au sol, elle concerne ceux du sol.
 - Les parois partagées avec les voisins affichés sont masquées. Le modèle du Planarium géant doit suivre les mêmes
   ouvertures ; son plancher et son verre utilisent la lumière de la poche correspondante.
+- Le ciel de la poche est combiné avec le plus fort niveau de ciel des six cases autour de son Planarium, lu dans
+  le décor reçu. Ce niveau est relu chaque seconde ; s'il change, les sections sont reconstruites dans le budget
+  habituel. Leurs listes de blocs sont conservées pour cela, et les anciens buffers restent affichés jusqu'à leur
+  remplacement, puis sont fermés. La photo des blocs de la poche reste figée.
 
 Tests : deux bocaux adjacents puis en diagonale, voisins à des hauteurs différentes, torche dans une poche,
 options 0/1/4/10 pendant la visite, plusieurs joueurs avec des limites différentes, sortie/rentrée après modification.
 Vérifier l'absence de verre noir, de mur opaque entre bocaux adjacents et de doublon de coque.
+Ouvrir puis fermer un plafond au-dessus d'un voisin : après réception du nouvel éclairage du décor, son intérieur
+doit suivre sans disparaître pendant la reconstruction des sections.
 
 ### Flywheel (risque le plus grave)
 
@@ -348,6 +354,12 @@ menu de config (boutons, groupes, sauvegarde immédiate, Échap).
 - **Précision des sommets** : `GridSnap.snapMesh` remet les positions sur une grille de 1/4096 de bloc source avant
   le tri des transparents et l'upload. Cela ferme les fissures qui laissaient scintiller des pixels de ciel.
   Garder l'opération sur le maillage fini pour préserver les chemins optimisés de `VertexConsumer`.
+  Dans le décor détaillé et l'anneau, les faces non translucides débordent aussi de 1/8192 de bloc géant pour fermer
+  les jonctions en T. Vérifier près du bocal les raccords entre textures différentes : le recouvrement peut encore
+  poser un problème de profondeur visible selon la distance et la résolution.
+- **Maillage des parois et du plancher** : `ProjectorLighting` conserve tous les points de grille du contour des
+  rectangles d'éclairage fusionnés (éventail pour les grands rectangles, cellules pour les petits). Les positions
+  sont arrondies sur une grille du monde de 1/1024 de bloc pour fermer les raccords entre faces.
 - **Culling** : `SceneryFrustum` traite le décor détaillé, l'anneau et le vol, que Sodium ne peut pas éliminer à notre
   place. Les boîtes viennent des vrais sommets, avec la même matrice que le dessin, inclinaison Sable comprise.
   Invalider les listes visibles après ajout/retrait/reconstruction ; une boîte inconnue doit rester visible.

@@ -515,7 +515,7 @@ public final class FarRing {
                 MeshData mesh = entry.getValue().build();
                 if (mesh == null) continue;
                 // Sommets sur une grille fixe : pas de fentes entre les blocs voisins (voir GridSnap).
-                if (giantCoordinates) GridSnap.snapMesh(mesh);
+                if (giantCoordinates) GridSnap.snapMesh(mesh, entry.getKey() != RenderType.translucent());
                 // Boite des sommets avant l'envoi a la carte graphique (upload libere le maillage).
                 SceneryFrustum.include(box, mesh);
                 lastMeshNanos += System.nanoTime() - stageStart;
@@ -561,6 +561,11 @@ public final class FarRing {
         private final int skyAbove;
         /** Decalage entre les positions locales et la grille des biomes. */
         private final int biomeShift;
+        /**
+         * Ciel a l'endroit d'un Planarium voisin (0 a 15), ou -1. Sa poche a son propre ciel, plein : vu depuis le decor,
+         * son interieur doit etre aussi sombre que l'endroit ou il se trouve (une grotte), comme une miniature.
+         */
+        int skyCap = -1;
         private List<Holder<Biome>> biomes = List.of();
         private byte[] biomeGrid = new byte[0];
         private int quarts;
@@ -660,9 +665,13 @@ public final class FarRing {
                 LitRenderingWorld nearWorld = near != null ? ClientView.sceneryWorld() : null;
                 if (nearWorld != null) return nearWorld.getBrightness(layer, near);
                 // Case inconnue : le ciel au-dessus de la boite, l'obscurite dedans (sous le sol).
-                return layer == LightLayer.SKY && pos.getY() > skyAbove ? 15 : 0;
+                return layer == LightLayer.SKY ? sky(pos.getY() > skyAbove ? 15 : 0) : 0;
             }
-            return layer == LightLayer.SKY ? (value >> 4) & 15 : value & 15;
+            return layer == LightLayer.SKY ? sky((value >> 4) & 15) : value & 15;
+        }
+
+        private int sky(int value) {
+            return skyCap < 0 || skyCap >= 15 ? value : LitRenderingWorld.combineSky(value, skyCap);
         }
 
         @Override

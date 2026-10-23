@@ -1930,7 +1930,7 @@ public final class ClientView {
                 MeshData mesh = entry.getValue().build();
                 if (mesh == null) continue;
                 // Sommets sur une grille fixe : pas de fentes entre les blocs voisins (voir GridSnap).
-                GridSnap.snapMesh(mesh);
+                GridSnap.snapMesh(mesh, type != RenderType.translucent());
                 // Boite des vrais sommets avant l'envoi a la carte graphique (upload libere le maillage).
                 SceneryFrustum.include(section.box, mesh);
                 if (type == RenderType.translucent()) {

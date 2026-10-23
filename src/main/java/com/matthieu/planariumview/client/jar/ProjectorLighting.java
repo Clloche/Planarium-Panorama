@@ -381,25 +381,59 @@ public final class ProjectorLighting {
                     }
                 }
                 int value = light[a0][b0];
-                float s0 = (float) a0 / stepsA, s1 = (float) a1 / stepsA;
-                float t0 = (float) b0 / stepsB, t1 = (float) b1 / stepsB;
-                emit(s0, t0, value);
-                emit(s1, t0, value);
-                emit(s1, t1, value);
-                emit(s0, t1, value);
+                int w = a1 - a0, h = b1 - b0;
+                if (w * h <= 2 * (w + h)) {
+                    // Petit rectangle : ses carres un par un coutent moins que l'eventail.
+                    for (int a = a0; a < a1; a++) {
+                        for (int b = b0; b < b1; b++) {
+                            cell(a, b, stepsA, stepsB, value, value, value, value);
+                        }
+                    }
+                } else {
+                    fan(a0, b0, a1, b1, stepsA, stepsB, value);
+                }
             }
             for (int a = 0; a < stepsA; a++) {
                 for (int b = 0; b < stepsB; b++) {
                     if (covered[a][b]) continue;
-                    float s0 = (float) a / stepsA;
-                    float s1 = (float) (a + 1) / stepsA;
-                    float t0 = (float) b / stepsB;
-                    float t1 = (float) (b + 1) / stepsB;
-                    emit(s0, t0, light[a][b]);
-                    emit(s1, t0, light[a + 1][b]);
-                    emit(s1, t1, light[a + 1][b + 1]);
-                    emit(s0, t1, light[a][b + 1]);
+                    cell(a, b, stepsA, stepsB, light[a][b], light[a + 1][b], light[a + 1][b + 1], light[a][b + 1]);
                 }
+            }
+        }
+
+        private void cell(int a, int b, int stepsA, int stepsB, int l00, int l10, int l11, int l01) {
+            float s0 = (float) a / stepsA, s1 = (float) (a + 1) / stepsA;
+            float t0 = (float) b / stepsB, t1 = (float) (b + 1) / stepsB;
+            emit(s0, t0, l00);
+            emit(s1, t0, l10);
+            emit(s1, t1, l11);
+            emit(s0, t1, l01);
+        }
+
+        /**
+         * Rectangle a lumiere constante sans fentes : un seul grand quadrilatere avait ses coins au milieu des bords des
+         * petits carres voisins (jonctions en T). Arrondis differemment, ces bords laissaient de petites fentes, et le
+         * fond passait au travers (pixels blancs pres du joueur en bougeant). Ici, un eventail depuis son centre passe
+         * par tous les points de la grille sur son contour, comme les carres voisins. Chaque triangle est un
+         * quadrilatere dont le dernier coin est repete (meme sens que le rectangle).
+         */
+        private void fan(int a0, int b0, int a1, int b1, int stepsA, int stepsB, int value) {
+            float sc = (a0 + a1) * 0.5F / stepsA, tc = (b0 + b1) * 0.5F / stepsB;
+            int total = 2 * ((a1 - a0) + (b1 - b0));
+            int pa = a0, pb = b0;
+            for (int i = 0; i < total; i++) {
+                int na = pa, nb = pb;
+                // Contour dans le sens du rectangle : (a0,b0) -> (a1,b0) -> (a1,b1) -> (a0,b1) -> (a0,b0).
+                if (pb == b0 && pa < a1) na++;
+                else if (pa == a1 && pb < b1) nb++;
+                else if (pb == b1 && pa > a0) na--;
+                else nb--;
+                emit(sc, tc, value);
+                emit((float) pa / stepsA, (float) pb / stepsB, value);
+                emit((float) na / stepsA, (float) nb / stepsB, value);
+                emit((float) na / stepsA, (float) nb / stepsB, value);
+                pa = na;
+                pb = nb;
             }
         }
 
@@ -460,12 +494,21 @@ public final class ProjectorLighting {
         }
 
         private void emit(float s, float t, int packedLight) {
-            out.addVertex(lerp2(s, t, 0), lerp2(s, t, 1), lerp2(s, t, 2))
+            out.addVertex(snap(lerp2(s, t, 0), camera.x), snap(lerp2(s, t, 1), camera.y), snap(lerp2(s, t, 2), camera.z))
                     .setColor(color[0])
                     .setUv(lerpUv(s, t, 0), lerpUv(s, t, 1))
                     .setOverlay(overlay[0])
                     .setUv2(packedLight & 0xFFFF, packedLight >>> 16)
                     .setNormal(normal[0][0], normal[0][1], normal[0][2]);
+        }
+
+        /**
+         * Point sur une grille fixe du monde (1/1024 de bloc) : deux faces voisines du modele calculent leur coin commun
+         * depuis des coins differents, et un arrondi different laissait une fente entre elles.
+         */
+        private static float snap(float relative, double camera) {
+            double world = relative + camera;
+            return (float) (Math.rint(world * 1024.0) / 1024.0 - camera);
         }
 
         /** Point du quadrilatere : v0 en (0,0), v1 en (1,0), v2 en (1,1), v3 en (0,1). */
