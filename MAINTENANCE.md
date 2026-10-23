@@ -184,6 +184,8 @@ ni animation de ses machines.
 - Recherche dans le cylindre du rayon détaillé, tri par proximité, au plus 10 voisins. Option client
   `neighborPlanariums` : 4 par défaut, 0 = OFF ; la préférence est transmise au serveur pour limiter aussi la capture.
 - Photos en cache par dimension de poche ; les changements de blocs invalident ce cache pour les prochaines captures.
+  Le cache serveur conserve au plus 64 photos, dans l'ordre des accès : une lecture avec `CACHE.get()` conserve
+  une poche parmi les plus récemment utilisées, et la moins récemment utilisée est évincée à la 65e insertion.
   Ne pas promettre une mise à jour en direct d'une photo déjà affichée pendant la visite.
 - Sur Sable, la recherche se fait autour de la position du bloc dans son plot : elle concerne les Planariums de
   cette même structure. Au sol, elle concerne ceux du sol.
@@ -242,6 +244,18 @@ plus dans les chunks du plot : capturer uniquement le plot fait disparaître hé
 Tests : assemblage/désassemblage d'une hélice, voile traversant plusieurs sections de 16 blocs, plusieurs mécanismes
 côte à côte, rotation du mécanisme pendant le déplacement et l'inclinaison du vaisseau, modification d'un bloc
 assemblé, sortie/rentrée et reconnexion. Vérifier le décor géant et la miniature, les raccords et la lumière.
+
+**Correctif appliqué — invalidation de la lumière des contraptions (régression de `f0b8f8f`, 2026-10-23).**
+Les sections de contraptions gardent `Part.origin = null`, mais `SubLevelServer.dirty()` conditionnait aussi
+le test de `worldBounds` à `origin != null`. Les changements à proximité ne les marquaient donc plus comme
+modifiées et leur éclairage pouvait rester ancien jusqu'au rafraîchissement de secours.
+Les tests de proximité dans le plot (`origin`) et dans le monde physique (`worldBounds`) sont maintenant
+indépendants, chacun avec sa propre vérification de nullité.
+
+Test à effectuer : garder une contraption assemblée immobile, activer les mises à jour de blocs et désactiver le
+rafraîchissement de secours, puis poser et retirer une source lumineuse près de ses limites physiques. Sa copie
+doit changer d'éclairage après le délai de mise à jour des blocs, sans sortir du bocal ni réassembler le mécanisme.
+Correctif identifié par lecture du code ; validation en jeu encore à faire.
 
 ### Create Aeronautics / Simulated
 
@@ -352,6 +366,10 @@ menu de config (boutons, groupes, sauvegarde immédiate, Échap).
 - **Cache lointain** : les changements invalident les photos concernées ; leur âge est aussi borné. À l'arrêt du
   Planarium, le terrain normal revient et l'anneau attend 100 ticks de stabilité. Vérifier les tickets libérés à la
   sortie et à l'arrêt serveur, ainsi que la reconnexion et le changement de rayon.
+- **Miniatures de sublevels en mouvement** : `Part.mini()` peut reconstruire le maillage et son contexte de couleurs
+  toutes les 20 ticks si la pose a changé. L'ancien maillage est fermé : ce sont des allocations répétées, pas une
+  accumulation de maillages. Cela concerne le bocal vu de l'extérieur, avec une structure Sable qui bouge dedans.
+  Réutiliser le contexte de couleurs seulement si un profilage montre que ces allocations posent problème.
 
 Diagnostic des sections lentes : `FarRing` journalise les constructions de plus de 20 ms avec leurs étapes
 (tessellation, maillage, tri, upload). Ajouter l'argument JVM `-Dplanariumview.diagSections=true` pour obtenir
@@ -373,6 +391,8 @@ du tableau ne remplacent pas un nouveau test de cette version.
   sinon il passe au monde suivant en solo. Fait : scènes Sable, tickets et caches de l'anneau, du vol et des voisins
   (`SubLevelServer.clear`, `FarRingServer.clearAll`, `FlightServer.clearAll`, `NeighborPocketsServer.clearAll`).
   À faire : `RELIT`, `FLOOR_CLEANED`, `MINI_LIGHT`, `MINI_ENTITIES`, `MINI_ENTITIES_DUE`, `MINI_ENTITIES_NEXT`.
+- **Caméra des copies** : `CreateCopies.clear()` remet aussi `cameraProxy` à `null` pour libérer sa référence au
+  monde client après déconnexion. Une recréation au prochain monde ne suffit pas à libérer le précédent au menu.
 - **Messages du client** (`ViewTogglePayload`, `SoundPrefsPayload`, `SubLevelPrefsPayload`, `NeighborPrefsPayload`) : les valeurs identiques
   sont déjà filtrées par endroits, mais des bascules ON/OFF répétées forcent des captures complètes ou des changements
   de tickets. Sur un serveur public : limiter à un changement par seconde par joueur.

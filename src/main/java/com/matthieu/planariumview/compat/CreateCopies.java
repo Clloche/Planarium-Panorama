@@ -220,5 +220,5 @@ public final class CreateCopies {
         }
     }
 
-    public static void clear() { VISIBLE.clear(); context = null; }
+    public static void clear() { VISIBLE.clear(); context = null; cameraProxy = null; }
 }

@@ -285,8 +285,8 @@ public final class SubLevelServer {
         for (Scene scene : SCENES.values()) {
             if (!source.dimension().location().equals(scene.source)) continue;
             for (Part part : scene.parts.values()) {
-                if (part.origin != null && (new AABB(part.origin).inflate(17).contains(pos.getX(), pos.getY(), pos.getZ())
-                        || part.worldBounds != null && part.worldBounds.inflate(15).contains(pos.getX(), pos.getY(), pos.getZ()))) {
+                if (part.origin != null && new AABB(part.origin).inflate(17).contains(pos.getX(), pos.getY(), pos.getZ())
+                        || part.worldBounds != null && part.worldBounds.inflate(15).contains(pos.getX(), pos.getY(), pos.getZ())) {
                     part.dirty = true;
                 }
             }

@@ -75,8 +75,13 @@ public final class NeighborPocketsServer {
     }
 
     private static final Map<UUID, State> STATES = new HashMap<>();
-    /** Photos des poches deja prises, oubliees quand un bloc change dans la poche. */
-    private static final Map<ResourceKey<Level>, FarRingPayload.Data> CACHE = new HashMap<>();
+    /** Photos des poches deja prises, oubliees quand un bloc change dans la poche ; au plus 64, les moins recentes partent. */
+    private static final Map<ResourceKey<Level>, FarRingPayload.Data> CACHE = new java.util.LinkedHashMap<>(16, 0.75F, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<ResourceKey<Level>, FarRingPayload.Data> eldest) {
+            return size() > 64;
+        }
+    };
 
     private NeighborPocketsServer() {
     }
