@@ -51,9 +51,6 @@ public final class NeighborPockets {
         boolean outsideRead;
         /** Derniere lecture de ce ciel : relu chaque seconde (un plafond ouvert ou ferme au-dessus du voisin). */
         long outsideCheckedAt;
-        /** Mesures utilisees pour la table des lampes : on ne la recalcule que si elles changent. */
-        int[] outsideFaces;
-        int outsideCenter = -1;
 
         Pocket(BlockPos offset, FarRing.FarWorld world, Map<Long, List<BlockPos>> pendingBlocks) {
             this.offset = offset;
@@ -222,11 +219,7 @@ public final class NeighborPockets {
             faces[i] = scenery.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, positions[i]);
             lit |= faces[i] > 0;
         }
-        if (entry.outsideCenter != center || !java.util.Arrays.equals(entry.outsideFaces, faces)) {
-            entry.outsideFaces = faces;
-            entry.outsideCenter = center;
-            entry.world.outsideBlock = lit ? com.matthieu.planariumview.client.jar.JarLight.computeTable(faces, center) : null;
-        }
+        entry.world.outsideBlock = lit ? com.matthieu.planariumview.client.jar.JarLight.computeTable(faces, center) : null;
         entry.outsideRead = true;
         entry.outsideCheckedAt = now;
         return true;

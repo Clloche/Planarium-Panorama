@@ -205,7 +205,9 @@ final class NeighborPlanariumModel extends BakedModelWrapper<BakedModel> {
         int sum = 0;
         for (int dx = 0; dx <= 1; dx++) {
             for (int dz = 0; dz <= 1; dz++) {
-                sum += pocket.getBrightness(LightLayer.BLOCK, sample(x0 + dx, z0 + dz));
+                // Sans la lumiere du dehors ajoutee a la poche : elle eclairait le plancher en blanc, par-dessus celle
+                // (coloree) que la coquille recoit deja.
+                sum += pocket.ownBlockLight(sample(x0 + dx, z0 + dz));
             }
         }
         int tagged = LevelRenderer.getLightColor(pocket, sample(Mth.floor(x), Mth.floor(z)));

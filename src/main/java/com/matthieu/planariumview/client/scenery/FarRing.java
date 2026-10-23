@@ -675,6 +675,16 @@ public final class FarRing {
             return layer == LightLayer.SKY ? sky((value >> 4) & 15) : Math.max(value & 15, outsideBlock(pos));
         }
 
+        /**
+         * Lumiere des lampes de la poche seulement, sans celle qui entre de dehors (outsideBlock) : le plancher du
+         * Planarium voisin recoit deja la lumiere du dehors, avec sa couleur (voir NeighborPlanariumModel).
+         */
+        int ownBlockLight(BlockPos pos) {
+            if (!Config.realLighting()) return 15;
+            long key = pos.asLong();
+            return light.containsKey(key) ? light.get(key) & 15 : 0;
+        }
+
         private int outsideBlock(BlockPos pos) {
             byte[] table = outsideBlock;
             if (table == null) return 0;
