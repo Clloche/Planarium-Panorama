@@ -1745,6 +1745,25 @@ public final class ClientView {
         }
     }
 
+    /** A neighbor snapshot arrived: only rebuild sections containing giant Planarium shells. */
+    static void neighborPocketsChanged(ResourceLocation dim) {
+        if (currentDim == null || !currentDim.equals(dim)) return;
+        if (pendingTemplate != null) {
+            forceAllSections = true;
+            return;
+        }
+        if (renderData == null) return;
+        for (var entry : currentSectionStates.entrySet()) {
+            if (entry.getValue().stream().noneMatch(state -> state.state.getBlock()
+                    instanceof com.hollingsworth.arsnouveau.common.block.Planarium)) continue;
+            if (pendingSectionSet.add(entry.getKey())) pendingSections.addLast(entry.getKey());
+        }
+        if (!pendingSections.isEmpty()) {
+            pendingSectionData = renderData;
+            pendingSectionStates = currentSectionStates;
+        }
+    }
+
     private static Set<SectionPos> changedSections(StructureRenderData previous, StructureRenderData current,
                                                     Map<SectionPos, List<CulledStatePos>> sections,
                                                     byte[] light, OutsideViewPayload info, int radius) {
@@ -1979,6 +1998,8 @@ public final class ClientView {
             }
 
             BakedModel model = dispatcher.getBlockModel(renderState);
+            model = NeighborPockets.model(model, renderState, pos.pos.offset(-radius, -radius, -radius));
+            boolean neighbor = model instanceof NeighborPlanariumModel;
             // Les morceaux de modele qui depassent dans la case du Planarium entreraient dans le bocal.
             BlockPos planariumCell = new BlockPos(radius, radius, radius);
             if (JarClippedModel.touches(pos.pos, planariumCell)) {
@@ -2033,6 +2054,7 @@ public final class ClientView {
                         // Couleur de Contraption Lights prise devant chaque face (voir FaceHueConsumer).
                         com.mojang.blaze3d.vertex.VertexConsumer faces = com.matthieu.planariumview.compat.ColorCompat.building()
                                 ? new FaceHueConsumer(snapped, data.fakeRenderingWorld, pos.pos) : snapped;
+                        if (neighbor) faces = NeighborPlanariumModel.light(faces, snapped);
                         PlanariumRenderer.tesselateBlock(pos, modelRenderer, data.fakeRenderingWorld, model, renderState,
                                 pos.pos, matrix, faces, random, renderState.getSeed(pos.pos),
                                 OverlayTexture.NO_OVERLAY, ModelData.EMPTY, renderType);

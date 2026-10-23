@@ -491,7 +491,8 @@ public final class FarRing {
                 return 15;
             }
             byte value = light.get(pos.asLong());
-            if (value == -1) {
+            // 0xFF also means full sky and block light; it is unknown only when the entry is absent.
+            if (value == -1 && !light.containsKey(pos.asLong())) {
                 // Case inconnue : le ciel au-dessus de la boite, l'obscurite dedans (sous le sol).
                 return layer == LightLayer.SKY && pos.getY() > skyAbove ? 15 : 0;
             }

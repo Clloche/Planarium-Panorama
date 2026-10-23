@@ -9,8 +9,11 @@ import com.mojang.blaze3d.vertex.VertexBuffer;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.slf4j.Logger;
@@ -79,6 +82,7 @@ public final class NeighborPockets {
     public static void receive(NeighborPocketsPayload payload) {
         clear();
         if (payload.entries().isEmpty() || Minecraft.getInstance().level == null) {
+            ClientView.neighborPocketsChanged(payload.pocketDim());
             return;
         }
         try {
@@ -96,6 +100,28 @@ public final class NeighborPockets {
             LOGGER.warn("[Planarium Panorama] Planariums voisins illisibles", e);
             clear();
         }
+        ClientView.neighborPocketsChanged(payload.pocketDim());
+    }
+
+    /** Adjust only the giant shells whose interiors are actually displayed by the client. */
+    static BakedModel model(BakedModel model, BlockState state, BlockPos offset) {
+        if (!(state.getBlock() instanceof com.hollingsworth.arsnouveau.common.block.Planarium) || !visible()) return model;
+        Pocket entry = displayed(offset);
+        if (entry == null) return model;
+        int shared = 0;
+        for (Direction side : Direction.Plane.HORIZONTAL) {
+            BlockPos adjacent = offset.relative(side);
+            if (adjacent.equals(BlockPos.ZERO) || displayed(adjacent) != null) shared |= 1 << side.ordinal();
+        }
+        return new NeighborPlanariumModel(model, entry.world, shared);
+    }
+
+    private static Pocket displayed(BlockPos offset) {
+        for (int i = 0; i < shown(); i++) {
+            Pocket entry = pockets.get(i);
+            if (entry.offset.equals(offset) && inView(offset)) return entry;
+        }
+        return null;
     }
 
     /** Oublie les poches (sortie du bocal, decor efface, nouvelle photo). */
