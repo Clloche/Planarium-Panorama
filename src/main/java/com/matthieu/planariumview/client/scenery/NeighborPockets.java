@@ -117,7 +117,18 @@ public final class NeighborPockets {
             BlockPos adjacent = offset.relative(side);
             if (adjacent.equals(BlockPos.ZERO) || displayed(adjacent) != null) shared |= 1 << side.ordinal();
         }
-        return new NeighborPlanariumModel(model, entry.world, shared);
+        // Cotes colles a un bloc plein du decor (voir NeighborPlanariumModel.blockedSides).
+        int blocked = 0;
+        LitRenderingWorld scenery = ClientView.sceneryWorld();
+        if (scenery != null) {
+            int radius = ClientView.nearRadius();
+            BlockPos at = offset.offset(radius, radius, radius);
+            for (Direction side : Direction.Plane.HORIZONTAL) {
+                BlockPos next = at.relative(side);
+                if (scenery.getBlockState(next).isSolidRender(scenery, next)) blocked |= 1 << side.ordinal();
+            }
+        }
+        return new NeighborPlanariumModel(model, entry.world, shared, blocked);
     }
 
     private static Pocket displayed(BlockPos offset) {

@@ -31,16 +31,21 @@ final class NeighborPlanariumModel extends BakedModelWrapper<BakedModel> {
     private static final float EPSILON = 0.0001F;
     private static final int STEPS = 32;
     private static final int LIGHT_BITS = 0x00F000F0;
-    /** Recul de la face interieure du verre (1/512 de bloc : environ 0,06 unite a l'echelle du decor). */
-    private static final float INSET = 1.0F / 512;
     private static final int[] INTERPOLATED = {0, 1, 2, 4, 5};
     private final FarRing.FarWorld pocket;
     private final int sharedSides;
+    /**
+     * Cotes colles a un bloc plein du decor (mur de grotte) : pas de face interieure de verre. Dans le meme plan que la
+     * face de ce bloc, les deux se battaient pour la profondeur et le verre clignotait. (La reculer un peu la faisait
+     * eclairer par la case du Planarium, noire : bords du verre sombres.)
+     */
+    private final int blockedSides;
 
-    NeighborPlanariumModel(BakedModel model, FarRing.FarWorld pocket, int sharedSides) {
+    NeighborPlanariumModel(BakedModel model, FarRing.FarWorld pocket, int sharedSides, int blockedSides) {
         super(model);
         this.pocket = pocket;
         this.sharedSides = sharedSides;
+        this.blockedSides = blockedSides;
     }
 
     @Override
@@ -51,6 +56,11 @@ final class NeighborPlanariumModel extends BakedModelWrapper<BakedModel> {
             if (sharedGlass(quad, sharedSides)) continue;
             if (Config.realLighting() && floor(quad)) {
                 addFloor(quad, result);
+            } else if (glassPlane(quad) && quad.hasAmbientOcclusion()) {
+                // The glass extends above its block: AO extrapolates its corner light beyond the cell.
+                // Use exterior light on the original faces too, preserving their directional shade.
+                result.add(new BakedQuad(quad.getVertices(), quad.getTintIndex(), quad.getDirection(),
+                        quad.getSprite(), quad.isShade(), false));
             } else {
                 result.add(quad);
             }
@@ -71,7 +81,7 @@ final class NeighborPlanariumModel extends BakedModelWrapper<BakedModel> {
         sides.add(null);
         for (Direction cull : sides) {
             for (BakedQuad quad : super.getQuads(state, cull, random, data, renderType)) {
-                if (!glassPlane(quad) || sharedGlass(quad, sharedSides)) continue;
+                if (!glassPlane(quad) || sharedGlass(quad, sharedSides) || sharedGlass(quad, blockedSides)) continue;
                 result.add(reversed(quad));
             }
         }
@@ -119,16 +129,8 @@ final class NeighborPlanariumModel extends BakedModelWrapper<BakedModel> {
         int stride = vertices.length / 4;
         int[] next = new int[vertices.length];
         int[] order = {0, 3, 2, 1};
-        // Un peu vers l'interieur du bocal : dans le meme plan que la face d'un bloc colle a cette paroi (mur de grotte),
-        // les deux faces se battaient pour la profondeur et le verre clignotait.
-        var inward = quad.getDirection().getOpposite().getNormal();
         for (int i = 0; i < 4; i++) {
             System.arraycopy(vertices, order[i] * stride, next, i * stride, stride);
-            for (int axis = 0; axis < 3; axis++) {
-                int step = axis == 0 ? inward.getX() : axis == 1 ? inward.getY() : inward.getZ();
-                if (step == 0) continue;
-                next[i * stride + axis] = Float.floatToRawIntBits(Float.intBitsToFloat(next[i * stride + axis]) + step * INSET);
-            }
             // Normale empaquetee (x, y, z en octets signes) a la fin de chaque sommet du format des blocs.
             if (stride >= 8) {
                 int normal = next[i * stride + 7];
@@ -139,8 +141,10 @@ final class NeighborPlanariumModel extends BakedModelWrapper<BakedModel> {
 
         // Direction d'origine : la face prend la lumiere du dehors, comme la face exterieure du meme verre. Tournee
         // vers l'interieur, elle lisait la case du Planarium (souvent sans lumiere) : verre noir par endroits.
+        // Comme les faces exterieures, sans ombrage doux : le verre depasse au-dessus du bloc, hors de la plage
+        // d'interpolation des coins. Eclairage plat : une seule lumiere, celle du dehors.
         return new BakedQuad(next, quad.getTintIndex(), quad.getDirection(), quad.getSprite(),
-                quad.isShade(), quad.hasAmbientOcclusion());
+                quad.isShade(), false);
     }
 
     /** Match only the full-height glass planes of Ars' model, preserving its base, legs and handle. */
