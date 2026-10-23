@@ -37,13 +37,15 @@ import java.util.UUID;
 /** Captures occupied sections separately from poses; moving sections are rebuilt only if their captured data changes. */
 public final class SubLevelServer {
     private static final int MAX_PARTS = 256;
+    /** Server time per send call for timed section refreshes (send runs every 2 ticks for each viewer). */
+    private static final long REFRESH_BUDGET_NANOS = 2_000_000L;
+    /** A structure still for this long (ticks) gets its light refreshed once, if it moved since its last capture. */
+    private static final long SETTLED_TICKS = 20;
     /**
      * Fake origins of contraption sections: far below any world. Each contraption gets its own x range, as wide as its
      * blocks plus a gap (sections closer than 16 blocks count as neighbors on the client, see SubLevelLighting).
      */
     private static final int CONTRAPTION_Y = -1_000_000;
-    /** Server time per send call for timed section refreshes (send runs every 2 ticks for each viewer). */
-    private static final long REFRESH_BUDGET_NANOS = 2_000_000L;
     private static final int CONTRAPTION_GAP = 64;
     private static final Map<Key, Scene> SCENES = new HashMap<>();
     private static final Map<ResourceKey<Level>, Miniature> MINIATURES = new HashMap<>();
@@ -101,6 +103,8 @@ public final class SubLevelServer {
         ListTag lastFrames;
         Matrix4d lastAnchor;
         long lastFramesAt = Long.MIN_VALUE / 2;
+        /** Last pose of each structure and when it last changed (see SETTLED_TICKS). */
+        final Map<UUID, Motion> motions = new HashMap<>();
         /** Create contraptions seen on this scene's structures: their reserved range of fake origins. */
         final Map<UUID, Slot> slots = new HashMap<>();
 
@@ -131,24 +135,33 @@ public final class SubLevelServer {
     private record Slot(int start, int end, int offset) {
     }
 
-    private record Refresh(long captured, Runnable capture) {
+    private static final class Motion {
+        Matrix4d pose;
+        long movedAt;
+
+        /** True once the structure has kept the same pose for SETTLED_TICKS. */
+        boolean settled(Matrix4d current, long now) {
+            if (pose == null || !pose.equals(current, 1.0e-4)) {
+                pose = new Matrix4d(current);
+                movedAt = now;
+            }
+            return now - movedAt >= SETTLED_TICKS;
+        }
     }
 
-    /** Oldest captures go first, so a large scene cannot keep refreshing its first sections forever. */
+    /** Time left for timed recaptures in one call of send (at least one refresh per call, so nothing starves). */
     private static final class RefreshBudget {
-        private final java.util.List<Refresh> pending = new java.util.ArrayList<>();
+        final long end;
+        boolean used;
 
-        void add(long captured, Runnable capture) {
-            pending.add(new Refresh(captured, capture));
+        RefreshBudget(long end) {
+            this.end = end;
         }
 
-        void run() {
-            pending.sort(java.util.Comparator.comparingLong(Refresh::captured));
-            long start = System.nanoTime();
-            for (Refresh refresh : pending) {
-                refresh.capture().run();
-                if (System.nanoTime() - start >= REFRESH_BUDGET_NANOS) break;
-            }
+        boolean allows() {
+            if (used && System.nanoTime() >= end) return false;
+            used = true;
+            return true;
         }
     }
 
@@ -307,8 +320,10 @@ public final class SubLevelServer {
         // (it holds at most 256), then the new geometry always finds its section. See SubLevelView.receive.
         java.util.List<Runnable> geometryPackets = new java.util.ArrayList<>();
         Set<UUID> seenContraptions = new HashSet<>();
-        // Timed refreshes share a small budget per call; deferred sections stay due. New sections never wait.
-        RefreshBudget refreshBudget = new RefreshBudget();
+        Set<UUID> seenBodies = new HashSet<>();
+        // Refreshes share a small time budget per call; the others stay due and follow over the next calls. Recapturing
+        // a whole structure in one tick stalled the server (the ship jerked, sounds cut out). New sections never wait.
+        RefreshBudget refreshBudget = new RefreshBudget(System.nanoTime() + REFRESH_BUDGET_NANOS);
         for (SubLevelCompat.Body body : SubLevelCompat.bodies(source, area)) {
             if (active) {
                 pinned.add(body.id());
@@ -319,6 +334,11 @@ public final class SubLevelServer {
                     scene.pinned.put(body.id(), body.handle());
                 }
             }
+            seenBodies.add(body.id());
+            // A moving structure keeps its blocks: only the light of the world it crosses changes. Recapturing every
+            // section at each block update interval for that caused lag spikes in flight, so the light is refreshed
+            // once the structure stops (and by the backup refresh). Real block changes still mark sections dirty.
+            boolean settled = scene.motions.computeIfAbsent(body.id(), ignored -> new Motion()).settled(body.transform(), now);
             for (var chunk : body.chunks()) {
                 for (int sectionIndex = 0; sectionIndex < chunk.getSectionsCount(); sectionIndex++) {
                     if (frames.size() >= MAX_PARTS) break;
@@ -335,14 +355,14 @@ public final class SubLevelServer {
                     Part part = scene.parts.computeIfAbsent(id, ignored -> new Part());
                     part.origin = origin;
                     part.worldBounds = worldBox;
-                    if (part.capturedPose != null && !part.capturedPose.equals(body.transform())) part.dirty = true;
-                    boolean due = now - part.captured >= backup || blockSeconds > 0 && part.dirty && now - part.captured >= gap;
-                    Runnable refresh = () -> {
-                        exchange(part, capture(source, body, origin, hidden), now, player, dimension, miniature, id, geometryPackets);
+                    boolean moved = settled && part.capturedPose != null && !part.capturedPose.equals(body.transform(), 1.0e-4);
+                    boolean due = moved || now - part.captured >= backup
+                            || blockSeconds > 0 && part.dirty && now - part.captured >= gap;
+                    if (part.previous == null || due && refreshBudget.allows()) {
                         part.capturedPose = new Matrix4d(body.transform());
-                    };
-                    if (part.previous == null) refresh.run();
-                    else if (due) refreshBudget.add(part.captured, refresh);
+                        exchange(part, capture(source, body, origin, hidden), now, player, dimension, miniature, id, geometryPackets);
+                    }
+                    resend(part, now, player, dimension, miniature, id, geometryPackets);
                     CompoundTag frame = new CompoundTag();
                     frame.putString("id", id);
                     frame.put("pose", SubLevelTransforms.write(body.at(origin)));
@@ -373,14 +393,13 @@ public final class SubLevelServer {
                     boolean urgent = part.previous == null || part.capturedSignature != moving.signature()
                             || !origin.equals(part.capturedOrigin);
                     boolean due = now - part.captured >= backup || blockSeconds > 0 && part.dirty && now - part.captured >= gap;
-                    Runnable refresh = () -> {
+                    if (urgent || due && refreshBudget.allows()) {
                         exchange(part, ContraptionCapture.capture(source, body, moving, local, origin),
                                 now, player, dimension, miniature, id, geometryPackets);
                         part.capturedOrigin = origin;
                         part.capturedSignature = moving.signature();
-                    };
-                    if (urgent) refresh.run();
-                    else if (due) refreshBudget.add(part.captured, refresh);
+                    }
+                    resend(part, now, player, dimension, miniature, id, geometryPackets);
                     CompoundTag frame = new CompoundTag();
                     frame.putString("id", id);
                     frame.put("pose", SubLevelTransforms.write(pose));
@@ -394,11 +413,8 @@ public final class SubLevelServer {
                 }
             }
         }
-        refreshBudget.run();
-        for (String id : visible) {
-            resend(scene.parts.get(id), now, player, dimension, miniature, id, geometryPackets);
-        }
         scene.slots.keySet().retainAll(seenContraptions);
+        scene.motions.keySet().retainAll(seenBodies);
         scene.pinned.entrySet().removeIf(entry -> {
             if (pinned.contains(entry.getKey())) return false;
             SubLevelCompat.pin(source, entry.getValue(), player.getUUID(), false);
