@@ -90,6 +90,15 @@ public class PlanariumView {
                 com.matthieu.planariumview.network.FarRingPayload.TYPE,
                 com.matthieu.planariumview.network.FarRingPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.FarRing.receive(payload)));
+        // Facultatif : nombre de Planariums voisins dessines par le client (le serveur ne capture que ceux-la).
+        event.registrar("4").optional().playToServer(
+                com.matthieu.planariumview.network.NeighborPrefsPayload.TYPE,
+                com.matthieu.planariumview.network.NeighborPrefsPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> {
+                    if (context.player() instanceof net.minecraft.server.level.ServerPlayer player) {
+                        com.matthieu.planariumview.server.NeighborPocketsServer.setCount(player.getUUID(), payload.count());
+                    }
+                }));
         // Facultatif : interieur des Planariums voisins (photo figee, purement visuelle).
         event.registrar("4").optional().playToClient(
                 com.matthieu.planariumview.network.NeighborPocketsPayload.TYPE,

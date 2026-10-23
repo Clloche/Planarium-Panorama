@@ -1001,6 +1001,8 @@ public final class ClientView {
     /** Dernieres options des sons du monde exterieur envoyees au serveur (null : rien d'envoye sur cette connexion). */
     private static SoundPrefsPayload sentSoundPrefs;
     private static Boolean sentSubLevelViews;
+    /** Nombre de Planariums voisins envoye au serveur (null : rien d'envoye sur cette connexion). */
+    private static Integer sentNeighbors;
 
     private static void sendToggle(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
         net.minecraft.client.multiplayer.ClientPacketListener connection = Minecraft.getInstance().getConnection();
@@ -1017,6 +1019,18 @@ public final class ClientView {
                 }
             } catch (Exception e) {
                 LOGGER.debug("[Planarium Panorama] Sub-level preference could not be sent", e);
+            }
+        }
+        int neighbors = Config.neighborPlanariums();
+        if (sentNeighbors == null || sentNeighbors != neighbors) {
+            sentNeighbors = neighbors;
+            try {
+                if (connection.hasChannel(com.matthieu.planariumview.network.NeighborPrefsPayload.TYPE)) {
+                    net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                            new com.matthieu.planariumview.network.NeighborPrefsPayload(neighbors));
+                }
+            } catch (Exception e) {
+                LOGGER.debug("[Planarium Panorama] Neighbor preference could not be sent", e);
             }
         }
         SoundPrefsPayload prefs = new SoundPrefsPayload(Config.worldSounds(), Config.mobSounds(), Config.blockSounds(),
@@ -1049,6 +1063,7 @@ public final class ClientView {
         sentEnabled = null;
         sentSoundPrefs = null;
         sentSubLevelViews = null;
+        sentNeighbors = null;
         com.matthieu.planariumview.client.sound.MachineSounds.clear();
         OutsideRecordClient.clear();
         SceneryParticles.clear();

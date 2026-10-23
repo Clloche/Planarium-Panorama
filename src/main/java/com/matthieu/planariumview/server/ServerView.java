@@ -304,6 +304,7 @@ public final class ServerView {
     public static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             SubLevelServer.reset(player.getUUID());
+            NeighborPocketsServer.reset(player.getUUID());
             removeTrack(player.server, player.getUUID());
             DISABLED.remove(player.getUUID());
             SOUND_PREFS.remove(player.getUUID());

@@ -53,7 +53,84 @@ final class NeighborPlanariumModel extends BakedModelWrapper<BakedModel> {
                 result.add(quad);
             }
         }
+        if (side == null) addInnerGlass(state, random, data, renderType, result);
         return result;
+    }
+
+    /**
+     * Face interieure du verre (parois non partagees et dessus) : le modele d'Ars n'a que des faces tournees vers
+     * dehors. Vu de notre bocal, on voyait donc la paroi proche d'un voisin, mais pas ses parois du fond et des cotes
+     * (faces tournees vers l'exterieur, cachees de dos). Dans le bocal, Ars dessine aussi l'interieur du verre (modele
+     * "inverted" du projecteur). Sans face de coupe : une face interieure se voit meme contre un bloc colle.
+     */
+    private void addInnerGlass(@Nullable BlockState state, RandomSource random, ModelData data,
+                               @Nullable RenderType renderType, List<BakedQuad> result) {
+        List<Direction> sides = new ArrayList<>(List.of(Direction.values()));
+        sides.add(null);
+        for (Direction cull : sides) {
+            for (BakedQuad quad : super.getQuads(state, cull, random, data, renderType)) {
+                if (!glassPlane(quad) || sharedGlass(quad, sharedSides)) continue;
+                result.add(reversed(quad));
+            }
+        }
+    }
+
+    /** Plan de verre du modele : une paroi pleine hauteur (FLOOR a TOP) ou le dessus (a TOP). */
+    static boolean glassPlane(BakedQuad quad) {
+        int[] vertices = quad.getVertices();
+        int stride = vertices.length / 4;
+        boolean top = true;
+        float minY = Float.POSITIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY;
+        float minX = Float.POSITIVE_INFINITY, maxX = Float.NEGATIVE_INFINITY;
+        float minZ = Float.POSITIVE_INFINITY, maxZ = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < 4; i++) {
+            float x = Float.intBitsToFloat(vertices[i * stride]);
+            float y = Float.intBitsToFloat(vertices[i * stride + 1]);
+            float z = Float.intBitsToFloat(vertices[i * stride + 2]);
+            top &= Math.abs(y - TOP) < EPSILON;
+            minY = Math.min(minY, y);
+            maxY = Math.max(maxY, y);
+            minX = Math.min(minX, x);
+            maxX = Math.max(maxX, x);
+            minZ = Math.min(minZ, z);
+            maxZ = Math.max(maxZ, z);
+        }
+        // The handle also has a face at TOP: only the full-width glass roof needs an interior copy.
+        if (top) return quad.getDirection() == Direction.UP && Math.abs(minX) < EPSILON
+                && Math.abs(maxX - 1) < EPSILON && Math.abs(minZ) < EPSILON && Math.abs(maxZ - 1) < EPSILON;
+        if (Math.abs(minY - FLOOR) >= EPSILON || Math.abs(maxY - TOP) >= EPSILON) return false;
+        for (int axis : new int[]{0, 2}) {
+            for (float plane : new float[]{0, 1}) {
+                boolean on = true;
+                for (int i = 0; i < 4; i++) {
+                    on &= Math.abs(Float.intBitsToFloat(vertices[i * stride + axis]) - plane) < EPSILON;
+                }
+                if (on) return true;
+            }
+        }
+        return false;
+    }
+
+    /** Meme face, tournee de l'autre cote (ordre des sommets inverse, normale opposee). */
+    static BakedQuad reversed(BakedQuad quad) {
+        int[] vertices = quad.getVertices();
+        int stride = vertices.length / 4;
+        int[] next = new int[vertices.length];
+        int[] order = {0, 3, 2, 1};
+        for (int i = 0; i < 4; i++) {
+            System.arraycopy(vertices, order[i] * stride, next, i * stride, stride);
+            // Normale empaquetee (x, y, z en octets signes) a la fin de chaque sommet du format des blocs.
+            if (stride >= 8) {
+                int normal = next[i * stride + 7];
+                int x = -(byte) normal, y = -(byte) (normal >> 8), z = -(byte) (normal >> 16);
+                next[i * stride + 7] = (normal & 0xFF000000) | (z & 0xFF) << 16 | (y & 0xFF) << 8 | (x & 0xFF);
+            }
+        }
+
+        // Direction d'origine : la face prend la lumiere du dehors, comme la face exterieure du meme verre. Tournee
+        // vers l'interieur, elle lisait la case du Planarium (souvent sans lumiere) : verre noir par endroits.
+        return new BakedQuad(next, quad.getTintIndex(), quad.getDirection(), quad.getSprite(),
+                quad.isShade(), quad.hasAmbientOcclusion());
     }
 
     /** Match only the full-height glass planes of Ars' model, preserving its base, legs and handle. */

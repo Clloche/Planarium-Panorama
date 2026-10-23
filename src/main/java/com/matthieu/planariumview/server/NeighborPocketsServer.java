@@ -52,7 +52,26 @@ public final class NeighborPocketsServer {
     private static final class State {
         Key sent;
         boolean sentAny;
+        /** Nombre de voisins demandes lors du dernier envoi : moins ensuite, le client en dessine simplement moins. */
+        int sentCount;
         Job job;
+    }
+
+    /** Nombre de voisins dessines par chaque joueur (voir NeighborPrefsPayload) ; absent : le maximum. */
+    private static final Map<UUID, Integer> COUNTS = new HashMap<>();
+
+    /** Option du client recue : 0 = OFF (rien a capturer ni a envoyer). */
+    public static void setCount(UUID id, int count) {
+        COUNTS.put(id, Math.clamp(count, 0, NeighborPocketsPayload.MAX));
+    }
+
+    /** A reconnecting client must send its own preference again; older clients fall back to the maximum. */
+    static void reset(UUID id) {
+        COUNTS.remove(id);
+    }
+
+    private static int count(UUID id) {
+        return COUNTS.getOrDefault(id, NeighborPocketsPayload.MAX);
     }
 
     private static final Map<UUID, State> STATES = new HashMap<>();
@@ -74,24 +93,41 @@ public final class NeighborPocketsServer {
         UUID id = player.getUUID();
         State state = STATES.computeIfAbsent(id, ignored -> new State());
         Key want = new Key(source.dimension(), planarium, radius);
-        if (state.job != null && !state.job.key.equals(want)) {
+        int count = count(id);
+        // OFF must run before the "already sent enough" shortcut, and cancel any capture still in progress.
+        if (count == 0) {
+            if (state.job != null) {
+                state.job.release(player.server);
+                state.job = null;
+            }
+            if (state.sentAny) {
+                PacketDistributor.sendToPlayer(player, new NeighborPocketsPayload(pocket.location(), List.of()));
+            }
+            state.sent = want;
+            state.sentAny = false;
+            state.sentCount = 0;
+            return;
+        }
+        if (state.job != null && (!state.job.key.equals(want) || state.job.count != count)) {
             state.job.release(player.server);
             state.job = null;
         }
         if (state.job == null) {
-            if (want.equals(state.sent)) {
+            // Meme zone et pas plus de voisins demandes qu'au dernier envoi : le client a deja tout ce qu'il dessine.
+            if (want.equals(state.sent) && count <= state.sentCount) {
                 return;
             }
-            List<Neighbor> neighbors = find(source, planarium, radius);
+            List<Neighbor> neighbors = find(source, planarium, radius, count);
             if (neighbors.isEmpty()) {
                 if (state.sentAny) {
                     PacketDistributor.sendToPlayer(player, new NeighborPocketsPayload(pocket.location(), List.of()));
                 }
                 state.sent = want;
                 state.sentAny = false;
+                state.sentCount = NeighborPocketsPayload.MAX;
                 return;
             }
-            state.job = new Job(want, id, neighbors, player.server.getTickCount());
+            state.job = new Job(want, id, neighbors, player.server.getTickCount(), count);
         }
         if (!state.job.step(player.server)) {
             return;
@@ -106,6 +142,8 @@ public final class NeighborPocketsServer {
         PacketDistributor.sendToPlayer(player, new NeighborPocketsPayload(pocket.location(), entries));
         state.sent = want;
         state.sentAny = !entries.isEmpty();
+        // Moins de voisins trouves que demandes : en demander plus ne trouvera rien de plus.
+        state.sentCount = done.neighbors.size() < done.count ? NeighborPocketsPayload.MAX : done.count;
         LOGGER.info("[Planarium Panorama] Planariums voisins envoyes : {} sur {} trouves", entries.size(), done.neighbors.size());
     }
 
@@ -113,7 +151,7 @@ public final class NeighborPocketsServer {
      * Planariums du cylindre du decor detaille autour de {@code center}, du plus proche au plus loin : distance, puis le
      * meme etage avant le dessus et le dessous, puis une position fixe (jamais de hasard).
      */
-    private static List<Neighbor> find(ServerLevel level, BlockPos center, int radius) {
+    private static List<Neighbor> find(ServerLevel level, BlockPos center, int radius, int limit) {
         List<Neighbor> found = new ArrayList<>();
         for (int cx = (center.getX() - radius) >> 4; cx <= (center.getX() + radius) >> 4; cx++) {
             for (int cz = (center.getZ() - radius) >> 4; cz <= (center.getZ() + radius) >> 4; cz++) {
@@ -134,12 +172,14 @@ public final class NeighborPocketsServer {
                 .thenComparingInt(n -> n.offset().getZ())
                 .thenComparingInt(n -> n.offset().getX())
                 .thenComparingInt(n -> n.offset().getY()));
-        return found.size() > NeighborPocketsPayload.MAX ? new ArrayList<>(found.subList(0, NeighborPocketsPayload.MAX)) : found;
+        int keep = Math.min(limit, NeighborPocketsPayload.MAX);
+        return found.size() > keep ? new ArrayList<>(found.subList(0, keep)) : found;
     }
 
     /** Fermeture du monde. */
     static void clearAll() {
         STATES.clear();
+        COUNTS.clear();
         CACHE.clear();
     }
 
@@ -162,12 +202,15 @@ public final class NeighborPocketsServer {
         final UUID owner;
         final long startedAt;
         final List<Neighbor> neighbors;
+        /** Nombre de voisins demandes par le joueur pour cette capture. */
+        final int count;
         final List<FarRingPayload.Data> results = new ArrayList<>();
         int index;
         boolean ticketsAdded;
 
-        Job(Key key, UUID owner, List<Neighbor> neighbors, long now) {
+        Job(Key key, UUID owner, List<Neighbor> neighbors, long now, int count) {
             this.key = key;
+            this.count = count;
             this.owner = owner;
             this.neighbors = neighbors;
             this.startedAt = now;
