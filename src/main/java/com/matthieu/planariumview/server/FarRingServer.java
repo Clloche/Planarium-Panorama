@@ -4,6 +4,7 @@ import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.FarRingPayload;
 
 import com.mojang.logging.LogUtils;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
@@ -51,7 +52,28 @@ public final class FarRingServer {
     }
 
     /** Photos deja prises, reutilisees par une nouvelle entree (ou un autre joueur) tant qu'elles sont recentes. */
-    private record Cached(FarRingPayload.Data data, long takenAt) {
+    private record Cached(FarRingPayload.Data data, long takenAt, LongOpenHashSet changed) {
+        Cached(FarRingPayload.Data data, long takenAt) {
+            this(data, takenAt, new LongOpenHashSet());
+        }
+    }
+
+    /**
+     * Une photo gardee est oubliee quand ce nombre de positions de blocs differentes a change dans sa zone (explosion,
+     * construction, terraformage). En dessous (bambou qui pousse, feuilles, redstone), elle reste reutilisee : c'est une
+     * photo figee, et une jungle change sans arret. Positions distinctes : une horloge de redstone compte une fois.
+     */
+    private static final int MAX_CHANGED_POSITIONS = 256;
+    /** Duree max de reutilisation d'une photo quand le rafraichissement de secours est OFF (5 minutes). */
+    private static final int MAX_AGE_WITHOUT_REFRESH = 20 * 60 * 5;
+
+    /**
+     * Age max d'une photo reutilisee a une nouvelle entree : le rafraichissement de secours, ou 5 minutes s'il est OFF.
+     * Ne declenche jamais de nouvelle photo pendant qu'on reste dans le bocal (seul le rafraichissement le fait).
+     */
+    private static int maxCacheAge() {
+        int refresh = refreshTicks();
+        return refresh > 0 ? refresh : MAX_AGE_WITHOUT_REFRESH;
     }
 
     private static final Map<Key, Cached> CACHE = new HashMap<>();
@@ -148,8 +170,16 @@ public final class FarRingServer {
         }
         int refresh = refreshTicks();
         Cached cached = CACHE.get(want);
-        if (cached != null && (refresh == 0 || now - cached.takenAt < refresh) && !(want.equals(state.sent) && refreshDue)) {
+        boolean fresh = cached != null && now - cached.takenAt < maxCacheAge();
+        if (cached != null && !fresh) {
+            LOGGER.info("[Planarium Panorama] Anneau lointain : photo gardee expiree ({} s), nouvelle capture",
+                    (now - cached.takenAt) / 20);
+            CACHE.remove(want);
+        }
+        if (fresh && !(want.equals(state.sent) && refreshDue)) {
             // Photo recente de la meme zone (nouvelle entree dans le bocal, ou un autre joueur) : tout de suite.
+            LOGGER.info("[Planarium Panorama] Anneau lointain : photo gardee reutilisee ({} s, {} positions changees depuis)",
+                    (now - cached.takenAt) / 20, cached.changed.size());
             send(player, pocket, want, cached.data);
             state.sent = want;
             state.nextRefresh = refresh > 0 ? cached.takenAt + refresh : Long.MAX_VALUE;
@@ -165,8 +195,7 @@ public final class FarRingServer {
     }
 
     private static void pruneCache(long now) {
-        int refresh = refreshTicks();
-        long keep = refresh > 0 ? refresh : 20L * 60 * 30;
+        long keep = maxCacheAge();
         CACHE.values().removeIf(cached -> now - cached.takenAt > keep);
         // Au plus quelques photos en memoire (environ 1 Mo chacune).
         while (CACHE.size() > 16) {
@@ -198,17 +227,33 @@ public final class FarRingServer {
     }
 
     /**
-     * Un bloc a change dans le monde : les photos gardees qui le contiennent ne sont plus reutilisees. Le joueur deja
-     * dans le bocal garde son anneau fige ; la prochaine entree prend une nouvelle photo.
+     * Un bloc a change dans le monde : on note sa position dans les photos gardees qui le contiennent (hors du rayon
+     * detaille, qui n'est pas dans la photo). Au-dela de {@link #MAX_CHANGED_POSITIONS} positions differentes, la
+     * photo est oubliee. Le joueur deja dans le bocal garde son anneau fige.
      */
     static void blockChanged(ResourceKey<Level> source, BlockPos pos) {
         if (CACHE.isEmpty()) {
             return;
         }
-        CACHE.keySet().removeIf(key -> key.source.equals(source)
-                && Math.abs(pos.getX() - key.center.getX()) <= key.far
-                && Math.abs(pos.getZ() - key.center.getZ()) <= key.far
-                && Math.abs(pos.getY() - key.center.getY()) <= key.height + 1);
+        var iterator = CACHE.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<Key, Cached> entry = iterator.next();
+            Key key = entry.getKey();
+            int dx = pos.getX() - key.center.getX(), dy = pos.getY() - key.center.getY(), dz = pos.getZ() - key.center.getZ();
+            // Meme cylindre que la capture de l'anneau (voir Job.inBox) : les coins du carre ne comptent pas.
+            if (!key.source.equals(source) || Math.abs(dy) > key.height + 1
+                    || (long) dx * dx + (long) dz * dz > (long) key.far * key.far + key.far) continue;
+            boolean inNear = Math.abs(dy) <= key.near && (key.round
+                    ? com.matthieu.planariumview.DetailShape.horizontal(dx, dz, key.near)
+                    : Math.abs(dx) <= key.near && Math.abs(dz) <= key.near);
+            if (inNear) continue;
+            Cached cached = entry.getValue();
+            if (cached.changed.add(pos.asLong()) && cached.changed.size() > MAX_CHANGED_POSITIONS) {
+                LOGGER.info("[Planarium Panorama] Anneau lointain : photo gardee invalidee apres {} positions modifiees",
+                        cached.changed.size());
+                iterator.remove();
+            }
+        }
     }
 
     private static void cancel(net.minecraft.server.MinecraftServer server, State state) {

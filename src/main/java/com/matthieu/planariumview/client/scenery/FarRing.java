@@ -450,6 +450,9 @@ public final class FarRing {
         Map<net.minecraft.world.level.block.Block, long[]> perBlock = DIAG_SECTIONS ? new IdentityHashMap<>() : null;
         ColorCompat.begin(world);
         try {
+            // Cache de Minecraft pour la lumiere et l'ombrage des positions voisines, partage entre les faces.
+            // Indexe par position seulement : vide a la fin de chaque construction pour ne pas melanger les mondes.
+            ModelBlockRenderer.enableCaching();
             for (BlockPos pos : blocks) {
                 BlockState state = world.getBlockState(pos);
                 long blockStart = perBlock != null ? System.nanoTime() : 0L;
@@ -494,6 +497,7 @@ public final class FarRing {
                 }
             }
         } finally {
+            ModelBlockRenderer.clearCache();
             ColorCompat.end();
         }
         lastTessNanos = System.nanoTime() - tessStart;
