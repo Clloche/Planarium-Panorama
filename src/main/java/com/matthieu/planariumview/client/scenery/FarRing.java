@@ -97,6 +97,25 @@ public final class FarRing {
     static int knownRadius;
     private static final Map<RenderType, ByteBufferBuilder> builders = new IdentityHashMap<>();
 
+    /**
+     * Preparation des anneaux recus, hors du fil de rendu : remplir les tables du monde de l'anneau (blocs, voisins,
+     * lumiere) prenait jusqu'a 60 ms d'un coup. Un seul fil, en arriere-plan.
+     */
+    private static final java.util.concurrent.ExecutorService LOADER = java.util.concurrent.Executors.newSingleThreadExecutor(
+            runnable -> {
+                Thread thread = new Thread(runnable, "Planarium Panorama - anneau lointain");
+                thread.setDaemon(true);
+                return thread;
+            });
+    /** Numero de l'anneau attendu : un resultat d'un autre numero (anneau remplace, sortie du bocal) est jete. */
+    private static volatile int loadVersion;
+
+    /** Diagnostic detaille des sections lentes (temps par type de bloc) : -Dplanariumview.diagSections=true. */
+    private static final boolean DIAG_SECTIONS = Boolean.getBoolean("planariumview.diagSections");
+    /** Temps des etapes de la derniere construction (voir build), pour le message des sections lentes. */
+    private static long lastTessNanos, lastMeshNanos, lastSortNanos, lastUploadNanos;
+    private static Map<net.minecraft.world.level.block.Block, long[]> lastBlockNanos = Map.of();
+
     private FarRing() {
     }
 
@@ -116,27 +135,45 @@ public final class FarRing {
         if (payload.isClear()) {
             return;
         }
-        try {
-            long start = System.nanoTime();
-            load(payload);
-            LOGGER.info("[Planarium Panorama] Anneau lointain recu : {} blocs, lecture {} ms", payload.data().blocks().length,
-                    (System.nanoTime() - start) / 1_000_000L);
-        } catch (RuntimeException e) {
-            LOGGER.warn("[Planarium Panorama] Anneau lointain illisible", e);
-            clear();
-        }
-    }
-
-    private static void load(FarRingPayload payload) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) {
             return;
         }
-        Map<Long, List<BlockPos>> bySection = new HashMap<>();
-        FarWorld next = fill(FarWorld.ring(payload.far(), payload.height(), payload.center()), payload.data(),
-                pos -> bySection.computeIfAbsent(BlockPos.asLong(pos.getX() >> 4, pos.getY() >> 4, pos.getZ() >> 4),
-                        ignored -> new ArrayList<>()).add(pos));
+        // Sur le fil de rendu : seulement les biomes (registres du monde du client). Le reste en arriere-plan.
+        List<Holder<Biome>> biomes = biomeHolders(payload.data());
+        BlockState[] palette = blockPalette(payload.data());
+        int version = ++loadVersion;
+        boolean replacingArea = replacing;
+        long start = System.nanoTime();
+        LOADER.execute(() -> {
+            try {
+                Map<Long, List<BlockPos>> bySection = new HashMap<>();
+                FarWorld next = fillTables(FarWorld.ring(payload.far(), payload.height(), payload.center()), payload.data(),
+                        palette, () -> version != loadVersion, pos -> bySection.computeIfAbsent(BlockPos.asLong(pos.getX() >> 4, pos.getY() >> 4, pos.getZ() >> 4),
+                                ignored -> new ArrayList<>()).add(pos));
+                next.setBiomes(biomes, payload.data().biomes(), payload.data().quarts());
+                long prepared = System.nanoTime() - start;
+                mc.execute(() -> {
+                    if (version != loadVersion || Minecraft.getInstance().level == null) return;
+                    install(payload, next, bySection, replacingArea);
+                    LOGGER.info("[Planarium Panorama] Anneau lointain recu : {} blocs, preparation {} ms (hors rendu)",
+                            payload.data().blocks().length, prepared / 1_000_000L);
+                });
+            } catch (java.util.concurrent.CancellationException ignored) {
+                // Anneau remplace ou sortie du bocal pendant la preparation : le fil passe au suivant.
+            } catch (RuntimeException e) {
+                LOGGER.warn("[Planarium Panorama] Anneau lointain illisible", e);
+                mc.execute(() -> {
+                    if (version == loadVersion) clear();
+                });
+            }
+        });
+    }
 
+    /** Sur le fil de rendu : installe un anneau prepare (voir receive). */
+    private static void install(FarRingPayload payload, FarWorld next, Map<Long, List<BlockPos>> bySection,
+                                boolean replacingArea) {
+        replacing = replacingArea;
         pocket = payload.pocketDim();
         center = payload.center();
         near = payload.near();
@@ -158,12 +195,42 @@ public final class FarRing {
 
     /** Remplit {@code next} avec des blocs visibles recus ; {@code sink} recoit la position locale de chaque bloc. */
     static FarWorld fill(FarWorld next, FarRingPayload.Data data, java.util.function.Consumer<BlockPos> sink) {
-        Minecraft mc = Minecraft.getInstance();
-        int[] paletteIds = data.palette();
-        BlockState[] palette = new BlockState[paletteIds.length];
-        for (int i = 0; i < palette.length; i++) {
-            palette[i] = net.minecraft.world.level.block.Block.stateById(paletteIds[i]);
+        fillTables(next, data, blockPalette(data), () -> false, sink);
+        if (Minecraft.getInstance().level != null) {
+            next.setBiomes(biomeHolders(data), data.biomes(), data.quarts());
         }
+        return next;
+    }
+
+    /** Etats de blocs de la palette recue, resolus sur le fil de rendu (le travailleur ne lit aucun registre). */
+    private static BlockState[] blockPalette(FarRingPayload.Data data) {
+        int[] ids = data.palette();
+        BlockState[] palette = new BlockState[ids.length];
+        for (int i = 0; i < palette.length; i++) {
+            palette[i] = net.minecraft.world.level.block.Block.stateById(ids[i]);
+        }
+        return palette;
+    }
+
+    /** Biomes de la palette recue, lus dans les registres du monde du client (fil de rendu). */
+    private static List<Holder<Biome>> biomeHolders(FarRingPayload.Data data) {
+        List<Holder<Biome>> biomes = new ArrayList<>();
+        var level = Minecraft.getInstance().level;
+        if (level == null) return biomes;
+        var biomeRegistry = level.registryAccess().registryOrThrow(Registries.BIOME);
+        for (ResourceLocation id : data.biomePalette()) {
+            biomes.add(biomeRegistry.getHolder(ResourceKey.create(Registries.BIOME, id)).orElse(null));
+        }
+        return biomes;
+    }
+
+    /**
+     * Tables des blocs, voisins pleins, eau et lumiere, a partir d'une palette deja resolue : ne lit aucun registre, peut
+     * tourner hors du fil de rendu. {@code cancelled} : arret anticipe d'une preparation perimee.
+     */
+    private static FarWorld fillTables(FarWorld next, FarRingPayload.Data data, BlockState[] palette,
+                                       java.util.function.BooleanSupplier cancelled,
+                                       java.util.function.Consumer<BlockPos> sink) {
         int[] blocks = data.blocks();
         int[] info = data.info();
         int[] lightPos = data.lightPos();
@@ -173,6 +240,8 @@ public final class FarRing {
         }
         Direction[] directions = Direction.values();
         for (int i = 0; i < blocks.length; i++) {
+            // Anneau perime (remplace, sortie du bocal) : on arrete tout de suite au lieu de finir pour rien.
+            if ((i & 4095) == 0 && cancelled.getAsBoolean()) throw new java.util.concurrent.CancellationException();
             int packed = blocks[i];
             int paletteId = info[i] & 0xFFFF;
             if (paletteId >= palette.length) continue;
@@ -191,17 +260,10 @@ public final class FarRing {
             sink.accept(pos);
         }
         for (int i = 0; i < lightPos.length; i++) {
+            if ((i & 4095) == 0 && cancelled.getAsBoolean()) throw new java.util.concurrent.CancellationException();
             int packed = lightPos[i];
             next.light.put(BlockPos.asLong(FarRingPayload.unpackX(packed), FarRingPayload.unpackY(packed),
                     FarRingPayload.unpackZ(packed)), light[i]);
-        }
-        if (mc.level != null) {
-            var biomeRegistry = mc.level.registryAccess().registryOrThrow(Registries.BIOME);
-            List<Holder<Biome>> biomes = new ArrayList<>();
-            for (ResourceLocation id : data.biomePalette()) {
-                biomes.add(biomeRegistry.getHolder(ResourceKey.create(Registries.BIOME, id)).orElse(null));
-            }
-            next.setBiomes(biomes, data.biomes(), data.quarts());
         }
         return next;
     }
@@ -233,6 +295,8 @@ public final class FarRing {
 
     /** Oublie l'anneau (sortie du bocal, decor efface, nouvelle photo). */
     public static void clear() {
+        // Un anneau encore en preparation ne sera pas installe.
+        loadVersion++;
         closeAll(sections);
         closeAll(building);
         replacing = false;
@@ -281,8 +345,8 @@ public final class FarRing {
                 float[] box = SceneryFrustum.emptyBox();
                 Built built = new Built(build(world, blocks, far, height, far, camera, true, false, box), box);
                 long sectionMs = (System.nanoTime() - sectionStart) / 1_000_000L;
-                if (sectionMs > 50) {
-                    LOGGER.info("[Planarium Panorama] Section lente de l'anneau lointain : {} blocs, {} ms", blocks.size(), sectionMs);
+                if (sectionMs > 20) {
+                    logSlowSection(blocks.size(), sectionMs);
                 }
                 Built old = (replacing ? building : sections).put(key, built);
                 if (old != null) old.close();
@@ -302,6 +366,28 @@ public final class FarRing {
         if (pending.isEmpty()) {
             pendingBlocks = Map.of();
         }
+    }
+
+    /**
+     * Section lente (plus de 20 ms) : temps de chaque etape. Avec -Dplanariumview.diagSections=true, aussi les types de
+     * blocs qui ont pris le plus de temps (le chronometre par bloc n'est actif qu'avec cette option).
+     */
+    private static void logSlowSection(int blocks, long totalMs) {
+        String detail = "";
+        if (DIAG_SECTIONS && !lastBlockNanos.isEmpty()) {
+            StringBuilder top = new StringBuilder();
+            lastBlockNanos.entrySet().stream()
+                    .sorted((a, b) -> Long.compare(b.getValue()[0], a.getValue()[0]))
+                    .limit(5)
+                    .forEach(entry -> top.append(String.format(java.util.Locale.ROOT, " %s x%d %.1f ms;",
+                            net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(entry.getKey()),
+                            entry.getValue()[1], entry.getValue()[0] / 1_000_000.0)));
+            detail = ", blocs les plus lents :" + top;
+        }
+        LOGGER.info("[Planarium Panorama] Section lente de l'anneau lointain : {} blocs, {} ms (tessellation {} ms, "
+                        + "assemblage {} ms, tri {} ms, envoi {} ms){}", blocks, totalMs,
+                lastTessNanos / 1_000_000L, lastMeshNanos / 1_000_000L, lastSortNanos / 1_000_000L,
+                lastUploadNanos / 1_000_000L, detail);
     }
 
     /** Dessine une couche (l'etat de rendu de la couche est deja en place, voir ClientView.draw). */
@@ -360,10 +446,13 @@ public final class FarRing {
         RandomSource random = RandomSource.create();
         PoseStack matrix = new PoseStack();
         float giant = ClientView.GIANT;
+        long tessStart = System.nanoTime();
+        Map<net.minecraft.world.level.block.Block, long[]> perBlock = DIAG_SECTIONS ? new IdentityHashMap<>() : null;
         ColorCompat.begin(world);
         try {
             for (BlockPos pos : blocks) {
                 BlockState state = world.getBlockState(pos);
+                long blockStart = perBlock != null ? System.nanoTime() : 0L;
                 FluidState fluid = state.getFluidState();
                 matrix.pushPose();
                 try {
@@ -397,28 +486,43 @@ public final class FarRing {
                     LOGGER.debug("[Planarium Panorama] Bloc de l'anneau lointain ignore", e);
                 } finally {
                     matrix.popPose();
+                    if (perBlock != null) {
+                        long[] stat = perBlock.computeIfAbsent(state.getBlock(), ignored -> new long[2]);
+                        stat[0] += System.nanoTime() - blockStart;
+                        stat[1]++;
+                    }
                 }
             }
         } finally {
             ColorCompat.end();
         }
+        lastTessNanos = System.nanoTime() - tessStart;
+        lastMeshNanos = lastSortNanos = lastUploadNanos = 0L;
+        lastBlockNanos = perBlock != null ? perBlock : Map.of();
         Map<RenderType, VertexBuffer> result = new IdentityHashMap<>();
         Vector3f sortPos = new Vector3f((float) camera.x, (float) camera.y, (float) camera.z);
         try {
             for (Map.Entry<RenderType, BufferBuilder> entry : buffers.entrySet()) {
+                long stageStart = System.nanoTime();
                 MeshData mesh = entry.getValue().build();
                 if (mesh == null) continue;
                 // Boite des sommets avant l'envoi a la carte graphique (upload libere le maillage).
                 SceneryFrustum.include(box, mesh);
+                lastMeshNanos += System.nanoTime() - stageStart;
                 if (entry.getKey() == RenderType.translucent()) {
+                    stageStart = System.nanoTime();
                     mesh.sortQuads(bytes(entry.getKey()), VertexSorting.byDistance(sortPos));
+                    lastSortNanos += System.nanoTime() - stageStart;
                 }
                 // Pas de decoupe pour l'anneau lointain et le vol : ils commencent bien au-dela du bocal. Seules les
                 // poches voisines touchent le bocal.
+                // Le constructeur cree deja les objets OpenGL : compte dans l'envoi.
+                stageStart = System.nanoTime();
                 VertexBuffer buffer = clip ? new ClippedVertexBuffer() : new VertexBuffer(VertexBuffer.Usage.STATIC);
                 result.put(entry.getKey(), buffer);
                 buffer.bind();
                 buffer.upload(mesh);
+                lastUploadNanos += System.nanoTime() - stageStart;
             }
         } catch (RuntimeException e) {
             result.values().forEach(VertexBuffer::close);
