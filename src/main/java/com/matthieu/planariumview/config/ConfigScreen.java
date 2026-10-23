@@ -84,12 +84,13 @@ public final class ConfigScreen {
         Option<Boolean> sceneryAmbience = bool("scenery_ambience", Config.SCENERY_AMBIENCE.getDefault(),
                 Config.SCENERY_AMBIENCE::get, Config.SCENERY_AMBIENCE::set);
         Option<Boolean> sceneryParticles = bool("scenery_particles", Config.SCENERY_PARTICLES.getDefault(),
-                Config.SCENERY_PARTICLES::get, Config.SCENERY_PARTICLES::set);
+                Config.SCENERY_PARTICLES::get, Config.SCENERY_PARTICLES::set,
+                Component.translatable("options.particles").withStyle(ChatFormatting.BOLD));
         // Sons du monde exterieur : avec l'avertissement (la zone detaillee reste active).
         Option<Boolean> worldSounds = Option.<Boolean>createBuilder()
                 .name(Component.translatable(KEY + "world_sounds"))
                 .description(OptionDescription.of(Component.translatable(KEY + "world_sounds.tooltip"), Component.empty(),
-                        Component.translatable(KEY + "world_sounds.warning"),
+                        Component.translatable(KEY + "world_sounds.warning", optionName("radius"), optionName("scenery_ambience")),
                         Component.empty(),
                         Component.translatable(KEY + "default", onOff(Config.WORLD_SOUNDS.getDefault())).withStyle(ChatFormatting.GRAY)))
                 .binding(Config.WORLD_SOUNDS.getDefault(), Config.WORLD_SOUNDS::get, Config.WORLD_SOUNDS::set)
@@ -111,14 +112,14 @@ public final class ConfigScreen {
                 .build();
         Option<Config.Fog> fog = Option.<Config.Fog>createBuilder()
                 .name(Component.translatable(KEY + "fog"))
-                .description(describe("fog", fogLabel(Config.FOG.getDefault())))
+                .description(describe("fog", fogLabel(Config.FOG.getDefault()), optionName("radius")))
                 .binding(Config.FOG.getDefault(), Config.FOG::get, Config.FOG::set)
                 .controller(opt -> EnumControllerBuilder.create(opt).enumClass(Config.Fog.class)
                         .formatValue(ConfigScreen::fogLabel))
                 .build();
         Option<Integer> neighbors = Option.<Integer>createBuilder()
                 .name(Component.translatable(KEY + "neighbors"))
-                .description(describe("neighbors", neighborsLabel(Config.NEIGHBOR_PLANARIUMS.getDefault())))
+                .description(describe("neighbors", neighborsLabel(Config.NEIGHBOR_PLANARIUMS.getDefault()), optionName("radius")))
                 .binding(Config.NEIGHBOR_PLANARIUMS.getDefault(), Config.NEIGHBOR_PLANARIUMS::get, Config.NEIGHBOR_PLANARIUMS::set)
                 .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(0, 10).step(1)
                         .formatValue(ConfigScreen::neighborsLabel))
@@ -132,7 +133,8 @@ public final class ConfigScreen {
                 .build();
 
         Option<Boolean> ambience = integration("ambience", "Dynamic Surroundings", dsPresent,
-                Config.OUTSIDE_AMBIENCE.getDefault(), Config.OUTSIDE_AMBIENCE::get, Config.OUTSIDE_AMBIENCE::set);
+                Config.OUTSIDE_AMBIENCE.getDefault(), Config.OUTSIDE_AMBIENCE::get, Config.OUTSIDE_AMBIENCE::set,
+                optionName("scenery_particles"));
         Option<Boolean> ambientSounds = integration("ambient_sounds", "AmbientSounds", asPresent,
                 Config.AMBIENT_SOUNDS.getDefault(), Config.AMBIENT_SOUNDS::get, Config.AMBIENT_SOUNDS::set);
         Option<Boolean> lunar = integration("lunar_events", "Enhanced Celestials 2", ecPresent,
@@ -170,7 +172,8 @@ public final class ConfigScreen {
                 .build();
         Option<Integer> farRadius = Option.<Integer>createBuilder()
                 .name(Component.translatable(KEY + "far_radius"))
-                .description(describeServer("far_radius", farRadiusLabel(Config.FAR_RADIUS.getDefault()), serverSide))
+                .description(describeServer("far_radius", farRadiusLabel(Config.FAR_RADIUS.getDefault()), serverSide,
+                        optionName("radius")))
                 .binding(Config.FAR_RADIUS.getDefault(), Config.FAR_RADIUS::get, Config.FAR_RADIUS::set)
                 .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(0, 96).step(4)
                         .formatValue(ConfigScreen::farRadiusLabel))
@@ -178,7 +181,8 @@ public final class ConfigScreen {
                 .build();
         Option<Integer> blockUpdates = Option.<Integer>createBuilder()
                 .name(Component.translatable(KEY + "block_updates"))
-                .description(describeServer("block_updates", blockUpdatesLabel(Config.BLOCK_UPDATE_SECONDS.getDefault()), serverSide))
+                .description(describeServer("block_updates", blockUpdatesLabel(Config.BLOCK_UPDATE_SECONDS.getDefault()), serverSide,
+                        optionName("radius"), optionName("refresh")))
                 .binding(Config.BLOCK_UPDATE_SECONDS.getDefault(),
                         () -> blockUpdatesShown(Config.BLOCK_UPDATE_SECONDS.get()),
                         v -> Config.BLOCK_UPDATE_SECONDS.set(v < MIN_BLOCK_UPDATE_SECONDS ? 0 : v))
@@ -189,7 +193,8 @@ public final class ConfigScreen {
                 .build();
         Option<Integer> refresh = Option.<Integer>createBuilder()
                 .name(Component.translatable(KEY + "refresh"))
-                .description(describeServer("refresh", refreshLabel(toMinutes(Config.REFRESH_SECONDS.getDefault())), serverSide))
+                .description(describeServer("refresh", refreshLabel(toMinutes(Config.REFRESH_SECONDS.getDefault())), serverSide,
+                        optionName("radius"), optionName("block_updates")))
                 .binding(toMinutes(Config.REFRESH_SECONDS.getDefault()),
                         () -> toMinutes(Config.REFRESH_SECONDS.get()),
                         minutes -> Config.REFRESH_SECONDS.set(minutes * 60))
@@ -328,10 +333,10 @@ public final class ConfigScreen {
     }
 
     private static Option<Boolean> bool(String name, boolean defaultValue, Supplier<Boolean> getter,
-                                        Consumer<Boolean> setter) {
+                                        Consumer<Boolean> setter, Object... tooltipArgs) {
         return Option.<Boolean>createBuilder()
                 .name(Component.translatable(KEY + name))
-                .description(describe(name, onOff(defaultValue)))
+                .description(describe(name, onOff(defaultValue), tooltipArgs))
                 .binding(defaultValue, getter, setter)
                 .controller(opt -> BooleanControllerBuilder.create(opt).onOffFormatter().coloured(true))
                 .build();
@@ -339,13 +344,13 @@ public final class ConfigScreen {
 
     /** Option d'integration : grisee, avec "(non installe)" dans son nom, si le mod n'est pas la. */
     private static Option<Boolean> integration(String name, String modName, boolean present, boolean defaultValue,
-                                               Supplier<Boolean> getter, Consumer<Boolean> setter) {
+                                               Supplier<Boolean> getter, Consumer<Boolean> setter, Object... tooltipArgs) {
         MutableComponent label = Component.translatable(KEY + name);
-        OptionDescription description = describe(name, onOff(defaultValue));
+        OptionDescription description = describe(name, onOff(defaultValue), tooltipArgs);
         if (!present) {
             // Mod absent : nom barre (en plus d'etre grise).
             label = label.withStyle(ChatFormatting.STRIKETHROUGH);
-            description = OptionDescription.of(Component.translatable(KEY + name + ".tooltip"), Component.empty(),
+            description = OptionDescription.of(Component.translatable(KEY + name + ".tooltip", tooltipArgs), Component.empty(),
                     Component.translatable(KEY + "not_installed.tooltip", modName).withStyle(ChatFormatting.RED));
         }
         if (!present) {
@@ -367,18 +372,23 @@ public final class ConfigScreen {
     }
 
     /** Explication de l'option + sa valeur par defaut (panneau de droite). */
-    private static OptionDescription describe(String name, Component defaultValue) {
-        return OptionDescription.of(Component.translatable(KEY + name + ".tooltip"), Component.empty(),
+    private static OptionDescription describe(String name, Component defaultValue, Object... tooltipArgs) {
+        return OptionDescription.of(Component.translatable(KEY + name + ".tooltip", tooltipArgs), Component.empty(),
                 Component.translatable(KEY + "default", defaultValue).withStyle(ChatFormatting.GRAY));
     }
 
-    private static OptionDescription describeServer(String name, Component defaultValue, boolean serverSide) {
+    private static OptionDescription describeServer(String name, Component defaultValue, boolean serverSide, Object... tooltipArgs) {
         if (!serverSide) {
-            return describe(name, defaultValue);
+            return describe(name, defaultValue, tooltipArgs);
         }
-        return OptionDescription.of(Component.translatable(KEY + name + ".tooltip"), Component.empty(),
+        return OptionDescription.of(Component.translatable(KEY + name + ".tooltip", tooltipArgs), Component.empty(),
                 Component.translatable(KEY + "default", defaultValue).withStyle(ChatFormatting.GRAY), Component.empty(),
                 Component.translatable(KEY + "server_controlled").withStyle(ChatFormatting.YELLOW));
+    }
+
+    /** Nom d'un autre reglage cite dans une description, traduit et mis en gras. */
+    private static Component optionName(String name) {
+        return Component.translatable(KEY + name).withStyle(ChatFormatting.BOLD);
     }
 
     private static Component fogLabel(Config.Fog value) {

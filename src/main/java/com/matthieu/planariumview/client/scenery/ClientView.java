@@ -2133,6 +2133,11 @@ public final class ClientView {
         }
         try {
             Matrix4f projectionMatrix = new Matrix4f(event.getProjectionMatrix());
+            // Fond du decor avant les blocs : l'eau et le verre melangent leur couleur avec ce qui est deja dessine,
+            // puis ecrivent la profondeur. Apres eux, le fond ne pouvait plus remplacer le ciel vu par transparence.
+            // Meme repere du bocal que precedemment, avant le placement du terrain Sable.
+            drawFogWall(poseStack, projectionMatrix, camera);
+            drawCaveDome(poseStack, projectionMatrix);
             boolean flight = FlightView.active();
             FlightView.prepare(poseStack, projectionMatrix);
             // Repere du bocal, sans le placement du terrain : les Planariums voisins y sont fixes (voir NeighborPockets).
@@ -2184,8 +2189,6 @@ public final class ClientView {
             poseStack.popPose();
             if (lastInfo != null) SubLevelView.drawOutside(event,
                     lastInfo.origin().offset(currentRadius, currentRadius, currentRadius), false);
-            drawFogWall(poseStack, projectionMatrix, camera);
-            drawCaveDome(poseStack, projectionMatrix);
             try {
                 CloudView.draw(poseStack.last().pose(), projectionMatrix, camera,
                         event.getPartialTick().getGameTimeDeltaPartialTick(false), lastInfo, currentRadius);
