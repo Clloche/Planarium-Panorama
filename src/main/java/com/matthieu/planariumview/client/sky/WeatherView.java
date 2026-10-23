@@ -252,7 +252,7 @@ public final class WeatherView {
                     continue;
                 }
                 // Hors du rayon de vue (limite par la distance d'affichage) : pas de decor, pas de pluie.
-                if (Math.abs(i - radius) > view || Math.abs(j - radius) > view) {
+                if (!ClientView.liveArea(i - radius, j - radius, view)) {
                     continue;
                 }
                 float bottom = Math.max(Math.max(giantY(tops[index]), captureBottom), floor);
@@ -357,7 +357,7 @@ public final class WeatherView {
             int z = minZ + random.nextInt(maxZ - minZ + 1);
             int index = x * size + z;
             if (precip[index] != 1 || (x == radius && z == radius)
-                    || Math.abs(x - radius) > view || Math.abs(z - radius) > view) continue;
+                    || !ClientView.liveArea(x - radius, z - radius, view)) continue;
             int y = tops[index] - originY - 1;
             if (y < 0 || y >= size) continue;
             double rx = random.nextDouble();

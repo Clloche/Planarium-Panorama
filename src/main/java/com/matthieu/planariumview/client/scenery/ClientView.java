@@ -464,6 +464,17 @@ public final class ClientView {
      * seulement ce que ce brouillard laisse voir. Il finit a la distance d'affichage en blocs normaux, et un bloc du
      * decor en fait 32 : environ la moitie de la distance d'affichage, plus un bloc de marge.
      */
+    /**
+     * Zone ou le decor detaille garde sa vie (particules de tous les blocs, mods compris, pluie, blocs speciaux,
+     * entites). Les blocs detailles s'arretent au cylindre (voir DetailShape), mais les coins du cube restent dans le faux
+     * monde : quand l'anneau lointain dessine ces coins, on y garde tout (l'anneau n'a ni particules ni coffres). Sans
+     * anneau, les coins sont vides : on s'arrete au cylindre.
+     */
+    public static boolean liveArea(double dx, double dz, double view) {
+        if (FarRing.visible()) return Math.abs(dx) <= view && Math.abs(dz) <= view;
+        return com.matthieu.planariumview.DetailShape.horizontal(dx, dz, view);
+    }
+
     public static int viewRadius() {
         int radius = currentRadius;
         if (Config.FOG.get() == Config.Fog.RENDER_DISTANCE) {
@@ -820,7 +831,7 @@ public final class ClientView {
         }
         int view = viewRadius();
         for (BlockPos at : campfires) {
-            if (Math.abs(at.getX() - radius) > view || Math.abs(at.getZ() - radius) > view) {
+            if (!liveArea(at.getX() - radius, at.getZ() - radius, view)) {
                 continue;
             }
             campfireTick(lit, at, lit.getBlockState(at));
@@ -921,7 +932,7 @@ public final class ClientView {
         double dx = x - radius;
         double dy = y - radius;
         double dz = z - radius;
-        if (Math.abs(dx - 0.5) > view + 0.5 || Math.abs(dz - 0.5) > view + 0.5) {
+        if (!liveArea(dx - 0.5, dz - 0.5, view + 0.5)) {
             return;
         }
         int light = net.minecraft.client.renderer.LightTexture.pack(15, 15);
@@ -940,7 +951,7 @@ public final class ClientView {
     /** Explosion du dehors (position par rapport au Planarium) : ses particules, si elle est dans le rayon de vue. */
     public static void onOutsideExplosion(double dx, double dy, double dz) {
         int view = viewRadius();
-        if (!Config.sceneryParticles() || Math.abs(dx - 0.5) > view + 2 || Math.abs(dz - 0.5) > view + 2) {
+        if (!Config.sceneryParticles() || !liveArea(dx - 0.5, dz - 0.5, view + 2.0)) {
             return;
         }
         LitRenderingWorld world = sceneryWorld();
@@ -1231,9 +1242,8 @@ public final class ClientView {
         // Rayon de vue limite par la distance d'affichage : on ne garde que les blocs dans ce rayon (a l'horizontale).
         int view = viewRadius();
         builtViewRadius = view;
-        if (view < radius) {
-            data.statePosCache.removeIf(p -> Math.abs(p.pos.getX() - radius) > view || Math.abs(p.pos.getZ() - radius) > view);
-        }
+        // Decor detaille en cylindre (voir DetailShape) : les coins sont dessines par l'anneau lointain.
+        data.statePosCache.removeIf(p -> !com.matthieu.planariumview.DetailShape.horizontal(p.pos.getX() - radius, p.pos.getZ() - radius, view));
         PuddlesCompat.prepare(lit, info);
 
         long specialLightNanos;
@@ -1495,8 +1505,8 @@ public final class ClientView {
             if (captured != null) newStates.add(captured);
 
             // 2. Blocs a dessiner (memes filtres que la construction complete).
-            boolean kept = !pos.equals(planarium) && !pos.equals(above) && (view < 0 || view >= radius
-                    || (Math.abs(pos.getX() - radius) <= view && Math.abs(pos.getZ() - radius) <= view));
+            boolean kept = !pos.equals(planarium) && !pos.equals(above) && (view < 0
+                    || com.matthieu.planariumview.DetailShape.horizontal(pos.getX() - radius, pos.getZ() - radius, Math.min(view, radius)));
             CulledStatePos statePos = statePosByPos.get(pos);
             SectionPos section = SectionPos.of(pos);
             if (change.state() == null || !kept) {
@@ -1675,7 +1685,7 @@ public final class ClientView {
     private static boolean visibleSceneryPos(BlockPos pos, int radius, int view) {
         return !(pos.getX() == radius && pos.getZ() == radius
                 && (pos.getY() == radius || pos.getY() == radius + 1))
-                && (view < 0 || (Math.abs(pos.getX() - radius) <= view && Math.abs(pos.getZ() - radius) <= view));
+                && (view < 0 || com.matthieu.planariumview.DetailShape.horizontal(pos.getX() - radius, pos.getZ() - radius, view));
     }
 
     /** Une flaque change : retesseler son voisinage avec le meme budget que les mises a jour du serveur. */
@@ -2346,7 +2356,7 @@ public final class ClientView {
         }
         int view = viewRadius();
         for (net.minecraft.world.entity.Entity entity : GiantEntities.entities(data, fake, info.template(), info.origin())) {
-            if (Math.abs(entity.getX() - radius - 0.5) > view + 1 || Math.abs(entity.getZ() - radius - 0.5) > view + 1) {
+            if (!liveArea(entity.getX() - radius - 0.5, entity.getZ() - radius - 0.5, view + 1.0)) {
                 continue;
             }
             poseStack.pushPose();
@@ -2399,7 +2409,7 @@ public final class ClientView {
                 if (pos.equals(planarium) || pos.equals(above)) {
                     continue;
                 }
-                if (Math.abs(pos.getX() - radius) > view || Math.abs(pos.getZ() - radius) > view) {
+                if (!liveArea(pos.getX() - radius, pos.getZ() - radius, view)) {
                     continue;
                 }
                 if (blockEntity instanceof PlanariumTile planariumTile) {

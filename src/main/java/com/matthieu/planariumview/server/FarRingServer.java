@@ -333,8 +333,9 @@ public final class FarRingServer {
 
         private boolean inNear(int x, int y, int z) {
             BlockPos c = key.center;
-            return Math.abs(x - c.getX()) <= key.near && Math.abs(y - c.getY()) <= key.near
-                    && Math.abs(z - c.getZ()) <= key.near;
+            // Meme cylindre que le decor detaille cote client (voir DetailShape) : les coins sont dans l'anneau.
+            return Math.abs(y - c.getY()) <= key.near
+                    && com.matthieu.planariumview.DetailShape.horizontal(x - c.getX(), z - c.getZ(), key.near);
         }
 
         FarRingPayload.Data result() {

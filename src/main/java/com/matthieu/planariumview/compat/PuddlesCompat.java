@@ -157,7 +157,7 @@ public final class PuddlesCompat {
         if (extra == null || extra.isEmpty()) return captured;
         List<CulledStatePos> result = new ArrayList<>(captured == null ? List.of() : captured);
         for (CulledStatePos state : extra.values()) {
-            if (Math.abs(state.pos.getX() - radius) <= view && Math.abs(state.pos.getZ() - radius) <= view
+            if (com.matthieu.planariumview.DetailShape.horizontal(state.pos.getX() - radius, state.pos.getZ() - radius, view)
                     && world.getCapturedBlockState(state.pos).isAir()) result.add(state);
         }
         return result;
