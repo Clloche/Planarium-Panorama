@@ -37,6 +37,14 @@ import java.util.UUID;
 /** Captures occupied sections separately from poses; moving sections are rebuilt only if their captured data changes. */
 public final class SubLevelServer {
     private static final int MAX_PARTS = 256;
+    /**
+     * Fake origins of contraption sections: far below any world. Each contraption gets its own x range, as wide as its
+     * blocks plus a gap (sections closer than 16 blocks count as neighbors on the client, see SubLevelLighting).
+     */
+    private static final int CONTRAPTION_Y = -1_000_000;
+    /** Server time per send call for timed section refreshes (send runs every 2 ticks for each viewer). */
+    private static final long REFRESH_BUDGET_NANOS = 2_000_000L;
+    private static final int CONTRAPTION_GAP = 64;
     private static final Map<Key, Scene> SCENES = new HashMap<>();
     private static final Map<ResourceKey<Level>, Miniature> MINIATURES = new HashMap<>();
     private static final Set<UUID> DISABLED = new HashSet<>();
@@ -93,6 +101,55 @@ public final class SubLevelServer {
         ListTag lastFrames;
         Matrix4d lastAnchor;
         long lastFramesAt = Long.MIN_VALUE / 2;
+        /** Create contraptions seen on this scene's structures: their reserved range of fake origins. */
+        final Map<UUID, Slot> slots = new HashMap<>();
+
+        /**
+         * Offset added to this contraption's local x for its fake origins. Its range [start, end) never overlaps another
+         * contraption's range (with the gap); it is reserved again if the contraption grew past it.
+         */
+        int offsetX(ContraptionCapture.Moving moving) {
+            // Section-aligned extent, with the one-block border of the neighbor tables.
+            int min = Math.floorDiv(moving.minX(), 16) * 16 - 16, max = Math.floorDiv(moving.maxX(), 16) * 16 + 32;
+            Slot slot = slots.get(moving.id());
+            if (slot != null && slot.offset + min >= slot.start && slot.offset + max <= slot.end) return slot.offset;
+            slots.remove(moving.id());
+            int width = max - min + CONTRAPTION_GAP;
+            java.util.List<Slot> taken = new java.util.ArrayList<>(slots.values());
+            taken.sort(java.util.Comparator.comparingInt(Slot::start));
+            int start = 0;
+            for (Slot other : taken) {
+                if (start + width <= other.start) break;
+                start = Math.max(start, other.end);
+            }
+            Slot reserved = new Slot(start, start + width, start + CONTRAPTION_GAP / 2 - min);
+            slots.put(moving.id(), reserved);
+            return reserved.offset;
+        }
+    }
+
+    private record Slot(int start, int end, int offset) {
+    }
+
+    private record Refresh(long captured, Runnable capture) {
+    }
+
+    /** Oldest captures go first, so a large scene cannot keep refreshing its first sections forever. */
+    private static final class RefreshBudget {
+        private final java.util.List<Refresh> pending = new java.util.ArrayList<>();
+
+        void add(long captured, Runnable capture) {
+            pending.add(new Refresh(captured, capture));
+        }
+
+        void run() {
+            pending.sort(java.util.Comparator.comparingLong(Refresh::captured));
+            long start = System.nanoTime();
+            for (Refresh refresh : pending) {
+                refresh.capture().run();
+                if (System.nanoTime() - start >= REFRESH_BUDGET_NANOS) break;
+            }
+        }
     }
 
     private static final class Part {
@@ -104,6 +161,10 @@ public final class SubLevelServer {
         /** previous without its light: block changes and light changes are sent separately. */
         CompoundTag previousShape;
         Matrix4d capturedPose;
+        /** Fake origin of a contraption section at its last capture (moves if its contraption's range moved). */
+        BlockPos capturedOrigin;
+        /** Last successfully captured contents: a failed capture must be retried on the next update. */
+        long capturedSignature;
         long resendAt;
         int resends;
     }
@@ -245,6 +306,9 @@ public final class SubLevelServer {
         // Geometry is sent after the list of visible sections: the client first frees the sections that left
         // (it holds at most 256), then the new geometry always finds its section. See SubLevelView.receive.
         java.util.List<Runnable> geometryPackets = new java.util.ArrayList<>();
+        Set<UUID> seenContraptions = new HashSet<>();
+        // Timed refreshes share a small budget per call; deferred sections stay due. New sections never wait.
+        RefreshBudget refreshBudget = new RefreshBudget();
         for (SubLevelCompat.Body body : SubLevelCompat.bodies(source, area)) {
             if (active) {
                 pinned.add(body.id());
@@ -272,43 +336,69 @@ public final class SubLevelServer {
                     part.origin = origin;
                     part.worldBounds = worldBox;
                     if (part.capturedPose != null && !part.capturedPose.equals(body.transform())) part.dirty = true;
-                    boolean recapture = part.previous == null || now - part.captured >= backup
-                            || blockSeconds > 0 && part.dirty && now - part.captured >= gap;
-                    if (recapture) {
-                        CompoundTag geometry = capture(source, body, origin, hidden);
-                        part.captured = now;
+                    boolean due = now - part.captured >= backup || blockSeconds > 0 && part.dirty && now - part.captured >= gap;
+                    Runnable refresh = () -> {
+                        exchange(part, capture(source, body, origin, hidden), now, player, dimension, miniature, id, geometryPackets);
                         part.capturedPose = new Matrix4d(body.transform());
-                        part.dirty = false;
-                        CompoundTag shape = geometry.copy();
-                        shape.remove("light");
-                        if (part.previous == null || !shape.equals(part.previousShape)) {
-                            geometryPackets.add(() -> geometry(player, dimension, miniature, id, geometry));
-                            // Repeated only while the client may still be loading a world (see dimensionChanged).
-                            Long changed = DIMENSION_CHANGED.get(player.getUUID());
-                            part.resends = changed != null && now - changed < RESEND_WINDOW ? 3 : 0;
-                            part.resendAt = now + 20;
-                        } else if (!Arrays.equals(geometry.getByteArray("light"), part.previous.getByteArray("light"))) {
-                            // Same blocks, new light (a moving structure): only the light table is sent.
-                            byte[] light = geometry.getByteArray("light");
-                            geometryPackets.add(() -> light(player, dimension, miniature, id, light));
-                        }
-                        part.previous = geometry;
-                        part.previousShape = shape;
-                    }
-                    if (part.resends > 0 && now >= part.resendAt) {
-                        // The first packet can arrive while the client is still changing dimensions.
-                        CompoundTag repeated = part.previous;
-                        geometryPackets.add(() -> geometry(player, dimension, miniature, id, repeated));
-                        part.resends--;
-                        part.resendAt = now + 20;
-                    }
+                    };
+                    if (part.previous == null) refresh.run();
+                    else if (due) refreshBudget.add(part.captured, refresh);
                     CompoundTag frame = new CompoundTag();
                     frame.putString("id", id);
                     frame.put("pose", SubLevelTransforms.write(body.at(origin)));
                     frames.add(frame);
                 }
             }
+            // Create contraptions on this structure (propellers, bearings...): their blocks left the plot.
+            for (ContraptionCapture.Moving moving : ContraptionCapture.find(source, body)) {
+                seenContraptions.add(moving.id());
+                int offsetX = scene.offsetX(moving);
+                String groupId = body.id() + "/c" + moving.id();
+                Matrix4d group = new Matrix4d(body.transform()).mul(moving.toPlot()).translate(0.5, 0.5, 0.5);
+                for (long section : moving.sections()) {
+                    if (frames.size() >= MAX_PARTS) break;
+                    BlockPos local = new BlockPos(SectionPos.x(section) << 4, SectionPos.y(section) << 4, SectionPos.z(section) << 4);
+                    Matrix4d pose = new Matrix4d(body.transform()).mul(moving.toPlot())
+                            .translate(local.getX(), local.getY(), local.getZ());
+                    AABB worldBox = SubLevelTransforms.bounds(pose, new AABB(0, 0, 0, 16, 16, 16));
+                    if (!worldBox.intersects(area)) continue;
+                    String id = body.id() + "/c" + moving.id() + "/" + section;
+                    visible.add(id);
+                    Part part = scene.parts.computeIfAbsent(id, ignored -> new Part());
+                    // Unique origin far below the world: never mistaken for a real section of the plot on the client.
+                    BlockPos origin = local.offset(offsetX, CONTRAPTION_Y, 0);
+                    part.origin = origin;
+                    part.worldBounds = worldBox;
+                    // The pose changes every update while it turns: only block changes (or the backup) recapture it.
+                    boolean urgent = part.previous == null || part.capturedSignature != moving.signature()
+                            || !origin.equals(part.capturedOrigin);
+                    boolean due = now - part.captured >= backup || blockSeconds > 0 && part.dirty && now - part.captured >= gap;
+                    Runnable refresh = () -> {
+                        exchange(part, ContraptionCapture.capture(source, body, moving, local, origin),
+                                now, player, dimension, miniature, id, geometryPackets);
+                        part.capturedOrigin = origin;
+                        part.capturedSignature = moving.signature();
+                    };
+                    if (urgent) refresh.run();
+                    else if (due) refreshBudget.add(part.captured, refresh);
+                    CompoundTag frame = new CompoundTag();
+                    frame.putString("id", id);
+                    frame.put("pose", SubLevelTransforms.write(pose));
+                    // Shared frame of the whole contraption, centered on its pivot (the middle of its anchor block):
+                    // the client interpolates this one rotation, so its sections turn together along the arc instead
+                    // of each corner cutting its own chord (the sails wobbled apart). Older clients use "pose".
+                    frame.putString("group", groupId);
+                    frame.put("group_pose", SubLevelTransforms.write(group));
+                    frame.putIntArray("local", new int[]{local.getX(), local.getY(), local.getZ()});
+                    frames.add(frame);
+                }
+            }
         }
+        refreshBudget.run();
+        for (String id : visible) {
+            resend(scene.parts.get(id), now, player, dimension, miniature, id, geometryPackets);
+        }
+        scene.slots.keySet().retainAll(seenContraptions);
         scene.pinned.entrySet().removeIf(entry -> {
             if (pinned.contains(entry.getKey())) return false;
             SubLevelCompat.pin(source, entry.getValue(), player.getUUID(), false);
@@ -330,6 +420,39 @@ public final class SubLevelServer {
         }
         // A skipped list means the client already knows every visible section, including those in these packets.
         geometryPackets.forEach(Runnable::run);
+    }
+
+    /** Sends a fresh capture: all of it when its blocks changed, only its light table otherwise. */
+    private static void exchange(Part part, CompoundTag geometry, long now, ServerPlayer player, ResourceLocation dimension,
+                                 boolean miniature, String id, java.util.List<Runnable> geometryPackets) {
+        part.captured = now;
+        part.dirty = false;
+        CompoundTag shape = geometry.copy();
+        shape.remove("light");
+        if (part.previous == null || !shape.equals(part.previousShape)) {
+            geometryPackets.add(() -> geometry(player, dimension, miniature, id, geometry));
+            // Repeated only while the client may still be loading a world (see dimensionChanged).
+            Long changed = DIMENSION_CHANGED.get(player.getUUID());
+            part.resends = changed != null && now - changed < RESEND_WINDOW ? 3 : 0;
+            part.resendAt = now + 20;
+        } else if (!Arrays.equals(geometry.getByteArray("light"), part.previous.getByteArray("light"))) {
+            // Same blocks, new light (a moving structure): only the light table is sent.
+            byte[] light = geometry.getByteArray("light");
+            geometryPackets.add(() -> light(player, dimension, miniature, id, light));
+        }
+        part.previous = geometry;
+        part.previousShape = shape;
+    }
+
+    private static void resend(Part part, long now, ServerPlayer player, ResourceLocation dimension, boolean miniature,
+                               String id, java.util.List<Runnable> geometryPackets) {
+        if (part.resends > 0 && now >= part.resendAt) {
+            // The first packet can arrive while the client is still changing dimensions.
+            CompoundTag repeated = part.previous;
+            geometryPackets.add(() -> geometry(player, dimension, miniature, id, repeated));
+            part.resends--;
+            part.resendAt = now + 20;
+        }
     }
 
     private static void frames(ServerPlayer player, ResourceLocation dimension, boolean miniature, ListTag frames,

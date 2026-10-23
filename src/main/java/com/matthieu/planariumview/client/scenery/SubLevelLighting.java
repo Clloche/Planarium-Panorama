@@ -39,18 +39,27 @@ final class SubLevelLighting extends SourceView {
 
     static final class Section {
         final BlockPos origin;
-        final Map<Long, BlockState> states = new HashMap<>();
+        final Map<Long, BlockState> states;
         final byte[] light;
 
         Section(BlockPos origin, byte[] light) {
             this.origin = origin;
+            this.states = new HashMap<>();
             this.light = light;
+        }
+
+        /** Same blocks as {@code previous}, new light table (the block table is shared, never modified after). */
+        Section(Section previous, byte[] light) {
+            this.origin = previous.origin;
+            this.light = light;
+            this.states = previous.states;
         }
 
         Section(CompoundTag tag) {
             int[] at = tag.getIntArray("origin");
             if (at.length != 3) throw new IllegalArgumentException("Missing sub-level section origin");
             origin = new BlockPos(at[0], at[1], at[2]);
+            states = new HashMap<>();
             light = tag.getByteArray("light");
             StructureTemplate template = new StructureTemplate();
             template.load(Minecraft.getInstance().level.holderLookup(net.minecraft.core.registries.Registries.BLOCK), tag);

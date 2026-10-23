@@ -62,16 +62,32 @@ public final class SubLevelView {
     private static final class Pose {
         Matrix4d from, to;
         long received;
+        Pose group;
+        double localX, localY, localZ;
 
         void receive(Matrix4d matrix) {
-            from = to == null ? new Matrix4d(matrix) : current();
+            receive(matrix, null, null, System.nanoTime());
+        }
+
+        void receive(Matrix4d matrix, Pose group, int[] local, long now) {
+            from = to == null ? new Matrix4d(matrix) : current(now);
             to = matrix;
-            received = System.nanoTime();
+            received = now;
+            this.group = group;
+            // The shared server frame is centered on the anchor block's middle, not its corner.
+            localX = group == null ? 0 : local[0] - 0.5;
+            localY = group == null ? 0 : local[1] - 0.5;
+            localZ = group == null ? 0 : local[2] - 0.5;
         }
 
         Matrix4d current() {
+            return current(System.nanoTime());
+        }
+
+        Matrix4d current(long now) {
+            if (group != null) return group.current(now).translate(localX, localY, localZ);
             if (to == null) return new Matrix4d();
-            double alpha = Math.min(1.0, (System.nanoTime() - received) / 100_000_000.0);
+            double alpha = Math.max(0.0, Math.min(1.0, (now - received) / 100_000_000.0));
             Vector3d p = from.getTranslation(new Vector3d()).lerp(to.getTranslation(new Vector3d()), alpha);
             Quaterniond q = from.getUnnormalizedRotation(new Quaterniond()).normalize()
                     .slerp(to.getUnnormalizedRotation(new Quaterniond()).normalize(), alpha);
@@ -84,6 +100,7 @@ public final class SubLevelView {
         final Pose anchor = new Pose();
         OutsideFluids fluids;
         final Map<String, Part> parts = new HashMap<>();
+        final Map<String, Pose> groups = new HashMap<>();
         long revision, lightingRevision = -1;
         Map<Long, SubLevelLighting.Section> lighting = Map.of();
 
@@ -115,7 +132,11 @@ public final class SubLevelView {
                 CompoundTag tag = part.pending != null ? part.pending : part.source;
                 if (tag == null) continue;
                 if (part.colorTag != tag) {
-                    part.colorData = new SubLevelLighting.Section(tag);
+                    // Only the light changed (a moving structure, every block update interval): keep the parsed blocks.
+                    part.colorData = part.colorData != null && SubLevelLighting.sameContents(part.colorTag, tag)
+                            && Arrays.equals(part.colorTag.getIntArray("origin"), tag.getIntArray("origin"))
+                            ? new SubLevelLighting.Section(part.colorData, tag.getByteArray("light"))
+                            : new SubLevelLighting.Section(tag);
                     part.colorTag = tag;
                 }
                 next.put(net.minecraft.core.SectionPos.of(part.colorData.origin).asLong(), part.colorData);
@@ -300,12 +321,25 @@ public final class SubLevelView {
             var frames = tag.getList("frames", Tag.TAG_COMPOUND);
             if (frames.size() > 256) throw new IllegalArgumentException("Too many sub-level sections");
             Set<String> visible = new HashSet<>();
-            receiveAnchor(scene, tag);
+            Set<String> groups = new HashSet<>();
+            long now = System.nanoTime();
+            receiveAnchor(scene, tag, now);
             for (int i = 0; i < frames.size(); i++) {
                 CompoundTag frame = frames.getCompound(i);
                 String id = frame.getString("id");
                 visible.add(id);
-                scene.parts.computeIfAbsent(id, ignored -> new Part(scene)).pose.receive(SubLevelTransforms.read(frame, "pose"));
+                Pose group = null;
+                int[] local = frame.getIntArray("local");
+                String groupId = frame.getString("group");
+                if (!groupId.isEmpty() && local.length == 3 && frame.contains("group_pose", Tag.TAG_LIST)) {
+                    group = scene.groups.computeIfAbsent(groupId, ignored -> new Pose());
+                    // Every section carries the same group pose: interpolate it only once per packet.
+                    if (groups.add(groupId)) {
+                        group.receive(SubLevelTransforms.read(frame, "group_pose"), null, null, now);
+                    }
+                }
+                scene.parts.computeIfAbsent(id, ignored -> new Part(scene)).pose.receive(
+                        SubLevelTransforms.read(frame, "pose"), group, local, now);
             }
             scene.parts.entrySet().removeIf(entry -> {
                 if (visible.contains(entry.getKey())) return false;
@@ -314,11 +348,16 @@ public final class SubLevelView {
                 entry.getValue().close();
                 return true;
             });
+            scene.groups.keySet().retainAll(groups);
         }
     }
 
     private static void receiveAnchor(Scene scene, CompoundTag tag) {
-        scene.anchor.receive(SubLevelTransforms.read(tag, "anchor"));
+        receiveAnchor(scene, tag, System.nanoTime());
+    }
+
+    private static void receiveAnchor(Scene scene, CompoundTag tag, long now) {
+        scene.anchor.receive(SubLevelTransforms.read(tag, "anchor"), null, null, now);
         scene.fluids = tag.contains("fluids", Tag.TAG_LIST)
                 ? OutsideFluids.read(tag.getList("fluids", Tag.TAG_COMPOUND)) : null;
     }
@@ -402,11 +441,12 @@ public final class SubLevelView {
     public static void soundWorlds(java.util.function.BiConsumer<LitRenderingWorld, Matrix4d> consumer) {
         Scene scene = outside();
         if (scene == null || !Config.subLevelViews()) return;
-        Matrix4d inverse = scene.anchor.current().invert();
+        long now = System.nanoTime();
+        Matrix4d inverse = scene.anchor.current(now).invert();
         for (Part part : scene.parts.values()) {
             if (part.mesh == null || part.pose.to == null) continue;
             if (part.mesh.data.fakeRenderingWorld instanceof LitRenderingWorld world) {
-                consumer.accept(world, new Matrix4d(inverse).mul(part.pose.current()));
+                consumer.accept(world, new Matrix4d(inverse).mul(part.pose.current(now)));
             }
         }
     }
@@ -448,6 +488,7 @@ public final class SubLevelView {
 
     private static void draw(Scene scene, PoseStack pose, Matrix4d inverse, Matrix4f projection, boolean special,
                               float partialTick, MultiBufferSource supplied, PlanariumTile tile) {
+        long now = System.nanoTime();
         if (special && supplied == null && specialBuffers == null) {
             specialBuffers = MultiBufferSource.immediate(new ByteBufferBuilder(262144));
         }
@@ -466,7 +507,7 @@ public final class SubLevelView {
             if (mesh == null) continue;
             pose.pushPose();
             try {
-                pose.mulPose(new Matrix4f(new Matrix4d(inverse).mul(part.pose.current())));
+                pose.mulPose(new Matrix4f(new Matrix4d(inverse).mul(part.pose.current(now))));
                 if (special) mesh.special(pose, buffers, partialTick);
                 else mesh.draw(pose.last().pose(), projection);
             } finally {
@@ -715,6 +756,7 @@ public final class SubLevelView {
         OUTSIDE.values().forEach(scene -> {
             scene.parts.values().forEach(Part::close);
             scene.parts.clear();
+            scene.groups.clear();
         });
         MINIATURES.values().forEach(scene -> scene.parts.values().forEach(Part::close));
         MINIATURES.clear();
