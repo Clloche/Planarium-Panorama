@@ -74,9 +74,19 @@ public final class FarRing {
     /** Blocs de chaque section a construire (cle : section dans la boite de l'anneau). */
     private static Map<Long, List<BlockPos>> pendingBlocks = Map.of();
     private static final ArrayDeque<Long> pending = new ArrayDeque<>();
-    private static Map<Long, Map<RenderType, VertexBuffer>> sections = new HashMap<>();
+    /** Section construite : ses tampons par couche et la boite de ses sommets (voir SceneryFrustum). */
+    private record Built(Map<RenderType, VertexBuffer> buffers, float[] box) {
+        void close() {
+            buffers.values().forEach(VertexBuffer::close);
+        }
+    }
+
+    private static Map<Long, Built> sections = new HashMap<>();
     /** Sections de la nouvelle photo, en construction ; l'ancienne reste dessinee jusqu'a la fin (rafraichissement). */
-    private static Map<Long, Map<RenderType, VertexBuffer>> building = new HashMap<>();
+    private static Map<Long, Built> building = new HashMap<>();
+    /** Champ de la camera, et sections dedans pour cette image (communes a toutes les couches). */
+    private static final SceneryFrustum frustum = new SceneryFrustum();
+    private static final List<Built> visibleSections = new ArrayList<>();
     /** Vrai pendant un rafraichissement : les nouvelles sections vont dans {@code building}, sinon directement. */
     private static boolean replacing;
     /**
@@ -234,9 +244,11 @@ public final class FarRing {
         far = 0;
     }
 
-    private static void closeAll(Map<Long, Map<RenderType, VertexBuffer>> meshes) {
-        meshes.values().forEach(buffers -> buffers.values().forEach(VertexBuffer::close));
+    private static void closeAll(Map<Long, Built> meshes) {
+        meshes.values().forEach(Built::close);
         meshes.clear();
+        visibleSections.clear();
+        frustum.invalidate();
     }
 
     /** L'anneau va avec le decor proche actuel (meme bocal, meme centre, meme rayon proche). */
@@ -266,13 +278,15 @@ public final class FarRing {
             if (blocks == null) continue;
             try {
                 long sectionStart = System.nanoTime();
-                Map<RenderType, VertexBuffer> built = build(blocks, camera);
+                float[] box = SceneryFrustum.emptyBox();
+                Built built = new Built(build(world, blocks, far, height, far, camera, true, false, box), box);
                 long sectionMs = (System.nanoTime() - sectionStart) / 1_000_000L;
                 if (sectionMs > 50) {
                     LOGGER.info("[Planarium Panorama] Section lente de l'anneau lointain : {} blocs, {} ms", blocks.size(), sectionMs);
                 }
-                Map<RenderType, VertexBuffer> old = (replacing ? building : sections).put(key, built);
-                if (old != null) old.values().forEach(VertexBuffer::close);
+                Built old = (replacing ? building : sections).put(key, built);
+                if (old != null) old.close();
+                if (!replacing) frustum.invalidate();
             } catch (RuntimeException e) {
                 LOGGER.debug("[Planarium Panorama] Section de l'anneau lointain ignoree", e);
             }
@@ -280,9 +294,10 @@ public final class FarRing {
         if (pending.isEmpty() && replacing) {
             replacing = false;
             closeAll(sections);
-            Map<Long, Map<RenderType, VertexBuffer>> done = building;
+            Map<Long, Built> done = building;
             building = sections;
             sections = done;
+            frustum.invalidate();
         }
         if (pending.isEmpty()) {
             pendingBlocks = Map.of();
@@ -294,8 +309,16 @@ public final class FarRing {
         if (sections.isEmpty() || !visible()) {
             return;
         }
-        for (Map<RenderType, VertexBuffer> section : sections.values()) {
-            VertexBuffer buffer = section.get(type);
+        // Sections dans le champ de la camera : recalcule seulement quand la vue ou les sections changent (une fois
+        // par image, pas par couche). Meme matrice que le dessin, donc meme repere que les sommets.
+        if (frustum.update(pose, projection)) {
+            visibleSections.clear();
+            for (Built section : sections.values()) {
+                if (frustum.visible(section.box())) visibleSections.add(section);
+            }
+        }
+        for (Built section : visibleSections) {
+            VertexBuffer buffer = section.buffers().get(type);
             if (buffer == null || buffer.getFormat() == null) continue;
             buffer.bind();
             buffer.drawWithShader(pose, projection, RenderSystem.getShader());
@@ -307,21 +330,17 @@ public final class FarRing {
         return builders.computeIfAbsent(type, ignored -> new ByteBufferBuilder(type.bufferSize()));
     }
 
-    private static Map<RenderType, VertexBuffer> build(List<BlockPos> blocks, Vec3 camera) {
-        return build(world, blocks, far, height, far, camera);
-    }
-
     /**
      * Construit les blocs {@code blocks} de {@code world}, places a (position locale - decalage) du Planarium, a
      * l'echelle du decor geant (comme le decor proche). Aussi pour les sections du decor en vol (FlightView).
      */
     static Map<RenderType, VertexBuffer> build(FarWorld world, List<BlockPos> blocks, int offX, int offY, int offZ, Vec3 camera) {
-        return build(world, blocks, offX, offY, offZ, camera, true, false);
+        return build(world, blocks, offX, offY, offZ, camera, true, false, null);
     }
 
     /** Keep flight vertices in source block units; scale and place all sections together at draw time. */
     static Map<RenderType, VertexBuffer> buildFlight(FarWorld world, List<BlockPos> blocks, Vec3 localCamera) {
-        return build(world, blocks, 1, 1, 1, localCamera, false, false);
+        return build(world, blocks, 1, 1, 1, localCamera, false, false, null);
     }
 
     /**
@@ -330,11 +349,11 @@ public final class FarRing {
      */
     static Map<RenderType, VertexBuffer> buildPocket(FarWorld world, List<BlockPos> blocks, int offX, int offY, int offZ,
                                                       Vec3 localCamera) {
-        return build(world, blocks, offX, offY, offZ, localCamera, false, true);
+        return build(world, blocks, offX, offY, offZ, localCamera, false, true, null);
     }
 
     private static Map<RenderType, VertexBuffer> build(FarWorld world, List<BlockPos> blocks,
-            int offX, int offY, int offZ, Vec3 camera, boolean giantCoordinates, boolean clip) {
+            int offX, int offY, int offZ, Vec3 camera, boolean giantCoordinates, boolean clip, float[] box) {
         Map<RenderType, BufferBuilder> buffers = new IdentityHashMap<>();
         BlockRenderDispatcher dispatcher = Minecraft.getInstance().getBlockRenderer();
         ModelBlockRenderer modelRenderer = dispatcher.getModelRenderer();
@@ -389,6 +408,8 @@ public final class FarRing {
             for (Map.Entry<RenderType, BufferBuilder> entry : buffers.entrySet()) {
                 MeshData mesh = entry.getValue().build();
                 if (mesh == null) continue;
+                // Boite des sommets avant l'envoi a la carte graphique (upload libere le maillage).
+                SceneryFrustum.include(box, mesh);
                 if (entry.getKey() == RenderType.translucent()) {
                     mesh.sortQuads(bytes(entry.getKey()), VertexSorting.byDistance(sortPos));
                 }

@@ -185,6 +185,8 @@ public final class ClientView {
 
     private static final class SectionMesh {
         final Map<RenderType, VertexBuffer> buffers = new HashMap<>();
+        /** Boite des sommets de la section, pour le frustum culling (voir SceneryFrustum). */
+        final float[] box = SceneryFrustum.emptyBox();
         final Map<RenderType, MeshData.SortState> sortStates = new HashMap<>();
         final Map<RenderType, com.mojang.blaze3d.vertex.ByteBufferBuilder> sortBuffers = new HashMap<>();
         double cameraDistanceSqr;
@@ -1913,6 +1915,8 @@ public final class ClientView {
                 RenderType type = entry.getKey();
                 MeshData mesh = entry.getValue().build();
                 if (mesh == null) continue;
+                // Boite des vrais sommets avant l'envoi a la carte graphique (upload libere le maillage).
+                SceneryFrustum.include(section.box, mesh);
                 if (type == RenderType.translucent()) {
                     section.sortStates.put(type, mesh.sortQuads(data.getByteBuffer(type),
                             VertexSorting.byDistance(sortPos)));
@@ -2126,12 +2130,6 @@ public final class ClientView {
             RenderSystem.setShaderFogColor(cave[0], cave[1], cave[2], fogColor[3]);
         }
         try {
-            List<Map.Entry<SectionPos, SectionMesh>> translucentSections = new ArrayList<>(sectionMeshes.entrySet());
-            for (Map.Entry<SectionPos, SectionMesh> entry : translucentSections) {
-                entry.getValue().cameraDistanceSqr = entry.getKey().distanceToSqr(currentRadius, camera);
-            }
-            translucentSections.sort(Comparator.comparingDouble(entry -> entry.getValue().cameraDistanceSqr));
-            java.util.Collections.reverse(translucentSections);
             Matrix4f projectionMatrix = new Matrix4f(event.getProjectionMatrix());
             boolean flight = FlightView.active();
             FlightView.prepare(poseStack);
@@ -2140,9 +2138,23 @@ public final class ClientView {
             poseStack.pushPose();
             if (lastInfo != null) SubLevelView.terrain(poseStack,
                     lastInfo.origin().offset(currentRadius, currentRadius, currentRadius));
+            // Sections du decor detaille dans le champ de la camera, une fois pour toutes les couches. Meme matrice que
+            // le dessin (placement Sable compris) : meme repere que les sommets. Le tri du verre et de l'eau est garde.
+            NEAR_FRUSTUM.update(poseStack.last().pose(), projectionMatrix);
+            List<Map.Entry<SectionPos, SectionMesh>> visibleSections = new ArrayList<>();
+            for (Map.Entry<SectionPos, SectionMesh> entry : sectionMeshes.entrySet()) {
+                if (NEAR_FRUSTUM.visible(entry.getValue().box)) visibleSections.add(entry);
+            }
+            // Verre et eau : seulement les sections visibles, triees du plus loin au plus proche.
+            List<Map.Entry<SectionPos, SectionMesh>> translucentSections = new ArrayList<>(visibleSections);
+            for (Map.Entry<SectionPos, SectionMesh> entry : translucentSections) {
+                entry.getValue().cameraDistanceSqr = entry.getKey().distanceToSqr(currentRadius, camera);
+            }
+            translucentSections.sort(Comparator.comparingDouble(
+                    (Map.Entry<SectionPos, SectionMesh> entry) -> entry.getValue().cameraDistanceSqr).reversed());
             for (RenderType renderType : DRAW_ORDER) {
                 Iterable<Map.Entry<SectionPos, SectionMesh>> sections = renderType == RenderType.translucent()
-                        ? translucentSections : sectionMeshes.entrySet();
+                        ? translucentSections : visibleSections;
                 renderType.setupRenderState();
                 try {
                     // Planariums voisins : dans le repere du bocal, aussi en vol (ils bougent avec la structure).
@@ -2412,19 +2424,21 @@ public final class ClientView {
     }
 
     /** Tableaux, cadres et porte-armures du decor (des entites, pas des blocs : voir GiantEntities). */
-    private static void drawEntities(StructureRenderData data, float partialTick, Vec3 camera, PoseStack poseStack, int radius) {
+    private static void drawEntities(StructureRenderData data, float partialTick, Vec3 camera, PoseStack poseStack, int radius,
+                                     Matrix4f terrain) {
         OutsideViewPayload info = lastInfo;
         if (info == null || !(data.fakeRenderingWorld instanceof net.minecraft.world.level.Level fake)) {
             return;
         }
         int view = viewRadius();
         for (net.minecraft.world.entity.Entity entity : GiantEntities.entities(data, fake, info.template(), info.origin())) {
-            if (!liveArea(entity.getX() - radius - 0.5, entity.getZ() - radius - 0.5, view + 1.0)) {
+            if (!liveArea(entity.getX() - radius - 0.5, entity.getZ() - radius - 0.5, view + 1.0)
+                    || !specialVisible(entity.getBoundingBoxForCulling().inflate(1.0), radius)) {
                 continue;
             }
             poseStack.pushPose();
             poseStack.translate(-camera.x, -camera.y, -camera.z);
-            SubLevelView.terrain(poseStack, info.origin().offset(radius, radius, radius));
+            poseStack.mulPose(terrain);
             poseStack.translate(-ARS_OFFSET * GIANT, -ARS_OFFSET * GIANT - Y_SHIFT, -ARS_OFFSET * GIANT);
             poseStack.scale(GIANT, GIANT, GIANT);
             poseStack.translate(-radius, -radius, -radius);
@@ -2445,6 +2459,23 @@ public final class ClientView {
      * Les coffres, panneaux, bannieres, tetes, etc. ne sont pas des modeles de blocs :
      * ils sont dessines a chaque image par leur "BlockEntityRenderer", ici agrandis 32 fois.
      */
+    /** Champ de la camera pour le decor detaille, et pour ses blocs speciaux et entites (voir SceneryFrustum). */
+    private static final SceneryFrustum NEAR_FRUSTUM = new SceneryFrustum();
+    private static final SceneryFrustum SPECIAL_FRUSTUM = new SceneryFrustum();
+
+    /**
+     * Vrai si la boite (coordonnees du faux monde, autour du Planarium a {@code radius}) peut etre vue : elle est passee
+     * dans le repere du decor geant comme les sommets (x 32,16, decalage d'Ars). Une boite infinie est toujours gardee.
+     */
+    private static boolean specialVisible(net.minecraft.world.phys.AABB box, int radius) {
+        if (box == null || box.isInfinite()) return true;
+        float offset = -ARS_OFFSET * GIANT;
+        return SPECIAL_FRUSTUM.visible(new float[]{
+                (float) (box.minX - radius) * GIANT + offset, (float) (box.minY - radius) * GIANT + offset - Y_SHIFT,
+                (float) (box.minZ - radius) * GIANT + offset, (float) (box.maxX - radius) * GIANT + offset,
+                (float) (box.maxY - radius) * GIANT + offset - Y_SHIFT, (float) (box.maxZ - radius) * GIANT + offset});
+    }
+
     private static void drawBlockEntities(StructureRenderData data, RenderLevelStageEvent event) {
         if (data.fakeRenderingWorld == null) {
             return;
@@ -2466,6 +2497,17 @@ public final class ClientView {
         com.mojang.blaze3d.shaders.FogShape fogShape = RenderSystem.getShaderFogShape();
         applySceneryFog();
         try {
+            // Champ de la camera dans le repere du decor geant : vue, camera et placement Sable, comme au dessin.
+            // Placement Sable lu une seule fois : le test et le dessin utilisent exactement la meme position (il bouge
+            // avec le temps sur un navire en mouvement).
+            PoseStack placement = new PoseStack();
+            if (lastInfo != null) SubLevelView.terrain(placement, lastInfo.origin().offset(radius, radius, radius));
+            Matrix4f terrain = new Matrix4f(placement.last().pose());
+            PoseStack frame = new PoseStack();
+            frame.mulPose(event.getModelViewMatrix());
+            frame.translate(-camera.x, -camera.y, -camera.z);
+            frame.mulPose(terrain);
+            SPECIAL_FRUSTUM.update(frame.last().pose(), new Matrix4f(event.getProjectionMatrix()));
             PoseStack poseStack = new PoseStack();
             for (BlockEntity blockEntity : data.fakeRenderingWorld.blockEntityMap.values()) {
                 BlockPos pos = blockEntity.getBlockPos();
@@ -2484,10 +2526,20 @@ public final class ClientView {
                 if (renderer == null || com.matthieu.planariumview.compat.SwingingLanternsCompat.skip(renderer)) {
                     continue;
                 }
+                // Hors du champ de la camera : pas dessine. Boite de rendu du renderer (NeoForge), avec un bloc de
+                // marge pour les rendus qui depassent un peu (bannieres, panneaux, machines de Create).
+                net.minecraft.world.phys.AABB renderBox;
+                try {
+                    renderBox = renderer.getRenderBoundingBox(blockEntity);
+                } catch (Exception e) {
+                    renderBox = null;
+                }
+                if (renderBox != null && !renderBox.isInfinite() && !specialVisible(renderBox.inflate(1.0), radius)) {
+                    continue;
+                }
                 poseStack.pushPose();
                 poseStack.translate(-camera.x, -camera.y, -camera.z);
-                if (lastInfo != null) SubLevelView.terrain(poseStack,
-                        lastInfo.origin().offset(radius, radius, radius));
+                poseStack.mulPose(terrain);
                 poseStack.translate(-ARS_OFFSET * GIANT, -ARS_OFFSET * GIANT - Y_SHIFT, -ARS_OFFSET * GIANT);
                 poseStack.scale(GIANT, GIANT, GIANT);
                 poseStack.translate(pos.getX() - radius, pos.getY() - radius, pos.getZ() - radius);
@@ -2504,7 +2556,7 @@ public final class ClientView {
                 }
                 poseStack.popPose();
             }
-            drawEntities(data, partialTick, camera, poseStack, radius);
+            drawEntities(data, partialTick, camera, poseStack, radius, terrain);
             blockEntityBuffers.endBatch();
         } finally {
             RenderSystem.setShaderFogStart(fogStart);
