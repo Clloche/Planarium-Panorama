@@ -47,6 +47,8 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 @Mod(PlanariumView.MODID)
 public class PlanariumView {
     public static final String MODID = "planariumview";
+    /** Protocole 5 : les sections du vol distinguent les voisins de contexte des blocs a dessiner. */
+    private static final String NETWORK_VERSION = "5";
 
     public PlanariumView(IEventBus modBus, ModContainer container) {
         container.registerConfig(ModConfig.Type.COMMON, Config.COMMON_SPEC);
@@ -61,37 +63,37 @@ public class PlanariumView {
     }
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
-        event.registrar("4").optional().playToServer(
+        event.registrar(NETWORK_VERSION).optional().playToServer(
                 SubLevelPrefsPayload.TYPE, SubLevelPrefsPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof net.minecraft.server.level.ServerPlayer player) {
                         com.matthieu.planariumview.server.SubLevelServer.setEnabled(player.getUUID(), payload.enabled());
                     }
                 }));
-        event.registrar("4").optional().playToClient(
+        event.registrar(NETWORK_VERSION).optional().playToClient(
                 SubLevelPayload.TYPE, SubLevelPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> SubLevelView.receive(payload)));
-        event.registrar("4").playToClient(
+        event.registrar(NETWORK_VERSION).playToClient(
                 OutsideViewPayload.TYPE,
                 OutsideViewPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> ClientView.receive(payload)));
         // Facultatif : le serveur n'envoie ces blocs changes qu'a un client qui les connait (sinon photo complete).
-        event.registrar("4").optional().playToClient(
+        event.registrar(NETWORK_VERSION).optional().playToClient(
                 OutsideViewDeltaPayload.TYPE,
                 OutsideViewDeltaPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> ClientView.receiveDelta(payload)));
         // Facultatif : decor en vol (sections du rayon detaille pendant qu'un Planarium bouge).
-        event.registrar("4").optional().playToClient(
+        event.registrar(NETWORK_VERSION).optional().playToClient(
                 com.matthieu.planariumview.network.FlightPayload.TYPE,
                 com.matthieu.planariumview.network.FlightPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.FlightView.receive(payload)));
         // Facultatif : anneau lointain du decor (un serveur sans cette version n'en envoie pas).
-        event.registrar("4").optional().playToClient(
+        event.registrar(NETWORK_VERSION).optional().playToClient(
                 com.matthieu.planariumview.network.FarRingPayload.TYPE,
                 com.matthieu.planariumview.network.FarRingPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.FarRing.receive(payload)));
         // Facultatif : nombre de Planariums voisins dessines par le client (le serveur ne capture que ceux-la).
-        event.registrar("4").optional().playToServer(
+        event.registrar(NETWORK_VERSION).optional().playToServer(
                 com.matthieu.planariumview.network.NeighborPrefsPayload.TYPE,
                 com.matthieu.planariumview.network.NeighborPrefsPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
@@ -100,38 +102,38 @@ public class PlanariumView {
                     }
                 }));
         // Facultatif : interieur des Planariums voisins (photo figee, purement visuelle).
-        event.registrar("4").optional().playToClient(
+        event.registrar(NETWORK_VERSION).optional().playToClient(
                 com.matthieu.planariumview.network.NeighborPocketsPayload.TYPE,
                 com.matthieu.planariumview.network.NeighborPocketsPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.NeighborPockets.receive(payload)));
-        event.registrar("4").playToClient(
+        event.registrar(NETWORK_VERSION).playToClient(
                 SkyPayload.TYPE,
                 SkyPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> SkySync.receive(payload)));
-        event.registrar("4").playToClient(
+        event.registrar(NETWORK_VERSION).playToClient(
                 MiniLightPayload.TYPE,
                 MiniLightPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> MiniLight.receive(payload)));
         // Facultatif : un serveur sans cette version du mod ne bloque pas la connexion.
-        event.registrar("4").optional().playToClient(
+        event.registrar(NETWORK_VERSION).optional().playToClient(
                 MiniEntitiesPayload.TYPE,
                 MiniEntitiesPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> MiniEntities.receive(payload)));
-        event.registrar("4").playToClient(
+        event.registrar(NETWORK_VERSION).playToClient(
                 WallPayload.TYPE,
                 WallPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> WallColors.receive(payload)));
-        event.registrar("4").playToClient(
+        event.registrar(NETWORK_VERSION).playToClient(
                 AmbiencePayload.TYPE,
                 AmbiencePayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> OutsideAmbience.receive(payload)));
         // Facultatif : un serveur sans cette version du mod ne bloque pas la connexion.
-        event.registrar("4").optional().playToClient(
+        event.registrar(NETWORK_VERSION).optional().playToClient(
                 LunarPayload.TYPE,
                 LunarPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> LunarClient.receive(payload)));
         // Facultatif : un serveur sans cette version du mod ne bloque pas la connexion.
-        event.registrar("4").optional().playToServer(
+        event.registrar(NETWORK_VERSION).optional().playToServer(
                 ViewTogglePayload.TYPE,
                 ViewTogglePayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
@@ -139,12 +141,12 @@ public class PlanariumView {
                         ServerView.setEnabled(player, payload.enabled());
                     }
                 }));
-        event.registrar("4").playToClient(
+        event.registrar(NETWORK_VERSION).playToClient(
                 LightningPayload.TYPE,
                 LightningPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> LightningView.receive(payload)));
         // Facultatif : les options des sons du monde exterieur du client (quels sons envoyer, zone active ou en pause).
-        event.registrar("4").optional().playToServer(
+        event.registrar(NETWORK_VERSION).optional().playToServer(
                 SoundPrefsPayload.TYPE,
                 SoundPrefsPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
@@ -153,12 +155,12 @@ public class PlanariumView {
                     }
                 }));
         // Facultatif : musique des jukebox du dehors.
-        event.registrar("4").optional().playToClient(
+        event.registrar(NETWORK_VERSION).optional().playToClient(
                 OutsideRecordPayload.TYPE,
                 OutsideRecordPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> OutsideRecordClient.receive(payload)));
         // Facultatif pour qu'un client ou serveur plus ancien puisse toujours se connecter.
-        event.registrar("4").optional().playToClient(
+        event.registrar(NETWORK_VERSION).optional().playToClient(
                 OutsideSoundPayload.TYPE,
                 OutsideSoundPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> OutsideSoundClient.receive(payload)));

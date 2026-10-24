@@ -202,7 +202,7 @@ public final class FlightServer {
             if (!neighborsReady(level, sx, sz)) continue;
             int x0 = sx << 4, y0 = sy << 4, z0 = sz << 4;
             // Eight blocks cover the client's maximum seven-block biome blend, including section boundaries.
-            VisibleCapture capture = new VisibleCapture(x0 - 1, y0 - 1, z0 - 1, x0 - 8, z0 - 8, 8);
+            VisibleCapture capture = new VisibleCapture(x0 - 1, y0 - 1, z0 - 1, x0 - 8, z0 - 8, 8).withNeighbors();
             // Les voisins hors de la section sont lus dans le vrai monde (faces et lumiere aux bords).
             capture.capture(level, chunk, x0, x0 + 15, y0, y0 + 15, z0, z0 + 15, (x, y, z) -> true);
             for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) {

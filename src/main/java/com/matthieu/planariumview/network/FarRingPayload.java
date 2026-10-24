@@ -23,13 +23,19 @@ public record FarRingPayload(ResourceLocation pocketDim, BlockPos center, int ne
 
     /**
      * {@code palette} : identifiants d'etats de bloc ; {@code blocks} : positions (voir pack) ; {@code info} : par bloc,
-     * index de palette (16 bits) | voisins pleins (6 bits) << 16 | voisins d'eau (6 bits) << 22 ;
+     * index de palette (16 bits) | voisins pleins (6 bits) << 16 | voisins d'eau (6 bits) << 22 | NEIGHBOR_ONLY ;
      * {@code lightPos}/{@code light} : lumiere des blocs et des cases autour ; {@code biomes} : un biome de surface par colonne de 4 x 4.
      */
     public record Data(int[] palette, int[] blocks, int[] info, int[] lightPos, byte[] light,
                        List<ResourceLocation> biomePalette, byte[] biomes, int quarts) {
         public static final Data EMPTY = new Data(new int[0], new int[0], new int[0], new int[0], new byte[0], List.of(), new byte[0], 0);
     }
+
+    /**
+     * Bit de {@code info} : bloc juste hors de la zone capturee, envoye seulement pour que le client cache les faces
+     * qui le touchent (sections du vol). Il n'est pas dessine : la section voisine le dessine.
+     */
+    public static final int NEIGHBOR_ONLY = 1 << 28;
 
     public static final Type<FarRingPayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(PlanariumView.MODID, "far_ring"));

@@ -249,6 +249,12 @@ public final class FarRing {
             int paletteId = info[i] & 0xFFFF;
             if (paletteId >= palette.length) continue;
             BlockPos pos = new BlockPos(FarRingPayload.unpackX(packed), FarRingPayload.unpackY(packed), FarRingPayload.unpackZ(packed));
+            if ((info[i] & FarRingPayload.NEIGHBOR_ONLY) != 0) {
+                // Voisin hors de la section (vol) : connu pour cacher les faces qui le touchent, pas dessine ici.
+                next.states.putIfAbsent(pos.asLong(), palette[paletteId]);
+                next.noteTop(pos.getX(), pos.getY(), pos.getZ());
+                continue;
+            }
             next.states.put(pos.asLong(), palette[paletteId]);
             next.noteTop(pos.getX(), pos.getY(), pos.getZ());
             int solid = info[i] >>> 16 & 0x3F;

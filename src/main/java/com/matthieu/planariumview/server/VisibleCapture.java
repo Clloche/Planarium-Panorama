@@ -60,6 +60,19 @@ final class VisibleCapture {
     private final List<ResourceLocation> biomePalette = new ArrayList<>();
     private final Map<ResourceLocation, Integer> biomeIndex = new HashMap<>();
     private final byte[] biomes;
+    /** Voisins hors de la boite deja envoyes comme contexte (voir withNeighbors). */
+    private LongOpenHashSet neighborsSeen;
+
+    /**
+     * Envoie aussi, comme simple contexte (voir FarRingPayload.NEIGHBOR_ONLY), les blocs pas pleins juste hors de la
+     * boite qui touchent un bloc envoye : couche de neige, glace, verre, feuilles... Les sections du vol sont capturees
+     * une par une : sans eux, le client prenait ces voisins pour de l'air, et dessinait des faces en trop au bord des
+     * sections (lignes dans la glace, dessus de l'herbe sous une couche de neige qui scintillait).
+     */
+    VisibleCapture withNeighbors() {
+        neighborsSeen = new LongOpenHashSet();
+        return this;
+    }
 
     /** {@code biomeX}/{@code biomeZ} : coin de la grille des biomes ({@code quarts} colonnes de 4 blocs de cote). */
     VisibleCapture(int originX, int originY, int originZ, int biomeX, int biomeZ, int quarts) {
@@ -114,6 +127,7 @@ final class VisibleCapture {
                     int solidMask = 0;
                     int waterMask = 0;
                     boolean visible = false;
+                    int outsideCount = 0;
                     for (Direction direction : DIRECTIONS) {
                         next.setWithOffset(pos, direction);
                         if (!shape.contains(next.getX(), next.getY(), next.getZ())) {
@@ -128,6 +142,14 @@ final class VisibleCapture {
                         if (neighbor == null || neighbor.isSolidRender(level, next)) {
                             solidMask |= 1 << direction.get3DDataValue();
                             continue;
+                        }
+                        // L'eau voisine est deja dans waterMask.
+                        if (neighborsSeen != null && !neighbor.isAir()
+                                && !(neighbor.getBlock() instanceof LiquidBlock && neighbor.getFluidState().is(net.minecraft.tags.FluidTags.WATER))
+                                && (next.getX() < x0 || next.getX() > x1
+                                || next.getY() < y0 || next.getY() > y1 || next.getZ() < z0 || next.getZ() > z1)) {
+                            outside[outsideCount] = next.asLong();
+                            outsideStates[outsideCount++] = neighbor;
                         }
                         // Eau voisine : le client la remet la ou elle n'est pas envoyee (sous la surface, autour des
                         // algues et des blocs waterlogged), sinon leur eau aurait des faces vers de l'air.
@@ -153,17 +175,20 @@ final class VisibleCapture {
                     if (!visible) {
                         continue;
                     }
-                    Integer paletteId = paletteIndex.get(state);
-                    if (paletteId == null) {
-                        if (palette.size() >= 65535) {
-                            continue;
-                        }
-                        paletteId = palette.size();
-                        palette.add(net.minecraft.world.level.block.Block.getId(state));
-                        paletteIndex.put(state, paletteId);
+                    int paletteId = paletteId(state);
+                    if (paletteId < 0) {
+                        continue;
                     }
                     blocks.add(local(x, y, z));
                     info.add(paletteId | solidMask << 16 | waterMask << 22);
+                    for (int i = 0; i < outsideCount; i++) {
+                        if (!neighborsSeen.add(outside[i])) continue;
+                        int neighborId = paletteId(outsideStates[i]);
+                        if (neighborId < 0) continue;
+                        BlockPos at = BlockPos.of(outside[i]);
+                        blocks.add(local(at.getX(), at.getY(), at.getZ()));
+                        info.add(neighborId | FarRingPayload.NEIGHBOR_ONLY);
+                    }
                     // Lumiere de la case du bloc (blocs pas pleins : escaliers, dalles, algues...).
                     if (lightSeen.add(BlockPos.asLong(x, y, z))) {
                         lightPos.add(local(x, y, z));
@@ -223,6 +248,24 @@ final class VisibleCapture {
                 biomes[qx * quarts + qz] = (byte) (int) index;
             }
         }
+    }
+
+    /** Voisins pas pleins hors de la boite d'un bloc (au plus 6), voir withNeighbors. */
+    private final long[] outside = new long[6];
+    private final BlockState[] outsideStates = new BlockState[6];
+
+    /** Index de l'etat dans la palette envoyee, ou -1 si la palette est pleine. */
+    private int paletteId(BlockState state) {
+        Integer id = paletteIndex.get(state);
+        if (id == null) {
+            if (palette.size() >= 65535) {
+                return -1;
+            }
+            id = palette.size();
+            palette.add(net.minecraft.world.level.block.Block.getId(state));
+            paletteIndex.put(state, id);
+        }
+        return id;
     }
 
     FarRingPayload.Data result() {
