@@ -108,7 +108,7 @@ public final class SkySync {
             sourceEffects = lookupEffects(sourceEffectsId);
         }
         logState("recu du serveur");
-        if (level != null && inJar(level)) {
+        if (LOGGER.isDebugEnabled() && level != null && inJar(level)) {
             net.minecraft.world.level.lighting.LayerLightEventListener sky =
                     level.getLightEngine().getLayerListener(net.minecraft.world.level.LightLayer.SKY);
             StringBuilder text = new StringBuilder("cote client : type de dimension ")
@@ -125,7 +125,7 @@ public final class SkySync {
             String line = text.toString();
             if (!line.equals(lastLogged.get("client"))) {
                 lastLogged.put("client", line);
-                LOGGER.info("[Planarium Panorama] Diagnostic du bocal : {}", line);
+                LOGGER.debug("[Planarium Panorama] Diagnostic du bocal : {}", line);
             }
         }
         JarLight.rebuild(WallColors.faceLight(), outsideBlock, WallColors.faceDim());
@@ -186,9 +186,9 @@ public final class SkySync {
      */
     public static void afterLightmapUpdate(net.minecraft.client.renderer.LightTexture lightTexture, float partialTick,
                                            String entryPoint) {
-        if (!hooksSeen.contains(entryPoint)) {
+        if (LOGGER.isDebugEnabled() && !hooksSeen.contains(entryPoint)) {
             hooksSeen.add(entryPoint);
-            LOGGER.info("[Planarium Panorama] Lightmap : point d'entree '{}' actif", entryPoint);
+            LOGGER.debug("[Planarium Panorama] Lightmap : point d'entree '{}' actif", entryPoint);
         }
         // Le point d'entree 'rendu' n'est qu'un secours, pour les packs ou l'autre ne s'execute pas.
         // Quand 'lightmap' fonctionne, un autre mod (Darkness...) peut modifier la lightmap entre les deux :
@@ -338,10 +338,11 @@ public final class SkySync {
 
     /** Diagnostic : la lumiere qui arrive au Planarium, ecrite dans le log quand elle change. */
     private static void logState(String step) {
+        if (!LOGGER.isDebugEnabled()) return;
         String line = "ciel " + outsideSky + ", blocs " + outsideBlock;
         if (!line.equals(lastLogged.get(step))) {
             lastLogged.put(step, line);
-            LOGGER.info("[Planarium Panorama] Lumiere au Planarium, {} : {}", step, line);
+            LOGGER.debug("[Planarium Panorama] Lumiere au Planarium, {} : {}", step, line);
         }
     }
 
@@ -448,7 +449,7 @@ public final class SkySync {
                     .getMethod("getForType", ResourceLocation.class).invoke(null, id);
             if (effects instanceof DimensionSpecialEffects found
                     && !(found instanceof DimensionSpecialEffects.OverworldEffects)) {
-                LOGGER.info("[Planarium Panorama] Ciel de la dimension d'origine dans le bocal : {}", id);
+                LOGGER.debug("[Planarium Panorama] Ciel de la dimension d'origine dans le bocal : {}", id);
                 return found;
             }
         } catch (Throwable e) {
@@ -595,9 +596,9 @@ public final class SkySync {
         boolean custom = Math.abs(((fog >> 16) & 0xFF) - ((NORMAL_FOG >> 16) & 0xFF)) > 0x30
                 || Math.abs(((fog >> 8) & 0xFF) - ((NORMAL_FOG >> 8) & 0xFF)) > 0x30
                 || Math.abs((fog & 0xFF) - (NORMAL_FOG & 0xFF)) > 0x30;
-        if (fog != lastLoggedFog) {
+        if (LOGGER.isDebugEnabled() && fog != lastLoggedFog) {
             lastLoggedFog = fog;
-            LOGGER.info("[Planarium Panorama] Brouillard du biome {} : #{} ({})",
+            LOGGER.debug("[Planarium Panorama] Brouillard du biome {} : #{} ({})",
                     biome.unwrapKey().map(k -> k.location().toString()).orElse("?"),
                     String.format("%06X", fog), custom ? "special, garde au lieu du noir" : "normal");
         }
@@ -613,12 +614,14 @@ public final class SkySync {
     public static boolean blackCave(ClientLevel level) {
         boolean result = Config.darkCaves() && !customBiomeFog() && underground(level) && outsideSky < 5
                 && WeatherView.openSkyFraction() < 0.10F && ClientView.openSkyShare() <= 0.0F;
-        String state = Config.darkCaves() + "/" + underground(level) + "/" + result;
-        if (!state.equals(lastCaveState)) {
-            lastCaveState = state;
-            LOGGER.info("[Planarium Panorama] Caverne : option sombre {}, fermee {}, noire {} (ciel {}, colonnes ouvertes {} %, vue {} %)",
-                    Config.darkCaves(), underground(level), result, outsideSky,
-                    Math.round(WeatherView.openSkyFraction() * 100), Math.round(ClientView.openSkyShare() * 100));
+        if (LOGGER.isDebugEnabled()) {
+            String state = Config.darkCaves() + "/" + underground(level) + "/" + result;
+            if (!state.equals(lastCaveState)) {
+                lastCaveState = state;
+                LOGGER.debug("[Planarium Panorama] Caverne : option sombre {}, fermee {}, noire {} (ciel {}, colonnes ouvertes {} %, vue {} %)",
+                        Config.darkCaves(), underground(level), result, outsideSky,
+                        Math.round(WeatherView.openSkyFraction() * 100), Math.round(ClientView.openSkyShare() * 100));
+            }
         }
         return result;
     }

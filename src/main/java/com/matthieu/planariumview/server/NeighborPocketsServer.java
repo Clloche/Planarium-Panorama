@@ -149,7 +149,7 @@ public final class NeighborPocketsServer {
         state.sentAny = !entries.isEmpty();
         // Moins de voisins trouves que demandes : en demander plus ne trouvera rien de plus.
         state.sentCount = done.neighbors.size() < done.count ? NeighborPocketsPayload.MAX : done.count;
-        LOGGER.info("[Planarium Panorama] Planariums voisins envoyes : {} sur {} trouves", entries.size(), done.neighbors.size());
+        LOGGER.debug("[Planarium Panorama] Planariums voisins envoyes : {} sur {} trouves", entries.size(), done.neighbors.size());
     }
 
     /**

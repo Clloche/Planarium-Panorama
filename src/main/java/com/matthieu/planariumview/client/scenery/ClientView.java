@@ -447,7 +447,7 @@ public final class ClientView {
                 }
             }
             float share = open / (float) rays;
-            LOGGER.info("[Planarium Panorama] Vue vers dehors depuis le Planarium : {} rayons sur {}", open, rays);
+            LOGGER.debug("[Planarium Panorama] Vue vers dehors depuis le Planarium : {} rayons sur {}", open, rays);
             return share;
         } catch (Exception e) {
             return 1.0F;
@@ -1290,7 +1290,7 @@ public final class ClientView {
                         : registry.getHolderOrThrow(net.minecraft.world.level.biome.Biomes.PLAINS));
             }
             lit.setBiomes(palette, info.biomes(), radius * 2 + 1, info.origin());
-            LOGGER.info("[Planarium Panorama] Couleurs de biome : {} ({})",
+            LOGGER.debug("[Planarium Panorama] Couleurs de biome : {} ({})",
                     lit.hasBiomes() ? "OK" : "donnees invalides", info.biomePalette());
         }
         data.fakeRenderingWorld = lit;
@@ -1357,7 +1357,7 @@ public final class ClientView {
         GiantSprites.collect(data);
         PuddlesCompat.collectSprites(lit);
         long spritesNanos = System.nanoTime() - stageStart;
-        LOGGER.info("[Planarium Panorama] Preparation de {} blocs : total={} ms, gabarit={} ms, donnees={} ms, " +
+        LOGGER.debug("[Planarium Panorama] Preparation de {} blocs : total={} ms, gabarit={} ms, donnees={} ms, " +
                         "lumiere speciale={} ms, sections a retesseler={}, sprites={} ms",
                 data.statePosCache.size(), (System.nanoTime() - buildStart) / 1_000_000L,
                 templateNanos / 1_000_000L, sceneryDataNanos / 1_000_000L,
@@ -1656,12 +1656,14 @@ public final class ClientView {
             pendingSectionStates = currentSectionStates;
         }
         com.matthieu.planariumview.client.sound.SceneryWaterfalls.blocksChanged(lit, radius, patch.keySet());
-        LOGGER.info("[Planarium Panorama] Correction du decor : {} blocs changes, lumiere={}, comparaison (hors rendu)={} ms, " +
-                        "correction={} ms (ciel={} ms{}, blocs speciaux et textures={} ms), sections a retesseler={}",
-                patch.size(), lightChanged, String.format(java.util.Locale.ROOT, "%.1f", diffNanos / 1e6),
-                String.format(java.util.Locale.ROOT, "%.1f", (System.nanoTime() - start) / 1e6),
-                String.format(java.util.Locale.ROOT, "%.1f", skyNanos / 1e6), skyRecomputed ? "" : ", non recalcule",
-                String.format(java.util.Locale.ROOT, "%.1f", restNanos / 1e6), dirty.size());
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("[Planarium Panorama] Correction du decor : {} blocs changes, lumiere={}, comparaison (hors rendu)={} ms, " +
+                            "correction={} ms (ciel={} ms{}, blocs speciaux et textures={} ms), sections a retesseler={}",
+                    patch.size(), lightChanged, String.format(java.util.Locale.ROOT, "%.1f", diffNanos / 1e6),
+                    String.format(java.util.Locale.ROOT, "%.1f", (System.nanoTime() - start) / 1e6),
+                    String.format(java.util.Locale.ROOT, "%.1f", skyNanos / 1e6), skyRecomputed ? "" : ", non recalcule",
+                    String.format(java.util.Locale.ROOT, "%.1f", restNanos / 1e6), dirty.size());
+        }
     }
 
     /** Meme critere que le calcul de l'ouverture sur le ciel : le bloc arrete completement la lumiere. */

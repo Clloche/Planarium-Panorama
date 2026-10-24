@@ -76,11 +76,13 @@ public final class DsAltitude {
         }
         int y = OutsideAmbience.y();
         String result = y >= skyHeight + SPACE_HEIGHT_OFFSET ? "SPACE" : y >= cloudHeight ? "CLOUDS" : null;
-        String line = dim + " y " + y + " nuages " + (cloudHeight == Integer.MAX_VALUE ? "aucun" : String.valueOf(cloudHeight)) + " espace " + (skyHeight + SPACE_HEIGHT_OFFSET)
-                + " (regles DS " + (library != null ? "lues" : "introuvables") + ") : " + (result == null ? "biome normal" : result);
-        if (!line.equals(lastLog)) {
-            lastLog = line;
-            LOGGER.info("[Planarium Panorama] Altitude pour Dynamic Surroundings : {}", line);
+        if (LOGGER.isDebugEnabled()) {
+            String line = dim + " y " + y + " nuages " + (cloudHeight == Integer.MAX_VALUE ? "aucun" : String.valueOf(cloudHeight)) + " espace " + (skyHeight + SPACE_HEIGHT_OFFSET)
+                    + " (regles DS " + (library != null ? "lues" : "introuvables") + ") : " + (result == null ? "biome normal" : result);
+            if (!line.equals(lastLog)) {
+                lastLog = line;
+                LOGGER.debug("[Planarium Panorama] Altitude pour Dynamic Surroundings : {}", line);
+            }
         }
         return result;
     }

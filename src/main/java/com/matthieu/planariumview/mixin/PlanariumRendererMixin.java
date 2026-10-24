@@ -222,7 +222,7 @@ public abstract class PlanariumRendererMixin {
             }
             if (!planariumview$beLogged) {
                 planariumview$beLogged = true;
-                org.slf4j.LoggerFactory.getLogger("planariumview").info(
+                org.slf4j.LoggerFactory.getLogger("planariumview").debug(
                         "[Planarium Panorama] Miniature : lumiere des blocs speciaux ({} : ciel {}, blocs {})",
                         net.minecraft.core.registries.BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(blockEntity.getType()),
                         net.minecraft.client.renderer.LightTexture.sky(light), net.minecraft.client.renderer.LightTexture.block(light));

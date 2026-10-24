@@ -159,7 +159,7 @@ public final class FarRingServer {
                     state.sent = want;
                     int refresh = refreshTicks();
                     state.nextRefresh = refresh > 0 ? now + refresh : Long.MAX_VALUE;
-                    LOGGER.info("[Planarium Panorama] Anneau lointain envoye : rayon {}, {} blocs visibles, {} ms de capture en {} ticks",
+                    LOGGER.debug("[Planarium Panorama] Anneau lointain envoye : rayon {}, {} blocs visibles, {} ms de capture en {} ticks",
                             far, done.visible.blocks.size(), done.workNanos / 1_000_000L, now - done.startedAt);
                 }
                 return;
@@ -177,13 +177,13 @@ public final class FarRingServer {
         boolean lightDue = cached != null && now >= cached.lightDue[0];
         boolean fresh = cached != null && now - cached.takenAt < maxCacheAge() && !lightDue;
         if (cached != null && !fresh) {
-            LOGGER.info("[Planarium Panorama] Anneau lointain : photo gardee {} ({} s), nouvelle capture",
+            LOGGER.debug("[Planarium Panorama] Anneau lointain : photo gardee {} ({} s), nouvelle capture",
                     lightDue ? "a relire (lumiere sous terre changee)" : "expiree", (now - cached.takenAt) / 20);
             CACHE.remove(want);
         }
         if (fresh && !(want.equals(state.sent) && refreshDue)) {
             // Photo recente de la meme zone (nouvelle entree dans le bocal, ou un autre joueur) : tout de suite.
-            LOGGER.info("[Planarium Panorama] Anneau lointain : photo gardee reutilisee ({} s, {} positions changees depuis)",
+            LOGGER.debug("[Planarium Panorama] Anneau lointain : photo gardee reutilisee ({} s, {} positions changees depuis)",
                     (now - cached.takenAt) / 20, cached.changed.size());
             send(player, pocket, want, cached.data);
             state.sent = want;
@@ -256,7 +256,7 @@ public final class FarRingServer {
                     long[] due = entry.getValue().lightDue();
                     due[0] = Math.min(due[0], now + HiddenChanges.DELAY_TICKS);
                 } else {
-                    LOGGER.info("[Planarium Panorama] Anneau lointain : photo gardee invalidee (source de lumiere modifiee)");
+                    LOGGER.debug("[Planarium Panorama] Anneau lointain : photo gardee invalidee (source de lumiere modifiee)");
                     iterator.remove();
                     continue;
                 }
@@ -270,7 +270,7 @@ public final class FarRingServer {
             if (inNear) continue;
             Cached cached = entry.getValue();
             if (cached.changed.add(pos.asLong()) && cached.changed.size() > MAX_CHANGED_POSITIONS) {
-                LOGGER.info("[Planarium Panorama] Anneau lointain : photo gardee invalidee apres {} positions modifiees",
+                LOGGER.debug("[Planarium Panorama] Anneau lointain : photo gardee invalidee apres {} positions modifiees",
                         cached.changed.size());
                 iterator.remove();
             }

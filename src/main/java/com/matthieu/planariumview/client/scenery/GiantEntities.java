@@ -85,7 +85,7 @@ public final class GiantEntities {
         builtFor = renderData;
         entities = create(fakeWorld, templateTag, origin);
         if (!entities.isEmpty()) {
-            LOGGER.info("[Planarium Panorama] Decor geant : {} tableaux, cadres ou porte-armures", entities.size());
+            LOGGER.debug("[Planarium Panorama] Decor geant : {} tableaux, cadres ou porte-armures", entities.size());
         }
         return entities;
     }

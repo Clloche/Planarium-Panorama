@@ -442,7 +442,7 @@ public final class SceneryParticles {
             String path = key == null ? "" : key.getPath();
             if (!dummyLogged) {
                 dummyLogged = true;
-                LOGGER.info("[Planarium Panorama] Flamme de Jaden's Nether Expansion ({}) remplacee par celle de Minecraft", key);
+                LOGGER.debug("[Planarium Panorama] Flamme de Jaden's Nether Expansion ({}) remplacee par celle de Minecraft", key);
             }
             Particle flame2 = vanillaFlame(path.contains("soul") ? ParticleTypes.SOUL_FIRE_FLAME
                     : path.contains("small") ? ParticleTypes.SMALL_FLAME : ParticleTypes.FLAME, x, y, z, vx, vy, vz);
@@ -642,7 +642,7 @@ public final class SceneryParticles {
     /** Ecrit une fois dans le log chaque sorte de particule enlevee d'une miniature. */
     private static void noteForeign(Particle particle) {
         if (UNSCALED.add(particle.getClass())) {
-            LOGGER.info("[Planarium Panorama] Particule d'un autre mod ignoree dans la miniature : {}",
+            LOGGER.debug("[Planarium Panorama] Particule d'un autre mod ignoree dans la miniature : {}",
                     particle.getClass().getName());
         }
     }
@@ -735,7 +735,7 @@ public final class SceneryParticles {
         boolean ok = particle instanceof com.matthieu.planariumview.mixin.SingleQuadParticleAccessor quad && before > 0.0F
                 && quad.planariumview$getQuadSize() <= before * scale * 2.0F + 1.0E-4F;
         if (!ok && UNSCALED.add(particle.getClass())) {
-            LOGGER.info("[Planarium Panorama] Particule ignoree dans la miniature (sa taille ne change pas) : {}",
+            LOGGER.debug("[Planarium Panorama] Particule ignoree dans la miniature (sa taille ne change pas) : {}",
                     particle.getClass().getName());
         }
         return ok;

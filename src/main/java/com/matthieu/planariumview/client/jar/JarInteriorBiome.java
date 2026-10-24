@@ -98,7 +98,7 @@ public final class JarInteriorBiome {
             redrawAt2 = tick + 100;
             if (!outside.equals(lastLogged)) {
                 lastLogged = outside;
-                LOGGER.info("[Planarium Panorama] Biome de l'interieur du bocal : {} ({} sections)",
+                LOGGER.debug("[Planarium Panorama] Biome de l'interieur du bocal : {} ({} sections)",
                         outside.unwrapKey().map(k -> k.location().toString()).orElse("?"), changedSections);
             }
         }

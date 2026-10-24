@@ -99,7 +99,7 @@ public final class NeighborPockets {
                 pockets.add(new Pocket(entry.offset(), world, bySection));
             }
             pocket = payload.pocketDim();
-            LOGGER.info("[Planarium Panorama] Planariums voisins recus : {}", pockets.size());
+            LOGGER.debug("[Planarium Panorama] Planariums voisins recus : {}", pockets.size());
         } catch (RuntimeException e) {
             LOGGER.warn("[Planarium Panorama] Planariums voisins illisibles", e);
             clear();

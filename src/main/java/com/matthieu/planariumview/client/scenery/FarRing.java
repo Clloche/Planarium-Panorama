@@ -113,7 +113,7 @@ public final class FarRing {
     /** Numero de l'anneau attendu : un resultat d'un autre numero (anneau remplace, sortie du bocal) est jete. */
     private static volatile int loadVersion;
 
-    /** Diagnostic detaille des sections lentes (temps par type de bloc) : -Dplanariumview.diagSections=true. */
+    /** Diagnostic detaille des sections lentes en DEBUG (temps par type de bloc) : -Dplanariumview.diagSections=true. */
     private static final boolean DIAG_SECTIONS = Boolean.getBoolean("planariumview.diagSections");
     /** Temps des etapes de la derniere construction (voir build), pour le message des sections lentes. */
     private static long lastTessNanos, lastMeshNanos, lastSortNanos, lastUploadNanos;
@@ -159,7 +159,7 @@ public final class FarRing {
                 mc.execute(() -> {
                     if (version != loadVersion || Minecraft.getInstance().level == null) return;
                     install(payload, next, bySection, replacingArea);
-                    LOGGER.info("[Planarium Panorama] Anneau lointain recu : {} blocs, preparation {} ms (hors rendu)",
+                    LOGGER.debug("[Planarium Panorama] Anneau lointain recu : {} blocs, preparation {} ms (hors rendu)",
                             payload.data().blocks().length, prepared / 1_000_000L);
                 });
             } catch (java.util.concurrent.CancellationException ignored) {
@@ -387,9 +387,10 @@ public final class FarRing {
 
     /**
      * Section lente (plus de 20 ms) : temps de chaque etape. Avec -Dplanariumview.diagSections=true, aussi les types de
-     * blocs qui ont pris le plus de temps (le chronometre par bloc n'est actif qu'avec cette option).
+     * blocs qui ont pris le plus de temps (le chronometre par bloc n'est actif qu'avec cette option et le niveau DEBUG).
      */
     private static void logSlowSection(int blocks, long totalMs) {
+        if (!LOGGER.isDebugEnabled()) return;
         String detail = "";
         if (DIAG_SECTIONS && !lastBlockNanos.isEmpty()) {
             StringBuilder top = new StringBuilder();
@@ -401,7 +402,7 @@ public final class FarRing {
                             entry.getValue()[1], entry.getValue()[0] / 1_000_000.0)));
             detail = ", blocs les plus lents :" + top;
         }
-        LOGGER.info("[Planarium Panorama] Section lente de l'anneau lointain : {} blocs, {} ms (tessellation {} ms, "
+        LOGGER.debug("[Planarium Panorama] Section lente de l'anneau lointain : {} blocs, {} ms (tessellation {} ms, "
                         + "assemblage {} ms, tri {} ms, envoi {} ms){}", blocks, totalMs,
                 lastTessNanos / 1_000_000L, lastMeshNanos / 1_000_000L, lastSortNanos / 1_000_000L,
                 lastUploadNanos / 1_000_000L, detail);
@@ -481,7 +482,7 @@ public final class FarRing {
         PoseStack matrix = new PoseStack();
         float giant = ClientView.GIANT;
         long tessStart = System.nanoTime();
-        Map<net.minecraft.world.level.block.Block, long[]> perBlock = DIAG_SECTIONS ? new IdentityHashMap<>() : null;
+        Map<net.minecraft.world.level.block.Block, long[]> perBlock = DIAG_SECTIONS && LOGGER.isDebugEnabled() ? new IdentityHashMap<>() : null;
         // Sections du vol (ni a l'echelle geante, ni decoupees) : sans lumiere coloree, voir ColorCompat.beginWithoutColor.
         if (!giantCoordinates && !clip) {
             ColorCompat.beginWithoutColor();

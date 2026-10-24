@@ -362,7 +362,7 @@ public final class ProjectorLighting {
             if (!loggedActive) {
                 loggedActive = true;
                 org.slf4j.LoggerFactory.getLogger(ProjectorLighting.class)
-                        .info("[Planarium Panorama] Parois et plancher du bocal : eclairage par bloc actif");
+                        .debug("[Planarium Panorama] Parois et plancher du bocal : eclairage par bloc actif");
             }
             float lenA = dist(pos[0], pos[1]);
             float lenB = dist(pos[0], pos[3]);

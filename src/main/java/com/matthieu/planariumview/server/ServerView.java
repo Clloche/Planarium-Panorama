@@ -269,7 +269,7 @@ public final class ServerView {
     public static void setEnabled(ServerPlayer player, boolean enabled) {
         boolean changed = enabled ? DISABLED.remove(player.getUUID()) : DISABLED.add(player.getUUID());
         if (changed) {
-            LOGGER.info("[Planarium Panorama] {} : vue {}", player.getGameProfile().getName(), enabled ? "ON" : "OFF");
+            LOGGER.debug("[Planarium Panorama] {} : vue {}", player.getGameProfile().getName(), enabled ? "ON" : "OFF");
             update(player, true);
         }
     }
@@ -891,7 +891,7 @@ public final class ServerView {
             return;
         }
         // Temps passe sur le fil du serveur (en solo, il partage le processeur avec le jeu).
-        LOGGER.info("[Planarium Panorama] Envoi du decor complet (cause : {}, capture={} ms, comparaison={} ms)",
+        LOGGER.debug("[Planarium Panorama] Envoi du decor complet (cause : {}, capture={} ms, comparaison={} ms)",
                 reason, (compareStart - captureStart) / 1_000_000L, compareNanos / 1_000_000L);
         // Description detaillee des changements : elle parcourt aussi les blocs (10 a 50 ms), donc seulement en DEBUG.
         if (LOGGER.isDebugEnabled()) {
@@ -963,8 +963,10 @@ public final class ServerView {
         changes.put("blocks", list);
         PacketDistributor.sendToPlayer(player,
                 new OutsideViewDeltaPayload(track.pocket.location(), radius, min, changes));
-        LOGGER.info("[Planarium Panorama] Envoi des blocs changes : {} blocs, {} ms", list.size(),
-                String.format(java.util.Locale.ROOT, "%.1f", (System.nanoTime() - start) / 1e6));
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("[Planarium Panorama] Envoi des blocs changes : {} blocs, {} ms", list.size(),
+                    String.format(java.util.Locale.ROOT, "%.1f", (System.nanoTime() - start) / 1e6));
+        }
     }
 
     /** Envoie l'heure, la meteo et les couleurs du ciel du monde d'origine (si ce monde a un ciel). */
@@ -1258,6 +1260,7 @@ public final class ServerView {
      * Ecrit dans le log seulement quand ca change.
      */
     private static void logSkyDiag(ServerLevel pocket, Track track) {
+        if (!LOGGER.isDebugEnabled()) return;
         StringBuilder line = new StringBuilder("ciel au centre (y 40, 33, 32, 31, 24, 16, 8, 1) :");
         for (int y : new int[]{40, 33, 32, 31, 24, 16, 8, 1}) {
             line.append(' ').append(pocket.getBrightness(net.minecraft.world.level.LightLayer.SKY, new BlockPos(16, y, 16)));
@@ -1273,7 +1276,7 @@ public final class ServerView {
         String text = line.toString();
         if (!text.equals(track.lastSkyDiag)) {
             track.lastSkyDiag = text;
-            LOGGER.info("[Planarium Panorama] Diagnostic du bocal : {}", text);
+            LOGGER.debug("[Planarium Panorama] Diagnostic du bocal : {}", text);
         }
     }
 
@@ -1318,7 +1321,7 @@ public final class ServerView {
             pocket.setBlock(pos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 2);
         }
         if (!found.isEmpty()) {
-            LOGGER.info("[Planarium Panorama] {} lumieres d'ambersol retirees sous le bocal ({})", found.size(),
+            LOGGER.debug("[Planarium Panorama] {} lumieres d'ambersol retirees sous le bocal ({})", found.size(),
                     pocket.dimension().location());
         }
     }
@@ -1354,7 +1357,7 @@ public final class ServerView {
                 MINI_VERSION.remove(pocket.dimension());
             }, pocket.getServer());
         }
-        LOGGER.info("[Planarium Panorama] Lumiere du ciel du bocal recalculee ({})", pocket.dimension().location());
+        LOGGER.debug("[Planarium Panorama] Lumiere du ciel du bocal recalculee ({})", pocket.dimension().location());
         return true;
     }
 
@@ -1655,7 +1658,7 @@ public final class ServerView {
             }
             track.wallsCleared = true;
             if (result[2] > 0) {
-                LOGGER.info("[Planarium Panorama] Parois du bocal remises sans lumiere ({} modifiees)", result[2]);
+                LOGGER.debug("[Planarium Panorama] Parois du bocal remises sans lumiere ({} modifiees)", result[2]);
             }
         }
         int[] light = JarWalls.measure(source, pos);
@@ -1670,7 +1673,9 @@ public final class ServerView {
             }
         }
         if (!Arrays.equals(light, track.lastWallLight)) {
-            LOGGER.info("[Planarium Panorama] Lumiere autour du Planarium : {}", Arrays.toString(light));
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("[Planarium Panorama] Lumiere autour du Planarium : {}", Arrays.toString(light));
+            }
             track.lastWallLight = light;
         }
         // Recalcule aussi les sources (une torche remplacee par une torche des ames a la meme lumiere change la couleur).
