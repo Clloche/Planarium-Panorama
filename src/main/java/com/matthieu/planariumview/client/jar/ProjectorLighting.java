@@ -41,10 +41,12 @@ public final class ProjectorLighting {
 
     /**
      * Grille de lumiere deja calculee pour chaque quadrilatere du modele (le modele envoie toujours les memes, dans le
-     * meme ordre). Chaque image, seulement un quadrilatere sur ROLLING est recalcule : la lumiere suit les changements
-     * en quelques images, sans tout recalculer a chaque image (c'etait le plus gros cout du mod).
+     * meme ordre). La lumiere des blocs n'est relue que toutes les 10 ticks (refreshCache, nouvelle generation) : chaque
+     * quadrilatere est recalcule une seule fois par generation, reparti sur ROLLING images (pas de pointe).
      */
     private static final int ROLLING = 8;
+    /** Augmente a chaque relecture de la lumiere : les grilles d'une generation plus ancienne sont a verifier. */
+    private static int lightGeneration;
     private static final java.util.List<QuadCache> QUADS = new java.util.ArrayList<>();
     private static int quadIndex;
     private static int frame;
@@ -62,6 +64,8 @@ public final class ProjectorLighting {
         int stepsA;
         int stepsB;
         int[][] light;
+        /** Generation de lumiere de la derniere verification de la grille (voir lightGeneration). */
+        int generation = -1;
         int color;
         int overlay;
         float nx, ny, nz;
@@ -117,6 +121,7 @@ public final class ProjectorLighting {
         CORNERS.clear();
         QUADS.clear();
         quadIndex = 0;
+        lightGeneration++;
     }
 
     private static void refreshCache(ClientLevel level) {
@@ -127,6 +132,7 @@ public final class ProjectorLighting {
             CORNERS.clear();
             cacheLevel = level;
             cacheTime = time;
+            lightGeneration++;
         }
     }
 
@@ -372,7 +378,8 @@ public final class ProjectorLighting {
             QuadCache cached = index < QUADS.size() ? QUADS.get(index) : null;
             boolean valid = cached != null && cached.stepsA == stepsA && cached.stepsB == stepsB
                     && sameShape(cached) && sameLook(cached);
-            if (valid && (index + frame) % ROLLING != 0) {
+            // Deja verifie avec cette lumiere, ou pas son tour dans cette image : les sommets gardes.
+            if (valid && (cached.generation == lightGeneration || (index + frame) % ROLLING != 0)) {
                 replay(cached);
                 return;
             }
@@ -389,6 +396,7 @@ public final class ProjectorLighting {
             }
             if (valid && java.util.Arrays.deepEquals(cached.light, light)) {
                 // Rien n'a change : les sommets gardes sont encore bons.
+                cached.generation = lightGeneration;
                 replay(cached);
                 return;
             }
@@ -403,6 +411,7 @@ public final class ProjectorLighting {
             entry.stepsA = stepsA;
             entry.stepsB = stepsB;
             entry.light = light;
+            entry.generation = lightGeneration;
             entry.color = color[0];
             entry.overlay = overlay[0];
             entry.nx = normal[0][0];

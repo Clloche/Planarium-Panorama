@@ -15,6 +15,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexSorting;
 import com.mojang.logging.LogUtils;
 import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.client.Minecraft;
@@ -249,6 +250,7 @@ public final class FarRing {
             if (paletteId >= palette.length) continue;
             BlockPos pos = new BlockPos(FarRingPayload.unpackX(packed), FarRingPayload.unpackY(packed), FarRingPayload.unpackZ(packed));
             next.states.put(pos.asLong(), palette[paletteId]);
+            next.noteTop(pos.getX(), pos.getY(), pos.getZ());
             int solid = info[i] >>> 16 & 0x3F;
             int water = info[i] >>> 22 & 0x3F;
             for (Direction direction : directions) {
@@ -257,7 +259,12 @@ public final class FarRing {
                     next.solid.add(pos.relative(direction).asLong());
                 } else if ((water & bit) != 0) {
                     next.water.add(pos.relative(direction).asLong());
+                } else {
+                    continue;
                 }
+                // Solide ou eau deduits : connus aussi, parfois dans la colonne voisine.
+                next.noteTop(pos.getX() + direction.getStepX(), pos.getY() + direction.getStepY(),
+                        pos.getZ() + direction.getStepZ());
             }
             sink.accept(pos);
         }
@@ -284,8 +291,10 @@ public final class FarRing {
             return state;
         }
         // Case pas envoyee : sous de l'eau (le fond d'un ocean), c'est de l'eau. Sinon l'eau du bord du decor proche
-        // dessinait une paroi d'eau vers l'anneau.
-        for (int y = ry + height + 1; y <= 2 * height; y++) {
+        // dessinait une paroi d'eau vers l'anneau. On s'arrete a la plus haute case connue de la colonne : au-dessus,
+        // il n'y a rien (les particules d'ambiance tirent surtout de l'air et remontaient toute la colonne).
+        int top = Math.min(2 * height, current.top(rx + far, rz + far));
+        for (int y = ry + height + 1; y <= top; y++) {
             BlockState above = current.known(rx + far, y, rz + far);
             if (above != null) {
                 return above.getFluidState().is(net.minecraft.tags.FluidTags.WATER) && above.getBlock() instanceof net.minecraft.world.level.block.LiquidBlock
@@ -405,12 +414,29 @@ public final class FarRing {
                 if (frustum.visible(section.box())) visibleSections.add(section);
             }
         }
+        // Toutes les sections ont la meme matrice : le shader est prepare une seule fois pour la couche (uniformes,
+        // textures), puis chaque section est seulement dessinee. drawWithShader refaisait tout a chaque section.
+        net.minecraft.client.renderer.ShaderInstance shader = RenderSystem.getShader();
+        boolean applied = false;
         for (Built section : visibleSections) {
             VertexBuffer buffer = section.buffers().get(type);
             if (buffer == null || buffer.getFormat() == null) continue;
             buffer.bind();
-            buffer.drawWithShader(pose, projection, RenderSystem.getShader());
+            if (shader == null || buffer instanceof ClippedVertexBuffer) {
+                // Decoupage contre le bocal : son propre dessin (qui libere le shader a la fin).
+                buffer.drawWithShader(pose, projection, shader);
+                applied = false;
+                continue;
+            }
+            if (!applied) {
+                shader.setDefaultUniforms(com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS, pose, projection,
+                        net.minecraft.client.Minecraft.getInstance().getWindow());
+                shader.apply();
+                applied = true;
+            }
+            buffer.draw();
         }
+        if (applied) shader.clear();
         VertexBuffer.unbind();
     }
 
@@ -585,6 +611,9 @@ public final class FarRing {
             world.ringFar = far;
             world.ringHeight = height;
             world.ringCenter = center.immutable();
+            // Seul l'anneau utilise stateAround : pas de plafonds pour le vol ni les poches voisines.
+            world.columnTop = new Long2IntOpenHashMap();
+            world.columnTop.defaultReturnValue(Integer.MIN_VALUE);
             return world;
         }
 
@@ -613,6 +642,24 @@ public final class FarRing {
             this.skyAbove = skyAbove;
             this.biomeShift = biomeShift;
             light.defaultReturnValue((byte) -1);
+        }
+
+        /**
+         * Plus haute case connue de chaque colonne (blocs envoyes, et solides ou eau deduits autour d'eux), pour arreter
+         * les recherches vers le haut (voir stateAround). Allouee seulement pour l'anneau lointain.
+         */
+        @Nullable
+        private Long2IntOpenHashMap columnTop;
+
+        void noteTop(int x, int y, int z) {
+            if (columnTop == null) return;
+            long column = (long) x << 32 | (z & 0xFFFFFFFFL);
+            if (y > columnTop.get(column)) columnTop.put(column, y);
+        }
+
+        /** Plus haute case connue de la colonne, ou Integer.MIN_VALUE. */
+        int top(int x, int z) {
+            return columnTop == null ? Integer.MIN_VALUE : columnTop.get((long) x << 32 | (z & 0xFFFFFFFFL));
         }
 
         void setBiomes(List<Holder<Biome>> biomes, byte[] grid, int quarts) {
