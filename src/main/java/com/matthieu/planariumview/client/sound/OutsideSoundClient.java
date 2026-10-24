@@ -73,7 +73,7 @@ public final class OutsideSoundClient {
         }
         Vec3 playback = playbackPosition(dx, dy, dz);
         Minecraft.getInstance().getSoundManager().play(new OutsideInstance(sound, source, volume, pitch,
-                playback, scenery));
+                playback, scenery, new Vec3(dx, dy, dz)));
     }
 
     /** Vrai pour un son d'ambiance du decor (voir DsSoundBlockMixin). */
@@ -81,13 +81,21 @@ public final class OutsideSoundClient {
         return sound instanceof OutsideInstance outside && outside.scenery || MachineSounds.isScenery(sound);
     }
 
+    /** Position d'un son du dehors par rapport au Planarium, en blocs du vrai monde (voir SceneryReverb). */
+    public static Vec3 outsidePosition(SoundInstance sound) {
+        return sound instanceof OutsideInstance outside ? outside.relative : null;
+    }
+
     /** Son venu du dehors : deja attenue (par le serveur ou par ClientView), on ne garde que sa direction. */
     private static final class OutsideInstance extends SimpleSoundInstance {
         private final boolean scenery;
+        private final Vec3 relative;
 
-        OutsideInstance(SoundEvent sound, SoundSource source, float volume, float pitch, Vec3 at, boolean scenery) {
+        OutsideInstance(SoundEvent sound, SoundSource source, float volume, float pitch, Vec3 at, boolean scenery,
+                        Vec3 relative) {
             super(sound, source, volume, pitch, RandomSource.create(), at.x, at.y, at.z);
             this.scenery = scenery;
+            this.relative = relative;
         }
 
         @Override

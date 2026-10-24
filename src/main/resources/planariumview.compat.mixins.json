@@ -38,6 +38,9 @@
     "EcForecastMixin",
     "DhClientApiMixin",
     "DsSoundBlockMixin",
+    "DsSourceContextMixin",
+    "DsSoundFxMixin",
+    "DsSoundProcessorMixin",
     "PfPlacementMixin"
   ],
   "injectors": {
