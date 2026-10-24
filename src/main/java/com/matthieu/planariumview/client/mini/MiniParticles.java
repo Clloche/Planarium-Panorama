@@ -171,6 +171,8 @@ public final class MiniParticles {
             for (BlockPos at : mini.campfires()) {
                 ClientView.campfireTick(mini.world(), at, mini.world().getBlockState(at));
             }
+            com.matthieu.planariumview.compat.ArsParticles.tick(mini.world(),
+                    at -> PARTICLE_BOUNDS.contains(at.getCenter()));
         } finally {
             LitRenderingWorld.captureSceneryParticles(null);
             SceneryParticles.animatingMini(false);

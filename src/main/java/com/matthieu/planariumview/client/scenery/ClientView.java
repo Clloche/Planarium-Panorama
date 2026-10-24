@@ -727,6 +727,8 @@ public final class ClientView {
             }
             if (particles) {
                 campfireSmoke(lit, radius);
+                int view = viewRadius();
+                com.matthieu.planariumview.compat.ArsParticles.tick(lit, at -> visibleSceneryPos(at, radius, view));
             }
         } finally {
             LitRenderingWorld.captureAmbientSounds(false);

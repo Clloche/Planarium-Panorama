@@ -1,6 +1,7 @@
 package com.matthieu.planariumview.client.scenery;
 
 import com.matthieu.planariumview.compat.ColorCompat;
+import com.matthieu.planariumview.compat.ArsParticles;
 
 import com.matthieu.planariumview.mixin.ParticleAccessor;
 import net.minecraft.client.Minecraft;
@@ -668,6 +669,7 @@ public final class SceneryParticles {
             nudge.planariumview$setZo(nz);
         }
         particle.scale(scale);
+        ArsParticles.scale(particle, space);
         if (space.bounds() != null && particle instanceof ParticleAccessor access) {
             // Particle.scale remplace la boite par 0,2 x 0,2, meme pour la fumee de feu de camp (0,25 x 0,25).
             // Garder ses dimensions natives a l'echelle pour les collisions avec les bords des blocs.
@@ -718,6 +720,8 @@ public final class SceneryParticles {
         if (scale >= 1.0F) {
             return true;
         }
+        // ParticleGlow nait avec une taille nulle : initScale, adapte dans adopt, fixe sa taille aux ticks suivants.
+        if (ArsParticles.supported(particle)) return true;
         // Miniature : particules de Minecraft et integrations dont la mise a l'echelle est geree ici. Les autres
         // se dessinent souvent a leur facon et restent geantes meme rapetissees.
         if (!particle.getClass().getName().startsWith("net.minecraft.")
@@ -1069,6 +1073,7 @@ public final class SceneryParticles {
 
     /** Chaque tick client (hors pause). */
     public static void tick() {
+        ArsParticles.beginTick();
         if (EMITTERS.isEmpty()) {
             return;
         }
@@ -1093,6 +1098,7 @@ public final class SceneryParticles {
     }
 
     public static void clear() {
+        ArsParticles.clear();
         com.matthieu.planariumview.compat.DsFirefliesCompat.clear();
         LIGHT.clear();
         SPACE.clear();

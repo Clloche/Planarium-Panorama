@@ -210,6 +210,17 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
         particleSink = sink;
     }
 
+    /** Capture imbriquee : restaure la destination de la vue courante, meme si un emetteur echoue. */
+    public static void withSceneryParticles(ParticleSink sink, Runnable action) {
+        ParticleSink previous = particleSink;
+        particleSink = sink;
+        try {
+            action.run();
+        } finally {
+            particleSink = previous;
+        }
+    }
+
     /** Particules d'ambiance des blocs du decor ou de la miniature (fumee, flammes, lave...) : voir SceneryParticles. */
     @Override
     public void addParticle(net.minecraft.core.particles.ParticleOptions options, double x, double y, double z,
