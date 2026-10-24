@@ -19,7 +19,7 @@ public final class SubLevelCompat {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static boolean initialized;
     private static boolean available;
-    private static SafeReflect.Call container, all, containing, pose, bake, bounds, plot, localBounds, uniqueId, removed;
+    private static SafeReflect.Call container, all, containing, inBounds, pose, bake, bounds, plot, localBounds, uniqueId, removed;
     private static SafeReflect.Call loadedChunks, chunk, minX, minY, minZ, maxX, maxY, maxZ, worldBounds;
     private static Object visitorTicket;
     private static SafeReflect.Call addTicket, removeTicket, allTickets, infoTickets, ticketType, ticketKey;
@@ -49,6 +49,7 @@ public final class SubLevelCompat {
                 container = SafeReflect.find(containers, "getContainer", Level.class);
                 all = SafeReflect.find(containers, "getAllSubLevels");
                 containing = SafeReflect.find(containers, "getPlot", net.minecraft.world.level.ChunkPos.class);
+                inBounds = SafeReflect.find(containers, "inBounds", net.minecraft.world.level.ChunkPos.class);
                 pose = SafeReflect.find(bodies, "logicalPose");
                 bake = SafeReflect.find(poses, "bakeIntoMatrix", Matrix4d.class);
                 bounds = SafeReflect.find(bodies, "boundingBox");
@@ -142,6 +143,66 @@ public final class SubLevelCompat {
         return transform.translate(pos.getX(), pos.getY(), pos.getZ());
     }
 
+    /**
+     * Vaisseau (sous-niveau Sable) qui possede le plot de {@code pos}, s'il est encore la : son UUID, sinon null
+     * (terrain normal, plot sans proprietaire, vaisseau retire).
+     */
+    public static UUID ownerId(Level level, BlockPos pos) {
+        Object body = ownerAt(level, pos);
+        if (body == null) return null;
+        try {
+            return (UUID) uniqueId.invoke(body);
+        } catch (ReflectiveOperationException | LinkageError e) {
+            disable(e);
+            return null;
+        }
+    }
+
+    /**
+     * Comme anchor, mais seulement si le plot de {@code pos} appartient toujours au vaisseau {@code expected} : null
+     * sinon. Pour un Planarium embarque, anchor prenait les coordonnees du plot pour une position dans le monde quand
+     * le plot n'avait plus de proprietaire (vaisseau recharge sous un autre plot), et la vue ne suivait plus.
+     */
+    public static Matrix4d anchorOnBody(Level level, BlockPos pos, UUID expected) {
+        Object body = ownerAt(level, pos);
+        if (body == null) return null;
+        try {
+            if (!expected.equals(uniqueId.invoke(body))) return null;
+            Matrix4d transform = new Matrix4d();
+            bake.invoke(pose.invoke(body), transform);
+            return transform.translate(pos.getX(), pos.getY(), pos.getZ());
+        } catch (ReflectiveOperationException | LinkageError e) {
+            disable(e);
+            return null;
+        }
+    }
+
+    private static Object ownerAt(Level level, BlockPos pos) {
+        if (!available()) return null;
+        try {
+            Object owner = container.invoke(null, level);
+            Object value = owner == null ? null : containing.invoke(owner, new net.minecraft.world.level.ChunkPos(pos));
+            if (value == null) return null;
+            Object body = SafeReflect.find(value.getClass(), "getSubLevel").invoke(value);
+            return body == null || (boolean) removed.invoke(body) ? null : body;
+        } catch (ReflectiveOperationException | LinkageError e) {
+            disable(e);
+            return null;
+        }
+    }
+
+    /** Espace reserve aux plots, meme si aucun vaisseau ne possede actuellement celui de cette position. */
+    public static boolean isPlotSpace(Level level, BlockPos pos) {
+        if (!available()) return false;
+        try {
+            Object owner = container.invoke(null, level);
+            return owner != null && (boolean) inBounds.invoke(owner, new net.minecraft.world.level.ChunkPos(pos));
+        } catch (ReflectiveOperationException | LinkageError e) {
+            disable(e);
+            return true; // Ne pas prendre un plot potentiellement orphelin pour du terrain normal.
+        }
+    }
+
     public static Vec3 worldPosition(Level level, Vec3 position) {
         BlockPos block = BlockPos.containing(position);
         org.joml.Vector3d point = anchor(level, block).transformPosition(new org.joml.Vector3d(
@@ -163,13 +224,36 @@ public final class SubLevelCompat {
         }
     }
 
+    /**
+     * Rechargements echoues par dimension et vaisseau (horloge monotone) : retentes apres RESTORE_RETRY_NANOS. Pendant
+     * que Sable recharge lui-meme le vaisseau, chaque recherche (chaque seconde) le redemandait par tous ses points
+     * de suivi, et Sable ecrivait une erreur par point.
+     */
+    private record RestoreKey(net.minecraft.resources.ResourceKey<Level> dimension, UUID body) {}
+    private static final java.util.Map<RestoreKey, Long> FAILED_RESTORE = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long RESTORE_RETRY_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(10);
+
+    public static void clearRestoreFailures() {
+        FAILED_RESTORE.clear();
+    }
+
     /** Restore by UUID, never by a possibly reused plot number. Sable keeps these pointers current when saving. */
     public static boolean restore(net.minecraft.server.level.ServerLevel level, UUID id) {
         if (!available()) return false;
         try {
             Object owner = container.invoke(null, level);
             if (owner == null) return false;
-            if (byId.invoke(owner, id) != null) return true;
+            // Deja charge (par nous ou par Sable entre-temps) : toujours verifie, sans delai.
+            RestoreKey key = new RestoreKey(level.dimension(), id);
+            Object loaded = byId.invoke(owner, id);
+            if (loaded != null && !(boolean) removed.invoke(loaded)) {
+                FAILED_RESTORE.remove(key);
+                return true;
+            }
+            long now = System.nanoTime();
+            Long failed = FAILED_RESTORE.get(key);
+            if (failed != null && now - failed < RESTORE_RETRY_NANOS) return false;
+            LOGGER.debug("[Planarium Panorama] Vaisseau {} absent : rechargement par ses points de suivi", id);
             Object data = trackingData.invoke(null, level);
             for (Object item : (Iterable<?>) trackingPoints.invoke(data)) {
                 Object point = ((java.util.Map.Entry<?, ?>) item).getValue();
@@ -178,8 +262,16 @@ public final class SubLevelCompat {
                 if (pointer == null) continue;
                 // snatchAndLoad also restores connected parts, through Sable's normal storage path.
                 snatch.invoke(holdingMap.invoke(owner), pointer, id);
-                if (byId.invoke(owner, id) != null) return true;
+                loaded = byId.invoke(owner, id);
+                if (loaded != null && !(boolean) removed.invoke(loaded)) {
+                    FAILED_RESTORE.remove(key);
+                    LOGGER.debug("[Planarium Panorama] Vaisseau {} recharge", id);
+                    return true;
+                }
             }
+            FAILED_RESTORE.put(key, now);
+            LOGGER.debug("[Planarium Panorama] Vaisseau {} : rechargement echoue, nouvel essai dans {} s", id,
+                    RESTORE_RETRY_NANOS / 1_000_000_000L);
             return false;
         } catch (ReflectiveOperationException | LinkageError e) {
             disable(e);
@@ -223,7 +315,11 @@ public final class SubLevelCompat {
         if (body != null) pin(level, body, player + "/anchor", false);
     }
 
-    /** Search only the saved entry's vessel, so identical pocket names on other vessels cannot steal the view. */
+    /**
+     * Search only the saved entry's vessel, so identical pocket names on other vessels cannot steal the view.
+     * {@code near} null : n'importe ou sur ce vaisseau (vaisseau recharge sous un autre plot, l'ancienne position du
+     * plot ne veut plus rien dire).
+     */
     public static BlockPos findPlanarium(net.minecraft.server.level.ServerLevel level,
                                          net.minecraft.resources.ResourceKey<Level> pocket,
                                          BlockPos near, UUID id, double maxDistance) {
@@ -236,9 +332,12 @@ public final class SubLevelCompat {
             for (Object holder : (Collection<?>) loadedChunks.invoke(storage)) {
                 for (var entity : ((LevelChunk) chunk.invoke(holder)).getBlockEntities().values()) {
                     if (entity instanceof com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile tile
-                            && pocket.equals(tile.key) && tile.getBlockPos().distSqr(near) < distance) {
-                        distance = tile.getBlockPos().distSqr(near);
-                        best = tile.getBlockPos().immutable();
+                            && pocket.equals(tile.key)) {
+                        double candidate = near == null ? 0.0 : tile.getBlockPos().distSqr(near);
+                        if (near == null ? best == null : candidate < distance) {
+                            distance = candidate;
+                            best = tile.getBlockPos().immutable();
+                        }
                     }
                 }
             }
