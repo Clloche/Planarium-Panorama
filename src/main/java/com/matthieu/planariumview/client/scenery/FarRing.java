@@ -105,6 +105,8 @@ public final class FarRing {
             runnable -> {
                 Thread thread = new Thread(runnable, "Planarium Panorama - anneau lointain");
                 thread.setDaemon(true);
+                // Travail de fond : laisse passer le rendu quand le processeur est charge (comme ModernFix).
+                thread.setPriority(Thread.NORM_PRIORITY - 1);
                 return thread;
             });
     /** Numero de l'anneau attendu : un resultat d'un autre numero (anneau remplace, sortie du bocal) est jete. */

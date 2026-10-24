@@ -49,15 +49,41 @@ public final class ProjectorLighting {
     private static int quadIndex;
     private static int frame;
 
+    /**
+     * Un quadrilatere du modele, deja decoupe : ses sommets finaux en coordonnees du monde (fixes, le projecteur ne
+     * bouge pas). Chaque image, on les renvoie tels quels, decales de la camera : plus de decoupage, de fusion ni
+     * d'interpolation a refaire. Refait seulement quand la lumiere de sa grille change, ou quand le modele change
+     * (position, texture apres un rechargement des ressources, couleur).
+     */
     private static final class QuadCache {
-        public double x;
-        public double y;
-        public double z;
+        /** Les 4 coins du quadrilatere dans le monde (x, y, z) et leurs UV : le moindre changement refait les sommets. */
+        final double[] corners = new double[12];
+        final float[] cornerUv = new float[8];
         int stepsA;
         int stepsB;
-        public int[][] light;
-        /** Rectangles a lumiere constante de la grille (voir merge) : a0, b0, a1, b1 par rectangle. */
-        int[] flat;
+        int[][] light;
+        int color;
+        int overlay;
+        float nx, ny, nz;
+        /** Sommets : x, y, z du monde (3 par sommet), u, v (2 par sommet), lumiere (1 par sommet). */
+        double[] xyz = new double[96];
+        float[] uv = new float[64];
+        int[] lights = new int[32];
+        int count;
+
+        void add(double wx, double wy, double wz, float u, float v, int light) {
+            if (count == lights.length) {
+                xyz = java.util.Arrays.copyOf(xyz, xyz.length * 2);
+                uv = java.util.Arrays.copyOf(uv, uv.length * 2);
+                lights = java.util.Arrays.copyOf(lights, lights.length * 2);
+            }
+            xyz[count * 3] = wx;
+            xyz[count * 3 + 1] = wy;
+            xyz[count * 3 + 2] = wz;
+            uv[count * 2] = u;
+            uv[count * 2 + 1] = v;
+            lights[count++] = light;
+        }
     }
 
     private ProjectorLighting() {
@@ -77,6 +103,20 @@ public final class ProjectorLighting {
         frame++;
         Vec3 camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
         return type -> new Subdivider(source.getBuffer(type), level, camera);
+    }
+
+    /**
+     * Sortie ou changement de bocal, deconnexion : oublie les caches de lumiere et l'ancien monde client. Sinon,
+     * cacheLevel gardait tout l'ancien monde (chunks, entites) en memoire jusqu'au prochain bocal.
+     */
+    public static void clear() {
+        cacheLevel = null;
+        cacheTime = Long.MIN_VALUE;
+        java.util.Arrays.fill(CACHE, (byte) -1);
+        TAGGED.clear();
+        CORNERS.clear();
+        QUADS.clear();
+        quadIndex = 0;
     }
 
     private static void refreshCache(ClientLevel level) {
@@ -226,6 +266,8 @@ public final class ProjectorLighting {
         private final float[][] normal = new float[4][3];
         private int count;
         private int current = -1;
+        /** Quadrilatere dont on construit les sommets (pendant flush seulement). */
+        private QuadCache building;
 
         Subdivider(VertexConsumer out, ClientLevel level, Vec3 camera) {
             this.out = out;
@@ -327,15 +369,11 @@ public final class ProjectorLighting {
             int axis = nx >= ny && nx >= nz ? 0 : ny >= nz ? 1 : 2;
             // Lumiere de chaque point de la grille : reprise du cache, ou recalculee (par tranches, voir ROLLING).
             int index = quadIndex++;
-            double ox = pos[0][0] + camera.x;
-            double oy = pos[0][1] + camera.y;
-            double oz = pos[0][2] + camera.z;
             QuadCache cached = index < QUADS.size() ? QUADS.get(index) : null;
             boolean valid = cached != null && cached.stepsA == stepsA && cached.stepsB == stepsB
-                    && Math.abs(cached.x - ox) < 0.01 && Math.abs(cached.y - oy) < 0.01 && Math.abs(cached.z - oz) < 0.01;
+                    && sameShape(cached) && sameLook(cached);
             if (valid && (index + frame) % ROLLING != 0) {
-                if (cached.flat == null) cached.flat = merge(stepsA, stepsB, cached.light);
-                emitMerged(stepsA, stepsB, cached.light, cached.flat);
+                replay(cached);
                 return;
             }
             int[][] light = new int[stepsA + 1][stepsB + 1];
@@ -349,20 +387,71 @@ public final class ProjectorLighting {
                     light[a][b] = corner(level, smoothBlockLight(level, wx, wy, wz), wx, wy, wz, axis);
                 }
             }
+            if (valid && java.util.Arrays.deepEquals(cached.light, light)) {
+                // Rien n'a change : les sommets gardes sont encore bons.
+                replay(cached);
+                return;
+            }
             QuadCache entry = cached != null ? cached : new QuadCache();
-            entry.x = ox;
-            entry.y = oy;
-            entry.z = oz;
+            for (int i = 0; i < 4; i++) {
+                entry.corners[i * 3] = pos[i][0] + camera.x;
+                entry.corners[i * 3 + 1] = pos[i][1] + camera.y;
+                entry.corners[i * 3 + 2] = pos[i][2] + camera.z;
+                entry.cornerUv[i * 2] = uv[i][0];
+                entry.cornerUv[i * 2 + 1] = uv[i][1];
+            }
             entry.stepsA = stepsA;
             entry.stepsB = stepsB;
             entry.light = light;
-            entry.flat = merge(stepsA, stepsB, light);
+            entry.color = color[0];
+            entry.overlay = overlay[0];
+            entry.nx = normal[0][0];
+            entry.ny = normal[0][1];
+            entry.nz = normal[0][2];
+            entry.count = 0;
+            building = entry;
+            emitMerged(stepsA, stepsB, light, merge(stepsA, stepsB, light));
+            building = null;
             if (index < QUADS.size()) {
                 QUADS.set(index, entry);
             } else {
                 QUADS.add(entry);
             }
-            emitMerged(stepsA, stepsB, light, entry.flat);
+            replay(entry);
+        }
+
+        /**
+         * Memes 4 coins dans le monde que le quadrilatere garde. Les positions recues dependent de la camera (arrondis en
+         * float) : une tolerance de 0,01 bloc evite de tout refaire a chaque mouvement.
+         */
+        private boolean sameShape(QuadCache c) {
+            for (int i = 0; i < 4; i++) {
+                if (Math.abs(c.corners[i * 3] - (pos[i][0] + camera.x)) >= 0.01
+                        || Math.abs(c.corners[i * 3 + 1] - (pos[i][1] + camera.y)) >= 0.01
+                        || Math.abs(c.corners[i * 3 + 2] - (pos[i][2] + camera.z)) >= 0.01) return false;
+            }
+            return true;
+        }
+
+        /** Meme apparence : UV des 4 coins (changent au rechargement des ressources), couleur, overlay, normale. */
+        private boolean sameLook(QuadCache c) {
+            for (int i = 0; i < 4; i++) {
+                if (c.cornerUv[i * 2] != uv[i][0] || c.cornerUv[i * 2 + 1] != uv[i][1]) return false;
+            }
+            return c.color == color[0] && c.overlay == overlay[0]
+                    && c.nx == normal[0][0] && c.ny == normal[0][1] && c.nz == normal[0][2];
+        }
+
+        /** Renvoie les sommets gardes, relatifs a la camera de cette image (methode complete : chemin rapide). */
+        private void replay(QuadCache c) {
+            double[] xyz = c.xyz;
+            float[] uvs = c.uv;
+            int[] lights = c.lights;
+            for (int i = 0; i < c.count; i++) {
+                out.addVertex((float) (xyz[i * 3] - camera.x), (float) (xyz[i * 3 + 1] - camera.y),
+                        (float) (xyz[i * 3 + 2] - camera.z), c.color, uvs[i * 2], uvs[i * 2 + 1], c.overlay,
+                        lights[i], c.nx, c.ny, c.nz);
+            }
         }
 
         /**
@@ -478,37 +567,18 @@ public final class ProjectorLighting {
             return java.util.Arrays.copyOf(rects, n);
         }
 
-        private void emitGrid(int stepsA, int stepsB, int[][] light) {
-            for (int a = 0; a < stepsA; a++) {
-                for (int b = 0; b < stepsB; b++) {
-                    float s0 = (float) a / stepsA;
-                    float s1 = (float) (a + 1) / stepsA;
-                    float t0 = (float) b / stepsB;
-                    float t1 = (float) (b + 1) / stepsB;
-                    emit(s0, t0, light[a][b]);
-                    emit(s1, t0, light[a + 1][b]);
-                    emit(s1, t1, light[a + 1][b + 1]);
-                    emit(s0, t1, light[a][b + 1]);
-                }
-            }
-        }
-
+        /** Ajoute un sommet au quadrilatere en construction (voir replay pour l'envoi). */
         private void emit(float s, float t, int packedLight) {
-            out.addVertex(snap(lerp2(s, t, 0), camera.x), snap(lerp2(s, t, 1), camera.y), snap(lerp2(s, t, 2), camera.z))
-                    .setColor(color[0])
-                    .setUv(lerpUv(s, t, 0), lerpUv(s, t, 1))
-                    .setOverlay(overlay[0])
-                    .setUv2(packedLight & 0xFFFF, packedLight >>> 16)
-                    .setNormal(normal[0][0], normal[0][1], normal[0][2]);
+            building.add(snap(lerp2(s, t, 0), camera.x), snap(lerp2(s, t, 1), camera.y), snap(lerp2(s, t, 2), camera.z),
+                    lerpUv(s, t, 0), lerpUv(s, t, 1), packedLight);
         }
 
         /**
-         * Point sur une grille fixe du monde (1/1024 de bloc) : deux faces voisines du modele calculent leur coin commun
+         * Point du monde sur une grille fixe (1/1024 de bloc) : deux faces voisines du modele calculent leur coin commun
          * depuis des coins differents, et un arrondi different laissait une fente entre elles.
          */
-        private static float snap(float relative, double camera) {
-            double world = relative + camera;
-            return (float) (Math.rint(world * 1024.0) / 1024.0 - camera);
+        private static double snap(float relative, double camera) {
+            return Math.rint((relative + camera) * 1024.0) / 1024.0;
         }
 
         /** Point du quadrilatere : v0 en (0,0), v1 en (1,0), v2 en (1,1), v3 en (0,1). */

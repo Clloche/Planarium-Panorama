@@ -448,5 +448,7 @@ public final class JarLight {
         tableDim = null;
         lastFaces = null;
         lastCenter = -2;
+        // Ancien monde client (et ses chunks) : libere a la deconnexion.
+        remeshLevel = null;
     }
 }

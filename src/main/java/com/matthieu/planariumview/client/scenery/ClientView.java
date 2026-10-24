@@ -128,6 +128,8 @@ public final class ClientView {
             java.util.concurrent.Executors.newSingleThreadExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "Planarium Panorama - comparaison du decor");
                 thread.setDaemon(true);
+                // Travail de fond : laisse passer le rendu quand le processeur est charge (comme ModernFix).
+                thread.setPriority(Thread.NORM_PRIORITY - 1);
                 return thread;
             });
     private static int diffGeneration;
@@ -231,6 +233,10 @@ public final class ClientView {
         LightningView.init();
         LunarClient.init();
         SeasonColors.init();
+        // Rechargement des ressources (F3+T, pack change) : les sommets gardes des parois du bocal sont a refaire.
+        container.getEventBus().addListener(net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent.class,
+                event -> event.registerReloadListener((net.minecraft.server.packs.resources.ResourceManagerReloadListener)
+                        manager -> com.matthieu.planariumview.client.jar.ProjectorLighting.clear()));
         container.getEventBus().addListener(net.neoforged.fml.event.lifecycle.FMLClientSetupEvent.class,
                 event -> event.enqueueWork(() -> {
                     WallColors.register();
@@ -1096,6 +1102,8 @@ public final class ClientView {
         WeatherView.clear();
         WallColors.clear();
         GiantSprites.clear();
+        // Sortie, changement de bocal ou deconnexion : ne pas garder l'ancien monde client (et ses chunks).
+        com.matthieu.planariumview.client.jar.ProjectorLighting.clear();
     }
 
     private static void disposeRender() {
