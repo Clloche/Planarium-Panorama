@@ -52,9 +52,13 @@ public final class FarRingServer {
     }
 
     /** Photos deja prises, reutilisees par une nouvelle entree (ou un autre joueur) tant qu'elles sont recentes. */
-    private record Cached(FarRingPayload.Data data, long takenAt, LongOpenHashSet changed) {
+    /**
+     * {@code lightDue} : tick apres lequel la photo n'est plus reutilisee, parce qu'une source de lumiere qui semble
+     * cachee sous terre a change (voir HiddenChanges). Long.MAX_VALUE = aucune.
+     */
+    private record Cached(FarRingPayload.Data data, long takenAt, LongOpenHashSet changed, long[] lightDue) {
         Cached(FarRingPayload.Data data, long takenAt) {
-            this(data, takenAt, new LongOpenHashSet());
+            this(data, takenAt, new LongOpenHashSet(), new long[]{Long.MAX_VALUE});
         }
     }
 
@@ -170,10 +174,11 @@ public final class FarRingServer {
         }
         int refresh = refreshTicks();
         Cached cached = CACHE.get(want);
-        boolean fresh = cached != null && now - cached.takenAt < maxCacheAge();
+        boolean lightDue = cached != null && now >= cached.lightDue[0];
+        boolean fresh = cached != null && now - cached.takenAt < maxCacheAge() && !lightDue;
         if (cached != null && !fresh) {
-            LOGGER.info("[Planarium Panorama] Anneau lointain : photo gardee expiree ({} s), nouvelle capture",
-                    (now - cached.takenAt) / 20);
+            LOGGER.info("[Planarium Panorama] Anneau lointain : photo gardee {} ({} s), nouvelle capture",
+                    lightDue ? "a relire (lumiere sous terre changee)" : "expiree", (now - cached.takenAt) / 20);
             CACHE.remove(want);
         }
         if (fresh && !(want.equals(state.sent) && refreshDue)) {
@@ -231,7 +236,8 @@ public final class FarRingServer {
      * detaille, qui n'est pas dans la photo, sauf les sources lumineuses). Au-dela de {@link #MAX_CHANGED_POSITIONS}
      * positions differentes, la photo est oubliee. Le joueur deja dans le bocal garde son anneau fige.
      */
-    static void blockChanged(ResourceKey<Level> source, BlockPos pos, boolean lightChanged) {
+    static void blockChanged(ResourceKey<Level> source, BlockPos pos, boolean lightChanged, HiddenChanges.Check hidden,
+                             long now) {
         if (CACHE.isEmpty()) {
             return;
         }
@@ -242,11 +248,18 @@ public final class FarRingServer {
             int dx = pos.getX() - key.center.getX(), dy = pos.getY() - key.center.getY(), dz = pos.getZ() - key.center.getZ();
             // Une source de lumiere eclaire jusqu'a 15 blocs, meme depuis le rayon detaille : la lumiere de la photo
             // n'est plus juste (feu de camp retire, lampe ajoutee). Oubliee tout de suite, sans attendre les 256 positions.
+            // Source qui semble cachee sous terre (voir HiddenChanges) : la photo reste reutilisable jusqu'a son echeance,
+            // au lieu d'etre oubliee a chaque bloc (un mineshaft en feu l'invalidait sans arret).
             if (lightChanged && key.source.equals(source) && Math.abs(dy) <= key.height + 16
                     && (long) dx * dx + (long) dz * dz <= (long) (key.far + 15) * (key.far + 15)) {
-                LOGGER.info("[Planarium Panorama] Anneau lointain : photo gardee invalidee (source de lumiere modifiee)");
-                iterator.remove();
-                continue;
+                if (hidden.slowFor(key.center)) {
+                    long[] due = entry.getValue().lightDue();
+                    due[0] = Math.min(due[0], now + HiddenChanges.DELAY_TICKS);
+                } else {
+                    LOGGER.info("[Planarium Panorama] Anneau lointain : photo gardee invalidee (source de lumiere modifiee)");
+                    iterator.remove();
+                    continue;
+                }
             }
             // Meme cylindre que la capture de l'anneau (voir Job.inBox) : les coins du carre ne comptent pas.
             if (!key.source.equals(source) || Math.abs(dy) > key.height + 1

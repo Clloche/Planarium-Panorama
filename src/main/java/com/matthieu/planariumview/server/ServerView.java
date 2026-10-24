@@ -195,7 +195,10 @@ public final class ServerView {
         // Deux sources peuvent emettre autant de lumiere, mais avec des couleurs differentes (mods compris).
         boolean lightSourceChanged = previous != next
                 && (previous.getLightEmission(level, pos) > 0 || next.getLightEmission(level, pos) > 0);
-        FarRingServer.blockChanged(serverLevel.dimension(), pos, lightSourceChanged);
+        // Anneau lointain : une source qui semble enfermee sous terre garde sa photo jusqu'a l'echeance du cache.
+        HiddenChanges.Check hidden = new HiddenChanges.Check(serverLevel, pos);
+        FarRingServer.blockChanged(serverLevel.dimension(), pos, lightSourceChanged, hidden,
+                serverLevel.getServer().getTickCount());
         NeighborPocketsServer.blockChanged(serverLevel.dimension());
         FlightServer.blockChanged(serverLevel.dimension(), pos);
         for (Track track : TRACKS.values()) {
@@ -206,16 +209,17 @@ public final class ServerView {
             // La zone de la photo affichee : un Planarium qui a un peu bouge montre encore la photo de capturedCenter.
             BlockPos center = track.capturedCenter;
             long dx = Math.abs((long) pos.getX() - center.getX());
+            long dy = Math.abs((long) pos.getY() - center.getY());
             long dz = Math.abs((long) pos.getZ() - center.getZ());
-            // Changements visibles : zone capturee plus une case pour les dependances immediates des modeles.
-            boolean inScenery = dx <= radius + 1L && dz <= radius + 1L;
+            // Changements visibles : zone capturee (cube, hauteur comprise) plus une case pour les dependances
+            // immediates des modeles.
+            boolean inScenery = dx <= radius + 1L && dy <= radius + 1L && dz <= radius + 1L;
             // Hors de cette zone, seuls l'ajout/retrait/modification d'une source lumineuse justifient une capture.
             boolean nearbyLightSource = lightSourceChanged && dx <= radius + LIGHT_MARGIN
-                    && dz <= radius + LIGHT_MARGIN;
+                    && dy <= radius + LIGHT_MARGIN && dz <= radius + LIGHT_MARGIN;
             if (inScenery || nearbyLightSource) {
                 track.sceneryDirty = true;
                 // Dans la photo et sans effet sur la lumiere ni la meteo : envoi partiel possible.
-                long dy = Math.abs((long) pos.getY() - center.getY());
                 boolean inCube = dx <= track.lastRadius && dy <= track.lastRadius && dz <= track.lastRadius;
                 boolean lightNeutral = lightNeutral(level, pos, previous, next);
                 boolean weatherNeutral = weatherNeutral(previous, next);
@@ -1542,6 +1546,7 @@ public final class ServerView {
         for (UUID id : new ArrayList<>(TRACKS.keySet())) removeTrack(event.getServer(), id);
         SubLevelServer.clear();
         FarRingServer.clearAll();
+        HiddenChanges.clear();
         NeighborPocketsServer.clearAll();
         FlightServer.clearAll();
     }
