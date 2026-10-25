@@ -37,16 +37,20 @@ public final class LightningView {
         public final double dx;
         public final double dy;
         public final double dz;
+        /** L'eclair dessine, ou null s'il tombe trop loin pour etre vu (le ciel clignote quand meme). */
         public final LightningBolt entity;
+        /** Le ciel du bocal s'eclaire a chaque eclat (pas sous terre). */
+        final boolean skyFlash;
         // Meme cycle que LightningBolt : quelques eclats rapides.
         int life = 2;
         int flashes;
 
-        Bolt(double dx, double dy, double dz, LightningBolt entity) {
+        Bolt(double dx, double dy, double dz, LightningBolt entity, boolean skyFlash) {
             this.dx = dx;
             this.dy = dy;
             this.dz = dz;
             this.entity = entity;
+            this.skyFlash = skyFlash;
             this.flashes = RANDOM.nextInt(3) + 1;
         }
     }
@@ -81,7 +85,8 @@ public final class LightningView {
             mc.getSoundManager().play(new SimpleSoundInstance(SoundEvents.LIGHTNING_BOLT_IMPACT, SoundSource.WEATHER,
                     2.0F, 0.5F + RANDOM.nextFloat() * 0.2F, RANDOM, impact.x, impact.y, impact.z));
         }
-        if (SkySync.skyActive(level) && !SkySync.underground(level)) {
+        boolean skyFlash = SkySync.skyActive(level) && !SkySync.underground(level);
+        if (skyFlash) {
             level.setSkyFlashTime(2);
         }
 
@@ -90,13 +95,18 @@ public final class LightningView {
         // Un eclair qui tombe sur le Planarium ou juste a cote passerait a l'interieur du bocal : on ne le dessine pas
         // (on garde le tonnerre, l'impact et l'eclair du ciel).
         boolean onPlanarium = Math.abs(payload.dx() - 0.5) < 2.0 && Math.abs(payload.dz() - 0.5) < 2.0;
+        LightningBolt entity = null;
         if (distance <= reach && !onPlanarium && !SkySync.underground(level)) {
-            LightningBolt entity = EntityType.LIGHTNING_BOLT.create(level);
+            entity = EntityType.LIGHTNING_BOLT.create(level);
             if (entity != null) {
                 entity.seed = payload.seed();
                 entity.setVisualOnly(true);
-                BOLTS.add(new Bolt(payload.dx(), payload.dy(), payload.dz(), entity));
             }
+        }
+        // Comme LightningBolt, le ciel clignote a chaque eclat (1 a 3), pas une seule fois : meme pour un eclair trop
+        // loin pour etre dessine. Avant, un seul eclat de 2 ticks : l'orage paraissait bien plus faible que dehors.
+        if (entity != null || skyFlash) {
+            BOLTS.add(new Bolt(payload.dx(), payload.dy(), payload.dz(), entity, skyFlash));
         }
     }
 
@@ -115,6 +125,7 @@ public final class LightningView {
             BOLTS.clear();
             return;
         }
+        ClientLevel level = Minecraft.getInstance().level;
         Iterator<Bolt> it = BOLTS.iterator();
         while (it.hasNext()) {
             Bolt bolt = it.next();
@@ -122,11 +133,16 @@ public final class LightningView {
             if (bolt.life < 0) {
                 if (bolt.flashes == 0) {
                     it.remove();
+                    continue;
                 } else if (bolt.life < -RANDOM.nextInt(10)) {
                     bolt.flashes--;
                     bolt.life = 1;
-                    bolt.entity.seed = RANDOM.nextLong();
+                    if (bolt.entity != null) bolt.entity.seed = RANDOM.nextLong();
                 }
+            }
+            // Comme LightningBolt.tick : le ciel reste eclaire tant que l'eclat dure.
+            if (bolt.life >= 0 && bolt.skyFlash && Config.weather()) {
+                level.setSkyFlashTime(2);
             }
         }
     }
@@ -143,7 +159,7 @@ public final class LightningView {
         float partialTick = event.getPartialTick().getGameTimeDeltaPartialTick(false);
         MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
         for (Bolt bolt : BOLTS) {
-            if (bolt.life < 0) {
+            if (bolt.life < 0 || bolt.entity == null) {
                 continue;
             }
             Vec3 jar = toJar(bolt.dx, bolt.dy, bolt.dz);

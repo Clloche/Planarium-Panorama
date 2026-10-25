@@ -4,6 +4,7 @@ run/
 *.iml
 .idea/
 
+src/animationChecks/
 src/test/
 
 run-client2/

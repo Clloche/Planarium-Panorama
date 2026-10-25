@@ -18,6 +18,7 @@
     "LevelEventSoundMixin"
   ],
   "client": [
+    "FlameParticleLightMixin",
     "entities.SceneryEntityAccessor",
     "entities.BoatSceneryMixin",
     "entities.TntMinecartAccessor",

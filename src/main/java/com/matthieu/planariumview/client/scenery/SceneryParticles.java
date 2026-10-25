@@ -250,6 +250,16 @@ public final class SceneryParticles {
     /** Couleur de chaque particule (bits de couleur seulement), voir Hues. */
     private static final Map<Particle, Integer> HUE = Collections.synchronizedMap(new WeakHashMap<>());
 
+    /**
+     * Couleur de Contraption Lights d'une particule du decor (bits de couleur), 0 sans couleur. Pour les flammes, qui
+     * recalculent leur lumiere apres la notre et en perdaient une partie (voir FlameParticleLightMixin).
+     */
+    public static int hueOf(Particle particle) {
+        if (HUE.isEmpty()) return 0;
+        Integer hue = HUE.get(particle);
+        return hue == null ? 0 : hue;
+    }
+
     /** Lumiere du faux monde la ou se trouve maintenant la particule (la fumee s'assombrit en s'eloignant du feu). */
     private static Integer currentLight(Particle particle, Space space) {
         net.minecraft.world.phys.AABB box = particle.getBoundingBox();
@@ -398,6 +408,18 @@ public final class SceneryParticles {
     /** Comme spawn, mais a une position deja dans le vrai monde (la vitesse reste celle du gabarit). */
     private static Particle spawnAt(Space space, ParticleOptions options, double x, double y, double z, double vx, double vy,
                                     double vz, int light) {
+        Particle particle = spawnAtRaw(space, options, x, y, z, vx, vy, vz, light);
+        if (particle != null && space.world() != null && !(options instanceof Made)) {
+            // Vent de Dynamic Surroundings : expose comme a sa vraie place dans le decor, a l'echelle du decor.
+            double scale = space.scale();
+            com.matthieu.planariumview.compat.dynamic_surroundings.DsWindCompat.blow(particle, options, space.world(),
+                    (x - space.ox()) / scale, (y - space.oy()) / scale, (z - space.oz()) / scale, scale);
+        }
+        return particle;
+    }
+
+    private static Particle spawnAtRaw(Space space, ParticleOptions options, double x, double y, double z, double vx, double vy,
+                                       double vz, int light) {
         Minecraft mc = Minecraft.getInstance();
         if (attaching != null && LIGHT.size() >= 2048) return null;
         Particle particle;
