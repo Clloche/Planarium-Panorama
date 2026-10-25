@@ -317,7 +317,24 @@ public final class ServerView {
             removeTrack(player.server, player.getUUID());
             DISABLED.remove(player.getUUID());
             SOUND_PREFS.remove(player.getUUID());
+            OutsideMobsServer.logout(player.getUUID());
         }
+    }
+
+    /**
+     * Ce que le client veut voir en plus des blocs (mobs du dehors). Afficher les mobs garde la zone autour du Planarium
+     * active, meme avec les sons du monde exterieur coupes (sinon ils resteraient figes) : les tickets sont revus.
+     */
+    public static void setViewPrefs(ServerPlayer player, com.matthieu.planariumview.network.ViewPrefsPayload prefs) {
+        UUID id = player.getUUID();
+        if (!OutsideMobsServer.setPrefs(id, prefs)) {
+            return;
+        }
+        Track track = TRACKS.get(id);
+        if (track == null || DISABLED.contains(id) || !track.pocket.equals(player.serverLevel().dimension())) {
+            return;
+        }
+        keepLoaded(player.server, id, track, Config.RADIUS.get());
     }
 
     /** Options des sons du client ; la zone autour du Planarium passe en pause ou tourne a la prochaine mise a jour. */
@@ -725,7 +742,7 @@ public final class ServerView {
      */
     private static void keepSourcesAwake(MinecraftServer server) {
         for (Map.Entry<UUID, Track> entry : TRACKS.entrySet()) {
-            // Seulement pour les joueurs qui veulent les sons du monde exterieur (zone active, voir keepLoaded).
+            // Seulement pour les joueurs qui veulent les sons du monde exterieur ou les mobs (zone active, voir keepLoaded).
             if (DISABLED.contains(entry.getKey()) || !entry.getValue().ticketActive) {
                 continue;
             }
@@ -1478,6 +1495,12 @@ public final class ServerView {
             }
             FarRingServer.tick(player, source, track.pocket, track.capturedCenter, track.center, track.lastRadius, track.hasFull);
             NeighborPocketsServer.tick(player, source, track.pocket, track.source.pos(), track.lastRadius, track.hasFull);
+            try {
+                OutsideMobsServer.tick(player, source, track.pocket, track.capturedCenter, track.lastRadius, track.hasFull,
+                        FlightServer.active(player.getUUID()));
+            } catch (Exception e) {
+                logOnce("mobs du dehors", e);
+            }
             if (!flightFirst) {
                 FlightServer.tick(player, source, track.pocket, track.center, track.capturedCenter, Config.RADIUS.get(), track.hasFull);
             }
@@ -1595,6 +1618,7 @@ public final class ServerView {
         for (UUID id : new ArrayList<>(TRACKS.keySet())) removeTrack(event.getServer(), id);
         SubLevelServer.clear();
         FarRingServer.clearAll();
+        OutsideMobsServer.clearAll();
         HiddenChanges.clear();
         NeighborPocketsServer.clearAll();
         FlightServer.clearAll();
@@ -1622,7 +1646,8 @@ public final class ServerView {
      */
     private static void keepLoaded(MinecraftServer server, UUID player, Track track, int radius) {
         int chunks = Math.floorDiv(radius + 15, 16) + 1;
-        boolean active = prefsOf(player).world();
+        // Zone active pour les sons du monde exterieur, ou pour que les mobs affiches bougent.
+        boolean active = prefsOf(player).world() || OutsideMobsServer.wants(player);
         ChunkPos center = new ChunkPos(track.center);
         if (chunks == track.ticketChunks && active == track.ticketActive && center.equals(track.ticketCenter)) {
             return;
@@ -1672,6 +1697,7 @@ public final class ServerView {
         FarRingServer.forget(server, id);
         NeighborPocketsServer.forget(server, id);
         FlightServer.forget(id);
+        OutsideMobsServer.forget(id);
         Track track = TRACKS.remove(id);
         if (track == null) {
             return;

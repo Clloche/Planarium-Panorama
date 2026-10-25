@@ -87,6 +87,19 @@ public class PlanariumView {
                 com.matthieu.planariumview.network.FlightPayload.TYPE,
                 com.matthieu.planariumview.network.FlightPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.FlightView.receive(payload)));
+        // Facultatif : mobs du dehors (rayon detaille), et ce que le client veut voir en plus des blocs.
+        event.registrar(NETWORK_VERSION).optional().playToClient(
+                com.matthieu.planariumview.network.OutsideMobsPayload.TYPE,
+                com.matthieu.planariumview.network.OutsideMobsPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.OutsideMobs.receive(payload)));
+        event.registrar(NETWORK_VERSION).optional().playToServer(
+                com.matthieu.planariumview.network.ViewPrefsPayload.TYPE,
+                com.matthieu.planariumview.network.ViewPrefsPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> {
+                    if (context.player() instanceof net.minecraft.server.level.ServerPlayer player) {
+                        com.matthieu.planariumview.server.ServerView.setViewPrefs(player, payload);
+                    }
+                }));
         // Facultatif : anneau lointain du decor (un serveur sans cette version n'en envoie pas).
         event.registrar(NETWORK_VERSION).optional().playToClient(
                 com.matthieu.planariumview.network.FarRingPayload.TYPE,

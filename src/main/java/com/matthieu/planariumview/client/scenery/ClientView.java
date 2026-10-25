@@ -697,6 +697,8 @@ public final class ClientView {
                 !mc.isPaused() && inJar && Config.sceneryAmbience() && Config.outsideAmbience() ? sceneryWorld() : null,
                 currentRadius);
         if (!mc.isPaused()) {
+            OutsideMobs.tick();
+            OutsideSoundClient.tick();
             SceneryParticles.tick();
             if (Config.sceneryParticles()) {
                 MiniParticles.tick();
@@ -1010,6 +1012,8 @@ public final class ClientView {
 
     /** Dernieres options des sons du monde exterieur envoyees au serveur (null : rien d'envoye sur cette connexion). */
     private static SoundPrefsPayload sentSoundPrefs;
+    /** Dernieres options de vue envoyees au serveur (mobs du dehors), null : rien d'envoye sur cette connexion. */
+    private static com.matthieu.planariumview.network.ViewPrefsPayload sentViewPrefs;
     private static Boolean sentSubLevelViews;
     /** Nombre de Planariums voisins envoye au serveur (null : rien d'envoye sur cette connexion). */
     private static Integer sentNeighbors;
@@ -1055,6 +1059,18 @@ public final class ClientView {
                 LOGGER.debug("[Planarium Panorama] Options des sons non envoyees au serveur", e);
             }
         }
+        com.matthieu.planariumview.network.ViewPrefsPayload view = new com.matthieu.planariumview.network.ViewPrefsPayload(
+                Config.outsideMobs(), OutsideMobs.resyncCounter());
+        if (!view.equals(sentViewPrefs)) {
+            sentViewPrefs = view;
+            try {
+                if (connection.hasChannel(com.matthieu.planariumview.network.ViewPrefsPayload.TYPE)) {
+                    net.neoforged.neoforge.network.PacketDistributor.sendToServer(view);
+                }
+            } catch (Exception e) {
+                LOGGER.debug("[Planarium Panorama] Options de vue non envoyees au serveur", e);
+            }
+        }
         boolean enabled = Config.enabled();
         if (sentEnabled != null && sentEnabled == enabled) {
             return;
@@ -1072,6 +1088,7 @@ public final class ClientView {
     private static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         sentEnabled = null;
         sentSoundPrefs = null;
+        sentViewPrefs = null;
         sentSubLevelViews = null;
         sentNeighbors = null;
         com.matthieu.planariumview.client.sound.MachineSounds.clear();
@@ -1080,6 +1097,7 @@ public final class ClientView {
         SceneryBubbles.clear();
         MiniParticles.clear();
         dispose();
+        OutsideMobs.logout();
         MiniLight.clear();
         com.matthieu.planariumview.client.mini.MiniEntities.clear();
         SubLevelView.clear();
@@ -1104,6 +1122,8 @@ public final class ClientView {
         WeatherView.clear();
         WallColors.clear();
         GiantSprites.clear();
+        OutsideMobs.clear();
+        OutsideSoundClient.clear();
         // Sortie, changement de bocal ou deconnexion : ne pas garder l'ancien monde client (et ses chunks).
         com.matthieu.planariumview.client.jar.ProjectorLighting.clear();
     }
@@ -2480,6 +2500,34 @@ public final class ClientView {
                 LOGGER.debug("[Planarium Panorama] Entite du decor ignoree", e);
             }
             poseStack.popPose();
+        }
+        // Mobs du dehors : places pour cette image, une pile de matrices neuve par mob (un rendu modde qui plante en
+        // plein milieu ne laisse pas la pile decalee pour les suivants).
+        for (net.minecraft.world.entity.Entity mob : OutsideMobs.prepare(partialTick, info.origin())) {
+            if (!liveArea(mob.getX() - radius - 0.5, mob.getZ() - radius - 0.5, view + 1.0)
+                    || !specialVisible(mob.getBoundingBoxForCulling().inflate(1.0), radius)) {
+                continue;
+            }
+            PoseStack mobStack = new PoseStack();
+            mobStack.mulPose(poseStack.last().pose());
+            mobStack.translate(-camera.x, -camera.y, -camera.z);
+            mobStack.mulPose(terrain);
+            mobStack.translate(-ARS_OFFSET * GIANT, -ARS_OFFSET * GIANT - Y_SHIFT, -ARS_OFFSET * GIANT);
+            mobStack.scale(GIANT, GIANT, GIANT);
+            mobStack.translate(-radius, -radius, -radius);
+            try {
+                int light;
+                ColorCompat.begin(fake);
+                try {
+                    light = GiantEntities.packedLight(fake, mob, partialTick);
+                } finally {
+                    ColorCompat.end();
+                }
+                GiantEntities.render(mob, fake, partialTick, mobStack, blockEntityBuffers, light);
+            } catch (Exception | LinkageError e) {
+                OutsideMobs.broken(mob);
+                LOGGER.debug("[Planarium Panorama] Mob du dehors ignore", e);
+            }
         }
     }
 

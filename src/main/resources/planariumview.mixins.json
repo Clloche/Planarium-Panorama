@@ -4,6 +4,7 @@
   "package": "com.matthieu.planariumview.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "SynchedEntityDataAccessor",
     "PlanariumTileSubLevelMixin",
     "DimBoundaryMixin",
     "BlockStateLightMixin",

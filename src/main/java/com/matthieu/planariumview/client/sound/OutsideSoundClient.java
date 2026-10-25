@@ -18,6 +18,8 @@ import net.minecraft.world.phys.Vec3;
 public final class OutsideSoundClient {
     /** Les sons d'ambiance du decor sont un peu baisses : on les entend a travers le verre du bocal. */
     public static final float AMBIENCE_VOLUME = 0.6F;
+    private static final java.util.Set<SoundInstance> MOB_SOUNDS =
+            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
     private OutsideSoundClient() {
     }
 
@@ -36,7 +38,8 @@ public final class OutsideSoundClient {
             return;
         }
 
-        play(sound, sources[payload.source()], payload.volume(), payload.pitch(), payload.dx(), payload.dy(), payload.dz(), false);
+        play(sound, sources[payload.source()], payload.volume(), payload.pitch(), payload.dx(), payload.dy(), payload.dz(),
+                false, payload.category() == OutsideSoundPayload.MOBS);
         if (payload.category() == OutsideSoundPayload.EXPLOSIONS) {
             ClientView.onOutsideExplosion(payload.dx(), payload.dy(), payload.dz());
         }
@@ -68,12 +71,33 @@ public final class OutsideSoundClient {
     /** Joue un son deja attenue (volume final) venant de (dx, dy, dz) par rapport au Planarium. */
     public static void play(SoundEvent sound, SoundSource source, float volume, float pitch, double dx, double dy, double dz,
                      boolean scenery) {
+        play(sound, source, volume, pitch, dx, dy, dz, scenery, false);
+    }
+
+    private static void play(SoundEvent sound, SoundSource source, float volume, float pitch, double dx, double dy, double dz,
+                             boolean scenery, boolean mob) {
         if (volume <= 0.0F) {
             return;
         }
         Vec3 playback = playbackPosition(dx, dy, dz);
-        Minecraft.getInstance().getSoundManager().play(new OutsideInstance(sound, source, volume, pitch,
-                playback, scenery, new Vec3(dx, dy, dz)));
+        SoundInstance instance = new OutsideInstance(sound, source, volume, pitch, playback, scenery, new Vec3(dx, dy, dz));
+        Minecraft.getInstance().getSoundManager().play(instance);
+        if (mob) MOB_SOUNDS.add(instance);
+    }
+
+    /** Arrete aussi les sons deja en cours quand l'option des mobs ou des sons est coupee. */
+    public static void tick() {
+        if (MOB_SOUNDS.isEmpty()) return;
+        if (!Config.mobSounds()) {
+            clear();
+        } else {
+            MOB_SOUNDS.removeIf(sound -> !Minecraft.getInstance().getSoundManager().isActive(sound));
+        }
+    }
+
+    public static void clear() {
+        for (SoundInstance sound : MOB_SOUNDS) Minecraft.getInstance().getSoundManager().stop(sound);
+        MOB_SOUNDS.clear();
     }
 
     /** Vrai pour un son d'ambiance du decor (voir DsSoundBlockMixin). */
