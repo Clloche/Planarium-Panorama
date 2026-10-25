@@ -1060,7 +1060,7 @@ public final class ClientView {
             }
         }
         com.matthieu.planariumview.network.ViewPrefsPayload view = new com.matthieu.planariumview.network.ViewPrefsPayload(
-                Config.outsideMobs(), OutsideMobs.resyncCounter());
+                Config.outsideMobs(), Config.outsideVehicles(), OutsideMobs.resyncCounter());
         if (!view.equals(sentViewPrefs)) {
             sentViewPrefs = view;
             try {
@@ -2523,7 +2523,7 @@ public final class ClientView {
                 } finally {
                     ColorCompat.end();
                 }
-                GiantEntities.render(mob, fake, partialTick, mobStack, blockEntityBuffers, light);
+                OutsideVehicles.render(mob, fake, partialTick, mobStack, blockEntityBuffers, light);
             } catch (Exception | LinkageError e) {
                 OutsideMobs.broken(mob);
                 LOGGER.debug("[Planarium Panorama] Mob du dehors ignore", e);

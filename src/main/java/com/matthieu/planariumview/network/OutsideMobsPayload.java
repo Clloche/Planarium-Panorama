@@ -13,7 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Serveur -> client : les mobs du rayon detaille, quelques fois par seconde (voir OutsideMobsServer).
+ * Serveur -> client : mobs et vehicules du rayon detaille, quelques fois par seconde (voir OutsideMobsServer).
  *
  * Positions relatives a {@code origin}, l'origine de la photo du decor que le serveur a envoyee en dernier : le client
  * les ramene a la sienne (elle peut avoir une photo de retard). {@code tick} : tick du serveur, pour l'interpolation.
@@ -32,9 +32,15 @@ public record OutsideMobsPayload(ResourceLocation pocketDim, int resync, BlockPo
      * recreer (type et NBT allege), seulement a sa premiere apparition. {@code data} : ses donnees synchronisees
      * (pose, variante, bebe, en feu...), {@code equipment} : son equipement, encodes comme Minecraft les envoie, ou
      * vides s'ils n'ont pas change.
+     * {@code vehicleId} : identifiant d'une autre copie, ou -1 ; {@code seat} conserve l'ordre des passagers.
+     * {@code visual} : animation d'un bateau ou compte a rebours d'un wagonnet TNT, sinon null.
      */
     public record Entry(int id, float x, float y, float z, float yRot, float xRot, float headRot, float bodyRot,
-                        CompoundTag create, byte[] data, byte[] equipment) {
+                        int vehicleId, int seat, VehicleState visual, CompoundTag create, byte[] data, byte[] equipment) {
+    }
+
+    /** Animations que les donnees synchronisees seules ne font pas avancer sans tick de l'entite. */
+    public record VehicleState(float leftPaddle, float rightPaddle, int bubbleTicks, boolean underwater, int fuse) {
     }
 
     public static final Type<OutsideMobsPayload> TYPE =
@@ -63,6 +69,17 @@ public record OutsideMobsPayload(ResourceLocation pocketDim, int resync, BlockPo
             buf.writeFloat(entry.xRot());
             buf.writeFloat(entry.headRot());
             buf.writeFloat(entry.bodyRot());
+            buf.writeVarInt(entry.vehicleId() + 1);
+            if (entry.vehicleId() >= 0) buf.writeVarInt(entry.seat());
+            buf.writeBoolean(entry.visual() != null);
+            if (entry.visual() != null) {
+                VehicleState visual = entry.visual();
+                buf.writeFloat(visual.leftPaddle());
+                buf.writeFloat(visual.rightPaddle());
+                buf.writeVarInt(visual.bubbleTicks());
+                buf.writeBoolean(visual.underwater());
+                buf.writeVarInt(visual.fuse() + 1);
+            }
             buf.writeBoolean(entry.create() != null);
             if (entry.create() != null) buf.writeNbt(entry.create());
             buf.writeByteArray(entry.data());
@@ -84,10 +101,14 @@ public record OutsideMobsPayload(ResourceLocation pocketDim, int resync, BlockPo
             int id = buf.readVarInt();
             float x = buf.readFloat(), y = buf.readFloat(), z = buf.readFloat();
             float yRot = buf.readFloat(), xRot = buf.readFloat(), headRot = buf.readFloat(), bodyRot = buf.readFloat();
+            int vehicleId = buf.readVarInt() - 1;
+            int seat = vehicleId >= 0 ? buf.readVarInt() : 0;
+            VehicleState visual = buf.readBoolean()
+                    ? new VehicleState(buf.readFloat(), buf.readFloat(), buf.readVarInt(), buf.readBoolean(), buf.readVarInt() - 1) : null;
             CompoundTag create = buf.readBoolean() ? buf.readNbt() : null;
             byte[] data = buf.readByteArray(MAX_BYTES);
             byte[] equipment = buf.readByteArray(MAX_BYTES);
-            entries.add(new Entry(id, x, y, z, yRot, xRot, headRot, bodyRot, create, data, equipment));
+            entries.add(new Entry(id, x, y, z, yRot, xRot, headRot, bodyRot, vehicleId, seat, visual, create, data, equipment));
         }
         int[] removed = buf.readVarIntArray(MAX_ENTRIES);
         return new OutsideMobsPayload(pocket, resync, origin, tick, full, entries, removed);

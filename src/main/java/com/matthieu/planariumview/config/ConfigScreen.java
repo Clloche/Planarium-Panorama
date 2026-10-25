@@ -107,6 +107,16 @@ public final class ConfigScreen {
                 .binding(Config.OUTSIDE_MOBS.getDefault(), Config.OUTSIDE_MOBS::get, Config.OUTSIDE_MOBS::set)
                 .controller(opt -> BooleanControllerBuilder.create(opt).onOffFormatter().coloured(true))
                 .build();
+        Option<Boolean> outsideVehicles = Option.<Boolean>createBuilder()
+                .name(Component.translatable(KEY + "outside_vehicles"))
+                .description(OptionDescription.of(Component.translatable(KEY + "outside_vehicles.tooltip", optionName("outside_mobs")),
+                        Component.empty(),
+                        Component.translatable(KEY + "outside_vehicles.warning", optionName("radius")),
+                        Component.empty(),
+                        Component.translatable(KEY + "default", onOff(Config.OUTSIDE_VEHICLES.getDefault())).withStyle(ChatFormatting.GRAY)))
+                .binding(Config.OUTSIDE_VEHICLES.getDefault(), Config.OUTSIDE_VEHICLES::get, Config.OUTSIDE_VEHICLES::set)
+                .controller(opt -> BooleanControllerBuilder.create(opt).onOffFormatter().coloured(true))
+                .build();
         // Better Clouds actif ou Simple Clouds installe : leurs nuages remplacent ceux de Minecraft dehors, mais le bocal
         // dessine des nuages vanilla. On laisse le choix, avec un avertissement dans la description.
         String cloudsMod = SimpleCloudsCompat.installed() ? "Simple Clouds" : BetterCloudsCompat.active() ? "Better Clouds" : null;
@@ -160,6 +170,7 @@ public final class ConfigScreen {
         gated.add(new Gated(sceneryParticles, () -> true));
         gated.add(new Gated(worldSounds, () -> true));
         gated.add(new Gated(outsideMobs, () -> true));
+        gated.add(new Gated(outsideVehicles, () -> true));
         gated.add(new Gated(clouds, () -> true));
         gated.add(new Gated(fog, () -> true));
         gated.add(new Gated(caveFog, () -> true));
@@ -217,7 +228,7 @@ public final class ConfigScreen {
 
         dirty = false;
         for (Option<?> option : List.of(master, lighting, radius, farRadius, biome, weather, sceneryAmbience, sceneryParticles, worldSounds,
-                outsideMobs, clouds, fog, blockUpdates, refresh, ambience, ambientSounds, lunar, subLevels, caveFog, neighbors)) {
+                outsideMobs, outsideVehicles, clouds, fog, blockUpdates, refresh, ambience, ambientSounds, lunar, subLevels, caveFog, neighbors)) {
             autoSave(option);
         }
 
@@ -258,12 +269,17 @@ public final class ConfigScreen {
                                 .option(clouds)
                                 .build())
                         .group(OptionGroup.createBuilder()
+                                .name(Component.translatable(KEY + "group.entities"))
+                                .collapsed(false)
+                                .option(outsideMobs)
+                                .option(outsideVehicles)
+                                .build())
+                        .group(OptionGroup.createBuilder()
                                 .name(Component.translatable(KEY + "group.sounds"))
                                 .collapsed(false)
                                 .option(sceneryParticles)
                                 .option(sceneryAmbience)
                                 .option(worldSounds)
-                                .option(outsideMobs)
                                 .build())
                         .build())
                 .category(ConfigCategory.createBuilder()

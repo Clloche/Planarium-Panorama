@@ -28,6 +28,7 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue SCENERY_PARTICLES;
     public static final ModConfigSpec.BooleanValue WORLD_SOUNDS;
     public static final ModConfigSpec.BooleanValue OUTSIDE_MOBS;
+    public static final ModConfigSpec.BooleanValue OUTSIDE_VEHICLES;
     public static final ModConfigSpec.BooleanValue OUTSIDE_AMBIENCE;
     public static final ModConfigSpec.BooleanValue AMBIENT_SOUNDS;
     public static final ModConfigSpec.BooleanValue LUNAR_EVENTS;
@@ -114,13 +115,19 @@ public final class Config {
                 .comment("Sounds from the outside world around the Planarium (mobs, redstone, explosions, jukeboxes...), from their direction",
                         "in the scenery. Sounds directly caused by a player are excluded.",
                         "While ON, the detail radius around the Planarium keeps running as if you were there (machines, mobs, furnaces).",
-                        "OFF: stops keeping that area active, unless Outside mobs is ON or a player is there; scenery ambience remains.")
+                        "OFF: stops keeping that area active, unless outside mobs or vehicles are ON or a player is there; scenery ambience remains.")
                 .define("worldSounds", true);
         OUTSIDE_MOBS = client
-                .comment("Mobs around the Planarium, in the detail radius of the giant scenery (up to 64, the closest).",
+                .comment("Mobs around the Planarium, in the detail radius of the giant scenery (up to 64 mobs and vehicles combined, the closest).",
                         "While ON, the detail radius and a small surrounding margin keep running so they move, even with outside world sounds OFF.",
                         "OFF: mobs are not shown and their sounds are not played either.")
                 .define("outsideMobs", false);
+        OUTSIDE_VEHICLES = client
+                .comment("Boats, rafts and minecarts around the Planarium, in the detail radius of the giant scenery.",
+                        "Independent of outsideMobs. Mob passengers are shown when both options are ON.",
+                        "While ON, the detail radius and a small surrounding margin keep running, even with outside world sounds OFF.",
+                        "Up to 64 mobs and vehicles combined, the closest.")
+                .define("outsideVehicles", false);
         OUTSIDE_AMBIENCE = client
                 .comment("Dynamic Surroundings plays the ambience of the Planarium's surroundings inside the jar (biome sounds,",
                         "or silence if the Planarium is sheltered, or cave sounds if it is underground), and its biome fog colors show in the jar.",
@@ -246,6 +253,14 @@ public final class Config {
     /** Mobs du dehors dans le decor geant (voir OutsideMobs). */
     public static boolean outsideMobs() {
         return enabled() && OUTSIDE_MOBS.get();
+    }
+
+    public static boolean outsideVehicles() {
+        return enabled() && OUTSIDE_VEHICLES.get();
+    }
+
+    public static boolean outsideEntities() {
+        return outsideMobs() || outsideVehicles();
     }
 
     // Blocs et explosions : avec les sons du monde exterieur (plus de reglage separe). Les mobs : seulement s'ils sont

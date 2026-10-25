@@ -5,6 +5,8 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "SynchedEntityDataAccessor",
+    "RandomStrollGoalMixin",
+    "BoatAccessor",
     "PlanariumTileSubLevelMixin",
     "DimBoundaryMixin",
     "BlockStateLightMixin",
@@ -15,6 +17,9 @@
     "LevelEventSoundMixin"
   ],
   "client": [
+    "SceneryEntityAccessor",
+    "BoatSceneryMixin",
+    "TntMinecartAccessor",
     "ClientLevelMixin",
     "ParticleAccessor",
     "ParticleEngineAccessor",

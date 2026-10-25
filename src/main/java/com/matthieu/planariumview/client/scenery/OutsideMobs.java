@@ -2,7 +2,9 @@ package com.matthieu.planariumview.client.scenery;
 
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.OutsideMobsPayload;
+import com.matthieu.planariumview.mixin.SceneryEntityAccessor;
 
+import com.google.common.collect.ImmutableList;
 import com.mojang.logging.LogUtils;
 import io.netty.buffer.Unpooled;
 import net.minecraft.client.Minecraft;
@@ -15,6 +17,10 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.decoration.ArmorStand;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.vehicle.AbstractMinecart;
+import net.minecraft.world.entity.vehicle.Boat;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import org.slf4j.Logger;
@@ -29,7 +35,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Mobs du dehors dans le decor geant (voir OutsideMobsServer) : des copies jamais ajoutees a un monde, sans IA,
+ * Mobs et vehicules du dehors (options independantes, flux commun) : des copies jamais ajoutees a un monde, sans IA,
  * placees chaque image entre les deux derniers etats recus, environ 150 ms en arriere (le serveur envoie 10 fois par
  * seconde). La marche est animee chaque tick d'apres le deplacement interpole, comme Minecraft le fait pour les
  * entites lointaines.
@@ -48,7 +54,8 @@ public final class OutsideMobs {
     /** Mob sans nouvelle depuis ce temps (ticks) : retire, par securite. */
     private static final int STALE_TICKS = 100;
 
-    private record State(int tick, double x, double y, double z, float yRot, float xRot, float headRot, float bodyRot) {
+    private record State(int tick, double x, double y, double z, float yRot, float xRot, float headRot, float bodyRot,
+                         int vehicleId, int seat, OutsideMobsPayload.VehicleState visual) {
     }
 
     private static final class Copy {
@@ -58,6 +65,9 @@ public final class OutsideMobs {
         /** Position au dernier tick (monde d'origine), pour l'animation de marche. */
         double tickX, tickY, tickZ;
         boolean placed;
+        boolean linked;
+        State rendered;
+        final OutsideVehicles.Animation animation = new OutsideVehicles.Animation();
 
         Copy(Entity entity) {
             this.entity = entity;
@@ -81,13 +91,23 @@ public final class OutsideMobs {
     /** Augmente quand on a besoin que le serveur renvoie tout (voir ViewPrefsPayload). */
     private static int resync;
     private static long lastResync = Long.MIN_VALUE / 2;
+    private static boolean optionsKnown, mobsEnabled, vehiclesEnabled;
 
     private OutsideMobs() {
     }
 
     /** Compteur envoye au serveur : quand il change, le serveur renvoie tous les mobs avec de quoi les recreer. */
     public static int resyncCounter() {
+        syncOptions();
         return resync;
+    }
+
+    private static void syncOptions() {
+        boolean mobs = Config.outsideMobs(), vehicles = Config.outsideVehicles();
+        if (optionsKnown && (mobs != mobsEnabled || vehicles != vehiclesEnabled)) clear();
+        optionsKnown = true;
+        mobsEnabled = mobs;
+        vehiclesEnabled = vehicles;
     }
 
     private static void requestResync() {
@@ -98,10 +118,11 @@ public final class OutsideMobs {
     }
 
     public static void receive(OutsideMobsPayload payload) {
+        syncOptions();
         Minecraft mc = Minecraft.getInstance();
         if (payload.resync() != resync || mc.level == null
                 || !mc.level.dimension().location().equals(payload.pocketDim())) return;
-        if (!Config.outsideMobs()) {
+        if (!Config.outsideEntities()) {
             clear();
             return;
         }
@@ -140,7 +161,8 @@ public final class OutsideMobs {
             }
             apply(copy, entry);
             State state = new State(payload.tick(), origin.getX() + (double) entry.x(), origin.getY() + (double) entry.y(),
-                    origin.getZ() + (double) entry.z(), entry.yRot(), entry.xRot(), entry.headRot(), entry.bodyRot());
+                    origin.getZ() + (double) entry.z(), entry.yRot(), entry.xRot(), entry.headRot(), entry.bodyRot(),
+                    entry.vehicleId(), entry.seat(), entry.visual());
             // Dans l'ordre des ticks (un envoi ne revient jamais en arriere, sauf redemarrage du serveur).
             if (!copy.states.isEmpty()) {
                 State previous = copy.states.peekLast();
@@ -149,7 +171,8 @@ public final class OutsideMobs {
                 } else if (state.tick() - previous.tick() > OutsideMobsPayload.UPDATE_INTERVAL) {
                     // Sans delta, le mob etait immobile jusqu'au precedent passage du serveur.
                     copy.states.addLast(new State(state.tick() - OutsideMobsPayload.UPDATE_INTERVAL, previous.x(), previous.y(), previous.z(),
-                            previous.yRot(), previous.xRot(), previous.headRot(), previous.bodyRot()));
+                            previous.yRot(), previous.xRot(), previous.headRot(), previous.bodyRot(),
+                            previous.vehicleId(), previous.seat(), previous.visual()));
                 }
             }
             copy.states.addLast(state);
@@ -157,12 +180,12 @@ public final class OutsideMobs {
             copy.lastUpdate = clientTick;
         }
         for (int id : payload.removed()) {
-            COPIES.remove(id);
+            removeCopy(id);
             IGNORED.remove(id);
         }
         if (seen != null) {
             // Envoi complet : les copies gardees sont mises a jour, celles qui manquent sont retirees.
-            COPIES.keySet().removeIf(id -> !seen.contains(id));
+            for (int id : new ArrayList<>(COPIES.keySet())) if (!seen.contains(id)) removeCopy(id);
             IGNORED.removeIf(id -> !seen.contains(id));
         }
     }
@@ -172,7 +195,9 @@ public final class OutsideMobs {
         if (type == null || BROKEN.contains(type)) return null;
         try {
             Entity entity = EntityType.create(entry.create().copy(), level).orElse(null);
-            if (!(entity instanceof LivingEntity)) return null;
+            boolean vehicle = entity instanceof Boat || entity instanceof AbstractMinecart;
+            if (vehicle ? !Config.outsideVehicles() : !Config.outsideMobs() || !(entity instanceof LivingEntity)
+                    || entity instanceof Player || entity instanceof ArmorStand) return null;
             entity.setId(entry.id());
             entity.noPhysics = true;
             return new Copy(entity);
@@ -219,9 +244,10 @@ public final class OutsideMobs {
 
     /** Chaque tick client : animation de marche d'apres le deplacement interpole, et menage. */
     public static void tick() {
+        syncOptions();
         clientTick++;
         Minecraft mc = Minecraft.getInstance();
-        if (!Config.outsideMobs() || mc.level == null || mc.level != level) {
+        if (!Config.outsideEntities() || mc.level == null || mc.level != level) {
             clear();
             return;
         }
@@ -236,10 +262,12 @@ public final class OutsideMobs {
             Copy copy = iterator.next();
             if (!BROKEN.isEmpty() && BROKEN.contains(EntityType.getKey(copy.entity.getType()))) {
                 IGNORED.add(copy.entity.getId());
+                unlinkAll();
                 iterator.remove();
                 continue;
             }
             if (clientTick - copy.lastUpdate > STALE_TICKS) {
+                unlinkAll();
                 iterator.remove();
                 requestResync();
                 continue;
@@ -260,8 +288,10 @@ public final class OutsideMobs {
                 copy.tickZ = state.z();
                 copy.placed = true;
                 if (entity instanceof LivingEntity living) {
-                    living.calculateEntityAnimation(false);
+                    if (state.vehicleId() >= 0) living.walkAnimation.update(0, 0.4F);
+                    else living.calculateEntityAnimation(false);
                 }
+                copy.animation.tick(entity, state.visual());
                 entity.tickCount++;
             } catch (RuntimeException e) {
                 LOGGER.debug("[Planarium Panorama] Animation d'un mob du dehors ignoree", e);
@@ -274,13 +304,15 @@ public final class OutsideMobs {
      * leur position et leurs rotations interpolees. Rien en vol (le decor normal est cache).
      */
     static List<Entity> prepare(float partialTick, BlockPos photoOrigin) {
-        if (COPIES.isEmpty() || photoOrigin == null || FlightView.active() || !Config.outsideMobs()) return List.of();
+        if (COPIES.isEmpty() || photoOrigin == null || FlightView.active() || !Config.outsideEntities()) return List.of();
         double frameOffset = Double.isNaN(previousOffset) ? offset : Mth.lerp(partialTick, previousOffset, offset);
         double time = clientTick + partialTick + frameOffset - DELAY;
         List<Entity> result = new ArrayList<>(COPIES.size());
         for (Copy copy : COPIES.values()) {
             State state = at(copy, time);
+            copy.rendered = null;
             if (state == null || !BROKEN.isEmpty() && BROKEN.contains(EntityType.getKey(copy.entity.getType()))) continue;
+            copy.rendered = state;
             Entity entity = copy.entity;
             double x = state.x() - photoOrigin.getX();
             double y = state.y() - photoOrigin.getY();
@@ -303,9 +335,62 @@ public final class OutsideMobs {
                 living.yHeadRot = state.headRot();
                 living.yHeadRotO = state.headRot();
             }
+            copy.animation.prepare(entity, state.visual(), time, partialTick);
             result.add(entity);
         }
+        // Une copie de vehicule refusee par son renderer ne doit pas laisser flotter ses passagers.
+        for (Copy copy : COPIES.values()) {
+            if (copy.rendered != null && !visibleChain(copy)) {
+                result.remove(copy.entity);
+                copy.rendered = null;
+            }
+        }
+        linkPassengers();
         return result;
+    }
+
+    private static boolean visibleChain(Copy copy) {
+        for (int depth = 0; depth < COPIES.size(); depth++) {
+            if (copy == null || copy.rendered == null) return false;
+            if (copy.rendered.vehicleId() < 0) return true;
+            copy = COPIES.get(copy.rendered.vehicleId());
+        }
+        return false;
+    }
+
+    /** Relations exclusivement entre nos copies, au meme instant interpole que leurs positions. */
+    private static void linkPassengers() {
+        unlinkAll();
+        Map<Copy, List<Copy>> groups = new HashMap<>();
+        for (Copy passenger : COPIES.values()) {
+            if (passenger.rendered == null || passenger.rendered.vehicleId() < 0) continue;
+            Copy vehicle = COPIES.get(passenger.rendered.vehicleId());
+            if (vehicle == null || vehicle.rendered == null || vehicle == passenger) continue;
+            ((SceneryEntityAccessor) passenger.entity).planariumview$setVehicle(vehicle.entity);
+            passenger.linked = true;
+            groups.computeIfAbsent(vehicle, ignored -> new ArrayList<>()).add(passenger);
+        }
+        for (Map.Entry<Copy, List<Copy>> group : groups.entrySet()) {
+            group.getValue().sort(java.util.Comparator.comparingInt(copy -> copy.rendered.seat()));
+            ImmutableList<Entity> passengers = group.getValue().stream().map(copy -> copy.entity).collect(ImmutableList.toImmutableList());
+            ((SceneryEntityAccessor) group.getKey().entity).planariumview$setPassengers(passengers);
+            group.getKey().linked = true;
+        }
+    }
+
+    private static void unlinkAll() {
+        for (Copy copy : COPIES.values()) {
+            if (!copy.linked) continue;
+            SceneryEntityAccessor access = (SceneryEntityAccessor) copy.entity;
+            access.planariumview$setVehicle(null);
+            access.planariumview$setPassengers(ImmutableList.of());
+            copy.linked = false;
+        }
+    }
+
+    private static void removeCopy(int id) {
+        unlinkAll();
+        COPIES.remove(id);
     }
 
     /** Le dessin d'un mob a echoue : son type n'est plus dessine. */
@@ -331,7 +416,8 @@ public final class OutsideMobs {
                 return new State((int) time, Mth.lerp(f, before.x(), state.x()), Mth.lerp(f, before.y(), state.y()),
                         Mth.lerp(f, before.z(), state.z()), Mth.rotLerp(f, before.yRot(), state.yRot()),
                         Mth.lerp(f, before.xRot(), state.xRot()), Mth.rotLerp(f, before.headRot(), state.headRot()),
-                        Mth.rotLerp(f, before.bodyRot(), state.bodyRot()));
+                        Mth.rotLerp(f, before.bodyRot(), state.bodyRot()), before.vehicleId(), before.seat(),
+                        OutsideVehicles.interpolate(before.visual(), state.visual(), f));
             }
             before = state;
         }
@@ -341,6 +427,7 @@ public final class OutsideMobs {
 
     public static void clear() {
         if (level != null || !COPIES.isEmpty()) resync++;
+        unlinkAll();
         COPIES.clear();
         IGNORED.clear();
         level = null;
@@ -356,5 +443,6 @@ public final class OutsideMobs {
         resync = 0;
         clientTick = 0;
         lastResync = Long.MIN_VALUE / 2;
+        optionsKnown = false;
     }
 }
