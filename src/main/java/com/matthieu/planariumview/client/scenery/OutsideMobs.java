@@ -1,5 +1,6 @@
 package com.matthieu.planariumview.client.scenery;
 
+import com.matthieu.planariumview.client.sound.OutsideMinecartSound;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.OutsideMobsPayload;
 import com.matthieu.planariumview.mixin.SceneryEntityAccessor;
@@ -23,6 +24,9 @@ import net.minecraft.world.entity.vehicle.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.Boat;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4d;
+import org.joml.Vector3d;
 import org.slf4j.Logger;
 
 import java.util.ArrayDeque;
@@ -68,9 +72,19 @@ public final class OutsideMobs {
         boolean linked;
         State rendered;
         final OutsideVehicles.Animation animation = new OutsideVehicles.Animation();
+        double soundSpeed;
+        OutsideMinecartSound sound;
+        int soundStarted;
 
         Copy(Entity entity) {
             this.entity = entity;
+        }
+
+        void stopSound() {
+            if (sound != null) {
+                sound.end();
+                sound = null;
+            }
         }
     }
 
@@ -263,11 +277,13 @@ public final class OutsideMobs {
             if (!BROKEN.isEmpty() && BROKEN.contains(EntityType.getKey(copy.entity.getType()))) {
                 IGNORED.add(copy.entity.getId());
                 unlinkAll();
+                copy.stopSound();
                 iterator.remove();
                 continue;
             }
             if (clientTick - copy.lastUpdate > STALE_TICKS) {
                 unlinkAll();
+                copy.stopSound();
                 iterator.remove();
                 requestResync();
                 continue;
@@ -279,6 +295,12 @@ public final class OutsideMobs {
                 double previousX = copy.placed ? copy.tickX : state.x();
                 double previousY = copy.placed ? copy.tickY : state.y();
                 double previousZ = copy.placed ? copy.tickZ : state.z();
+                if (entity instanceof AbstractMinecart) {
+                    // Le rendu replace entity dans la photo : mesurer dans nos etats absolus, jamais sur entity.
+                    double dx = state.x() - previousX, dy = state.y() - previousY, dz = state.z() - previousZ;
+                    copy.soundSpeed = dx * dx + dy * dy + dz * dz > TELEPORT * TELEPORT
+                            ? 0 : Math.sqrt(dx * dx + dz * dz);
+                }
                 entity.setPos(state.x(), state.y(), state.z());
                 entity.xo = previousX;
                 entity.yo = previousY;
@@ -295,6 +317,39 @@ public final class OutsideMobs {
                 entity.tickCount++;
             } catch (RuntimeException e) {
                 LOGGER.debug("[Planarium Panorama] Animation d'un mob du dehors ignoree", e);
+            }
+        }
+    }
+
+    /** Boucles creees normalement a l'ajout d'un wagonnet au monde client, et donc absentes de nos copies. */
+    static void tickSounds(BlockPos photoOrigin, int radius) {
+        boolean audible = photoOrigin != null && Config.worldSounds() && Config.outsideVehicles();
+        Matrix4d frame = audible ? SubLevelView.sourceFrame(photoOrigin, radius) : null;
+        var sounds = Minecraft.getInstance().getSoundManager();
+        for (Copy copy : COPIES.values()) {
+            if (!(copy.entity instanceof AbstractMinecart)) continue;
+            if (!audible || !copy.placed || copy.entity.isSilent() || copy.entity.isRemoved()) {
+                copy.stopSound();
+                continue;
+            }
+            Vector3d at = frame.transformPosition(new Vector3d(copy.tickX - photoOrigin.getX(),
+                    copy.tickY - photoOrigin.getY(), copy.tickZ - photoOrigin.getZ()));
+            Vec3 relative = new Vec3(at.x, at.y, at.z);
+            float volume = OutsideMinecartSound.volume(copy.soundSpeed, relative);
+            if (volume <= 0) {
+                copy.stopSound();
+                continue;
+            }
+            // Reprendre apres F3+T ou une coupure du moteur audio, sans retenter chaque tick si le son est refuse.
+            if (copy.sound != null && !sounds.isActive(copy.sound) && clientTick - copy.soundStarted >= 20) {
+                copy.stopSound();
+            }
+            if (copy.sound == null) {
+                copy.sound = new OutsideMinecartSound(relative, volume);
+                copy.soundStarted = clientTick;
+                sounds.play(copy.sound);
+            } else {
+                copy.sound.update(relative, volume);
             }
         }
     }
@@ -390,7 +445,8 @@ public final class OutsideMobs {
 
     private static void removeCopy(int id) {
         unlinkAll();
-        COPIES.remove(id);
+        Copy copy = COPIES.remove(id);
+        if (copy != null) copy.stopSound();
     }
 
     /** Le dessin d'un mob a echoue : son type n'est plus dessine. */
@@ -428,6 +484,7 @@ public final class OutsideMobs {
     public static void clear() {
         if (level != null || !COPIES.isEmpty()) resync++;
         unlinkAll();
+        COPIES.values().forEach(Copy::stopSound);
         COPIES.clear();
         IGNORED.clear();
         level = null;

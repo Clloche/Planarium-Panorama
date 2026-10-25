@@ -107,6 +107,7 @@ public final class OutsideSoundClient {
 
     /** Position d'un son du dehors par rapport au Planarium, en blocs du vrai monde (voir SceneryReverb). */
     public static Vec3 outsidePosition(SoundInstance sound) {
+        if (sound instanceof OutsideMinecartSound minecart) return minecart.outsidePosition();
         return sound instanceof OutsideInstance outside ? outside.relative : null;
     }
 

@@ -698,6 +698,7 @@ public final class ClientView {
                 currentRadius);
         if (!mc.isPaused()) {
             OutsideMobs.tick();
+            OutsideMobs.tickSounds(inJar && lastInfo != null ? lastInfo.origin() : null, currentRadius);
             OutsideSoundClient.tick();
             SceneryParticles.tick();
             if (Config.sceneryParticles()) {
