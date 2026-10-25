@@ -69,6 +69,8 @@ public final class OutsideMobs {
         /** Position au dernier tick (monde d'origine), pour l'animation de marche. */
         double tickX, tickY, tickZ;
         boolean placed;
+        /** Montre seulement quand ses etats encadrent l'instant dessine (sinon il apparait puis s'arrete). */
+        boolean ready;
         boolean linked;
         State rendered;
         final OutsideVehicles.Animation animation = new OutsideVehicles.Animation();
@@ -106,6 +108,19 @@ public final class OutsideMobs {
     private static int resync;
     private static long lastResync = Long.MIN_VALUE / 2;
     private static boolean optionsKnown, mobsEnabled, vehiclesEnabled;
+
+    /**
+     * Mise en route a l'entree du bocal : le serveur et le client sont alors charges (photo, anneau, maillages), les
+     * envois arrivent par paquets et le client rattrape des ticks d'un coup. Les entites ne sont montrees qu'apres
+     * WARMUP_PACKETS envois reguliers d'affilee, sans saccade du client : un petit delai plutot que des saccades.
+     * Pendant ce temps rien n'est montre, donc l'horloge se recale directement (sans la limite de MAX_CLOCK_CORRECTION).
+     */
+    private static final int WARMUP_PACKETS = 25; // Environ 2,5 secondes a 10 envois/s.
+    private static boolean warmedUp;
+    private static int regularPackets;
+    /** Tick client trop rapproche (rattrapage) ou trop espace (image bloquee) depuis le dernier envoi. */
+    private static boolean tickHitch;
+    private static long lastTickNanos;
 
     private OutsideMobs() {
     }
@@ -154,6 +169,14 @@ public final class OutsideMobs {
         targetOffset = Double.isNaN(targetOffset) || arrival > targetOffset
                 ? arrival : targetOffset + (arrival - targetOffset) * 0.02;
         if (Double.isNaN(offset)) offset = previousOffset = targetOffset;
+        if (!warmedUp) {
+            // Envoi en retard sur la meilleure arrivee, ou client qui a saccade : on recommence a compter.
+            boolean late = targetOffset - arrival > OutsideMobsPayload.UPDATE_INTERVAL;
+            regularPackets = late || tickHitch ? 0 : regularPackets + 1;
+            tickHitch = false;
+            offset = previousOffset = targetOffset;
+            if (regularPackets >= WARMUP_PACKETS) warmedUp = true;
+        }
         BlockPos origin = payload.origin();
         Set<Integer> seen = payload.full() ? new HashSet<>() : null;
         for (OutsideMobsPayload.Entry entry : payload.entries()) {
@@ -260,6 +283,13 @@ public final class OutsideMobs {
     public static void tick() {
         syncOptions();
         clientTick++;
+        long nanos = System.nanoTime();
+        if (lastTickNanos != 0L) {
+            long gap = nanos - lastTickNanos;
+            // Normalement 50 ms. Moins de 25 : Minecraft rattrape des ticks en retard ; plus de 100 : image bloquee.
+            if (gap < 25_000_000L || gap > 100_000_000L) tickHitch = true;
+        }
+        lastTickNanos = nanos;
         Minecraft mc = Minecraft.getInstance();
         if (!Config.outsideEntities() || mc.level == null || mc.level != level) {
             clear();
@@ -328,7 +358,7 @@ public final class OutsideMobs {
         var sounds = Minecraft.getInstance().getSoundManager();
         for (Copy copy : COPIES.values()) {
             if (!(copy.entity instanceof AbstractMinecart)) continue;
-            if (!audible || !copy.placed || copy.entity.isSilent() || copy.entity.isRemoved()) {
+            if (!audible || !warmedUp || !copy.ready || !copy.placed || copy.entity.isSilent() || copy.entity.isRemoved()) {
                 copy.stopSound();
                 continue;
             }
@@ -360,6 +390,10 @@ public final class OutsideMobs {
      */
     static List<Entity> prepare(float partialTick, BlockPos photoOrigin) {
         if (COPIES.isEmpty() || photoOrigin == null || FlightView.active() || !Config.outsideEntities()) return List.of();
+        if (!warmedUp) {
+            for (Copy copy : COPIES.values()) copy.rendered = null;
+            return List.of();
+        }
         double frameOffset = Double.isNaN(previousOffset) ? offset : Mth.lerp(partialTick, previousOffset, offset);
         double time = clientTick + partialTick + frameOffset - DELAY;
         List<Entity> result = new ArrayList<>(COPIES.size());
@@ -367,6 +401,11 @@ public final class OutsideMobs {
             State state = at(copy, time);
             copy.rendered = null;
             if (state == null || !BROKEN.isEmpty() && BROKEN.contains(EntityType.getKey(copy.entity.getType()))) continue;
+            if (!copy.ready) {
+                // Nouveau mob : attendre deux etats dont le dernier est apres l'instant dessine.
+                if (copy.states.size() < 2 || copy.states.peekLast().tick() < time) continue;
+                copy.ready = true;
+            }
             copy.rendered = state;
             Entity entity = copy.entity;
             double x = state.x() - photoOrigin.getX();
@@ -492,6 +531,9 @@ public final class OutsideMobs {
         offset = Double.NaN;
         targetOffset = Double.NaN;
         previousOffset = Double.NaN;
+        warmedUp = false;
+        regularPackets = 0;
+        tickHitch = false;
     }
 
     public static void logout() {
