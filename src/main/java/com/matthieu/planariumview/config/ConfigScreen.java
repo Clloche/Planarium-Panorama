@@ -1,8 +1,8 @@
 package com.matthieu.planariumview.config;
 
 import com.matthieu.planariumview.client.scenery.ClientView;
-import com.matthieu.planariumview.compat.BetterCloudsCompat;
-import com.matthieu.planariumview.compat.SimpleCloudsCompat;
+import com.matthieu.planariumview.compat.better_clouds.BetterCloudsCompat;
+import com.matthieu.planariumview.compat.simple_clouds.SimpleCloudsCompat;
 
 import dev.isxander.yacl3.api.ConfigCategory;
 import dev.isxander.yacl3.api.LabelOption;

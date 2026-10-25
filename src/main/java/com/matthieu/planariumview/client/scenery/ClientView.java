@@ -1,5 +1,8 @@
 package com.matthieu.planariumview.client.scenery;
 
+import com.matthieu.planariumview.client.scenery.entities.GiantEntities;
+import com.matthieu.planariumview.client.scenery.entities.OutsideMobs;
+import com.matthieu.planariumview.client.scenery.entities.OutsideVehicles;
 import com.matthieu.planariumview.LogFilter;
 import com.matthieu.planariumview.client.jar.JarInteriorBiome;
 import com.matthieu.planariumview.client.jar.WallColors;
@@ -12,11 +15,11 @@ import com.matthieu.planariumview.client.sky.WeatherView;
 import com.matthieu.planariumview.client.sound.OutsideAmbience;
 import com.matthieu.planariumview.client.sound.OutsideRecordClient;
 import com.matthieu.planariumview.client.sound.OutsideSoundClient;
-import com.matthieu.planariumview.compat.AmbersolCompat;
-import com.matthieu.planariumview.compat.ColorCompat;
-import com.matthieu.planariumview.compat.PuddlesCompat;
-import com.matthieu.planariumview.compat.SeasonColors;
-import com.matthieu.planariumview.compat.SnowRealMagicCompat;
+import com.matthieu.planariumview.compat.alexs_caves.AmbersolCompat;
+import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
+import com.matthieu.planariumview.compat.puddle_flood.PuddlesCompat;
+import com.matthieu.planariumview.compat.serene_seasons.SeasonColors;
+import com.matthieu.planariumview.compat.snow_real_magic.SnowRealMagicCompat;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.config.ConfigScreen;
 import com.matthieu.planariumview.network.OutsideViewDeltaPayload;
@@ -731,7 +734,7 @@ public final class ClientView {
             if (particles) {
                 campfireSmoke(lit, radius);
                 int view = viewRadius();
-                com.matthieu.planariumview.compat.ArsParticles.tick(lit, at -> visibleSceneryPos(at, radius, view));
+                com.matthieu.planariumview.compat.ars_nouveau.ArsParticles.tick(lit, at -> visibleSceneryPos(at, radius, view));
             }
         } finally {
             LitRenderingWorld.captureAmbientSounds(false);
@@ -752,7 +755,7 @@ public final class ClientView {
         // Rafales de Windy, comme Minecraft le lui permet autour du joueur : sur les blocs pas pleins (souvent de l'air).
         if (windChecks && !state.isCollisionShapeFullBlock(lit, pos)) {
             OutsideViewPayload info = lastInfo;
-            com.matthieu.planariumview.compat.WindyCompat.tryWind(lit, pos.immutable(), radius,
+            com.matthieu.planariumview.compat.windy.WindyCompat.tryWind(lit, pos.immutable(), radius,
                     info != null ? info.origin() : null, AMBIENT_RANDOM);
         }
         if (state.isAir() || AMBIENT_BROKEN.contains(state.getBlock())) {
@@ -762,7 +765,7 @@ public final class ClientView {
         if (windChecks && Config.outsideAmbience()) {
             SceneryBubbles.tryStart(lit, pos, state);
             OutsideViewPayload info = lastInfo;
-            com.matthieu.planariumview.compat.DsFirefliesCompat.animate(lit, pos, state, AMBIENT_RANDOM,
+            com.matthieu.planariumview.compat.dynamic_surroundings.DsFirefliesCompat.animate(lit, pos, state, AMBIENT_RANDOM,
                     info != null ? info.origin() : BlockPos.ZERO);
         }
         animateBlock(lit, pos.immutable(), state);
@@ -782,7 +785,7 @@ public final class ClientView {
         boolean leaves = false;
         try {
             // Feuilles de Falling Leaves (integration).
-            leaves = com.matthieu.planariumview.compat.FallingLeavesCompat.animate(lit, at, state, AMBIENT_RANDOM);
+            leaves = com.matthieu.planariumview.compat.falling_leaves.FallingLeavesCompat.animate(lit, at, state, AMBIENT_RANDOM);
             state.getBlock().animateTick(state, lit, at, AMBIENT_RANDOM);
             FluidState fluid = state.getFluidState();
             if (!fluid.isEmpty()) {
@@ -981,7 +984,7 @@ public final class ClientView {
     }
 
     /** Death particles follow the same captured origin and moving frame as the rendered mob. */
-    static void onMobDeath(double sourceX, double sourceY, double sourceZ, float width, float height) {
+    public static void onMobDeath(double sourceX, double sourceY, double sourceZ, float width, float height) {
         LitRenderingWorld world = sceneryWorld();
         if (!Config.sceneryParticles() || lastInfo == null || world == null || FlightView.active()) return;
         BlockPos origin = lastInfo.origin();
@@ -1035,7 +1038,7 @@ public final class ClientView {
     /** Dernieres options des sons du monde exterieur envoyees au serveur (null : rien d'envoye sur cette connexion). */
     private static SoundPrefsPayload sentSoundPrefs;
     /** Dernieres options de vue envoyees au serveur (mobs du dehors), null : rien d'envoye sur cette connexion. */
-    private static com.matthieu.planariumview.network.ViewPrefsPayload sentViewPrefs;
+    private static com.matthieu.planariumview.network.entities.ViewPrefsPayload sentViewPrefs;
     private static Boolean sentSubLevelViews;
     /** Nombre de Planariums voisins envoye au serveur (null : rien d'envoye sur cette connexion). */
     private static Integer sentNeighbors;
@@ -1081,12 +1084,12 @@ public final class ClientView {
                 LOGGER.debug("[Planarium Panorama] Options des sons non envoyees au serveur", e);
             }
         }
-        com.matthieu.planariumview.network.ViewPrefsPayload view = new com.matthieu.planariumview.network.ViewPrefsPayload(
+        com.matthieu.planariumview.network.entities.ViewPrefsPayload view = new com.matthieu.planariumview.network.entities.ViewPrefsPayload(
                 Config.outsideMobs(), Config.outsideVehicles(), OutsideMobs.resyncCounter());
         if (!view.equals(sentViewPrefs)) {
             sentViewPrefs = view;
             try {
-                if (connection.hasChannel(com.matthieu.planariumview.network.ViewPrefsPayload.TYPE)) {
+                if (connection.hasChannel(com.matthieu.planariumview.network.entities.ViewPrefsPayload.TYPE)) {
                     net.neoforged.neoforge.network.PacketDistributor.sendToServer(view);
                 }
             } catch (Exception e) {
@@ -1121,7 +1124,7 @@ public final class ClientView {
         dispose();
         OutsideMobs.logout();
         MiniLight.clear();
-        com.matthieu.planariumview.client.mini.MiniEntities.clear();
+        com.matthieu.planariumview.client.mini.entities.MiniEntities.clear();
         SubLevelView.clear();
         LunarClient.clear();
     }
@@ -1575,7 +1578,7 @@ public final class ClientView {
             BlockPos pos = entry.getKey();
             if (isOpaque(lit, pos)) opaqueBefore.add(pos);
             if (lit.blockEntityMap.containsKey(pos)) blockEntitiesChanged = true;
-            if (com.matthieu.planariumview.compat.ColorCompat.present() && Config.coloredLight()) {
+            if (com.matthieu.planariumview.compat.contraption_lights.ColorCompat.present() && Config.coloredLight()) {
                 BlockState before = lit.getBlockState(pos);
                 BlockState after = entry.getValue().state();
                 if (!java.util.Objects.equals(before, after) && (before.getLightEmission(lit, pos) > 0
@@ -1737,7 +1740,7 @@ public final class ClientView {
             if (blockEntity == null) {
                 return;
             }
-            com.matthieu.planariumview.compat.CreateCopies.attach(blockEntity, world, Minecraft.getInstance().level);
+            com.matthieu.planariumview.compat.create.CreateCopies.attach(blockEntity, world, Minecraft.getInstance().level);
             blockEntity.onLoad();
             blockEntity.loadWithComponents(data, world.registryAccess());
             world.blockEntityMap.put(pos, blockEntity);
@@ -1759,7 +1762,7 @@ public final class ClientView {
             if (!visibleSceneryPos(pos, currentRadius, viewRadius())) continue;
             try {
                 int light = LevelRenderer.getLightColor(data.fakeRenderingWorld, pos);
-                if (com.matthieu.planariumview.compat.ColorCompat.building() && (light & 0xF0) != 0
+                if (com.matthieu.planariumview.compat.contraption_lights.ColorCompat.building() && (light & 0xF0) != 0
                         && (light & ~0x00F000F0) == 0) {
                     // Pas de couleur dans la case du bloc (boite a outils de Create...) : celle d'une case voisine.
                     light |= FaceHueConsumer.hueAround(data.fakeRenderingWorld, pos);
@@ -2141,7 +2144,7 @@ public final class ClientView {
                 if (isModel) {
                     try {
                         // Couleur de Contraption Lights prise devant chaque face (voir FaceHueConsumer).
-                        com.mojang.blaze3d.vertex.VertexConsumer faces = com.matthieu.planariumview.compat.ColorCompat.building()
+                        com.mojang.blaze3d.vertex.VertexConsumer faces = com.matthieu.planariumview.compat.contraption_lights.ColorCompat.building()
                                 ? new FaceHueConsumer(snapped, data.fakeRenderingWorld, pos.pos) : snapped;
                         if (neighbor) faces = NeighborPlanariumModel.light(faces, snapped);
                         PlanariumRenderer.tesselateBlock(pos, modelRenderer, data.fakeRenderingWorld, model, renderState,
@@ -2624,7 +2627,7 @@ public final class ClientView {
                 }
                 BlockEntityRenderer<BlockEntity> renderer = dispatcher.getRenderer(blockEntity);
                 // Lanterne de Swinging Lanterns : immobile dans le decor (voir SwingingLanternsCompat).
-                if (renderer == null || com.matthieu.planariumview.compat.SwingingLanternsCompat.skip(renderer)) {
+                if (renderer == null || com.matthieu.planariumview.compat.swinging_lanterns.SwingingLanternsCompat.skip(renderer)) {
                     continue;
                 }
                 // Hors du champ de la camera : pas dessine. Boite de rendu du renderer (NeoForge), avec un bloc de
@@ -2649,7 +2652,7 @@ public final class ClientView {
                 try {
                     if (!AmbersolCompat.render(blockEntity, partialTick, poseStack, blockEntityBuffers)) {
                         // Couleur de Contraption Lights gardee meme si le rendu recalcule la lumiere (voir HueKeepingBuffers).
-                        com.matthieu.planariumview.compat.CreateCopies.render(renderer, blockEntity, data.fakeRenderingWorld,
+                        com.matthieu.planariumview.compat.create.CreateCopies.render(renderer, blockEntity, data.fakeRenderingWorld,
                                 partialTick, poseStack, HueKeepingBuffers.of(blockEntityBuffers, light), light, OverlayTexture.NO_OVERLAY);
                     }
                 } catch (Exception e) {

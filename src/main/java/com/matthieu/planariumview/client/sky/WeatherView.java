@@ -5,7 +5,7 @@ import com.matthieu.planariumview.client.scenery.ClientView;
 import com.matthieu.planariumview.client.scenery.LitRenderingWorld;
 import com.matthieu.planariumview.client.scenery.SceneryParticles;
 import com.matthieu.planariumview.client.sound.OutsideSoundClient;
-import com.matthieu.planariumview.compat.DsRipplesCompat;
+import com.matthieu.planariumview.compat.dynamic_surroundings.DsRipplesCompat;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.OutsideViewPayload;
 

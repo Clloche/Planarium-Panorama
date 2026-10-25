@@ -3,7 +3,7 @@ package com.matthieu.planariumview.client.sound;
 import com.hollingsworth.arsnouveau.client.renderer.PlanariumRenderingWorld;
 import com.matthieu.planariumview.client.scenery.LitRenderingWorld;
 import com.matthieu.planariumview.client.scenery.SubLevelView;
-import com.matthieu.planariumview.compat.CreateCopies;
+import com.matthieu.planariumview.compat.create.CreateCopies;
 import com.matthieu.planariumview.config.Config;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;

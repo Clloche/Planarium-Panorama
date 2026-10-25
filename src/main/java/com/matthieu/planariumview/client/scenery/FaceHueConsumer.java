@@ -14,7 +14,7 @@ import net.minecraft.world.level.BlockAndTintGetter;
  * face en retrait (boite a outils de Create...), et Contraption Lights n'y met pas de couleur : le bloc restait sans
  * couleur dans le decor. Seulement pour les faces eclairees qui n'ont pas deja une couleur.
  */
-final class FaceHueConsumer implements VertexConsumer {
+public final class FaceHueConsumer implements VertexConsumer {
     /** Bits de couleur de Contraption Lights (tout sauf les niveaux de lumiere). */
     private static final int COLOR_BITS = ~0x00F000F0;
     private static final Direction[] AROUND = {Direction.UP, Direction.NORTH, Direction.SOUTH, Direction.EAST,
@@ -77,7 +77,7 @@ final class FaceHueConsumer implements VertexConsumer {
     }
 
     /** Couleur du bloc, sinon celle d'une case voisine (le dessus d'abord) : pour les blocs speciaux sans couleur. */
-    static int hueAround(BlockAndTintGetter world, BlockPos pos) {
+    public static int hueAround(BlockAndTintGetter world, BlockPos pos) {
         int hue = hueAt(world, pos);
         for (int i = 0; hue == 0 && i < AROUND.length; i++) {
             hue = hueAt(world, pos.relative(AROUND[i]));

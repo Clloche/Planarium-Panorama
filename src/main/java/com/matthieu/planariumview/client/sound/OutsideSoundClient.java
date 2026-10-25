@@ -1,5 +1,6 @@
 package com.matthieu.planariumview.client.sound;
 
+import com.matthieu.planariumview.client.sound.entities.OutsideMinecartSound;
 import com.matthieu.planariumview.client.scenery.ClientView;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.OutsideSoundPayload;
@@ -58,7 +59,7 @@ public final class OutsideSoundClient {
      * Ou jouer un son venant de (dx, dy, dz) par rapport au Planarium : a 8 blocs de la camera, dans la direction
      * de cette position dans le decor geant (meme transformation que le decor).
      */
-    static Vec3 playbackPosition(double dx, double dy, double dz) {
+    public static Vec3 playbackPosition(double dx, double dy, double dz) {
         Vec3 camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
         Vec3 source = new Vec3((dx - ClientView.ARS_OFFSET) * ClientView.GIANT,
                 (dy - ClientView.ARS_OFFSET) * ClientView.GIANT - ClientView.Y_SHIFT,

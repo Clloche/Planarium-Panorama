@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.server;
 
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
-import com.matthieu.planariumview.compat.SubLevelCompat;
+import com.matthieu.planariumview.compat.sable.SubLevelCompat;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.SubLevelPayload;
 import com.matthieu.planariumview.network.SubLevelTransforms;

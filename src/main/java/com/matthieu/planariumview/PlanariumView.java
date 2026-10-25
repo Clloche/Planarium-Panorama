@@ -1,7 +1,7 @@
 package com.matthieu.planariumview;
 
 import com.matthieu.planariumview.client.jar.WallColors;
-import com.matthieu.planariumview.client.mini.MiniEntities;
+import com.matthieu.planariumview.client.mini.entities.MiniEntities;
 import com.matthieu.planariumview.client.mini.MiniLight;
 import com.matthieu.planariumview.client.scenery.ClientView;
 import com.matthieu.planariumview.client.sky.LightningView;
@@ -14,7 +14,7 @@ import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.AmbiencePayload;
 import com.matthieu.planariumview.network.LightningPayload;
 import com.matthieu.planariumview.network.LunarPayload;
-import com.matthieu.planariumview.network.MiniEntitiesPayload;
+import com.matthieu.planariumview.network.entities.MiniEntitiesPayload;
 import com.matthieu.planariumview.network.MiniLightPayload;
 import com.matthieu.planariumview.network.OutsideRecordPayload;
 import com.matthieu.planariumview.network.OutsideSoundPayload;
@@ -56,7 +56,7 @@ public class PlanariumView {
         modBus.addListener(PlanariumView::registerPayloads);
         modBus.addListener(PlanariumView::addPacks);
         NeoForge.EVENT_BUS.register(ServerView.class);
-        com.matthieu.planariumview.compat.SubLevelCompat.available();
+        com.matthieu.planariumview.compat.sable.SubLevelCompat.available();
         if (FMLEnvironment.dist == Dist.CLIENT) {
             ClientView.init(container);
         }
@@ -90,12 +90,12 @@ public class PlanariumView {
         // Facultatif : mobs du dehors (rayon detaille), et ce que le client veut voir en plus des blocs.
         // Les rotations sont en degres precis : ce flux a sa propre version, sans changer les anciens payloads.
         event.registrar(NETWORK_VERSION + ".entities4").optional().playToClient(
-                com.matthieu.planariumview.network.OutsideMobsPayload.TYPE,
-                com.matthieu.planariumview.network.OutsideMobsPayload.STREAM_CODEC,
-                (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.OutsideMobs.receive(payload)));
+                com.matthieu.planariumview.network.entities.OutsideMobsPayload.TYPE,
+                com.matthieu.planariumview.network.entities.OutsideMobsPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.entities.OutsideMobs.receive(payload)));
         event.registrar(NETWORK_VERSION + ".entities4").optional().playToServer(
-                com.matthieu.planariumview.network.ViewPrefsPayload.TYPE,
-                com.matthieu.planariumview.network.ViewPrefsPayload.STREAM_CODEC,
+                com.matthieu.planariumview.network.entities.ViewPrefsPayload.TYPE,
+                com.matthieu.planariumview.network.entities.ViewPrefsPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof net.minecraft.server.level.ServerPlayer player) {
                         com.matthieu.planariumview.server.ServerView.setViewPrefs(player, payload);

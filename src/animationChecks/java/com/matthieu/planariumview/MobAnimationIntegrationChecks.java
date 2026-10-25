@@ -1,9 +1,13 @@
 package com.matthieu.planariumview;
 
+import com.matthieu.planariumview.network.entities.MobAnimations;
+import com.matthieu.planariumview.network.entities.OutsideMobsPayload;
+import com.matthieu.planariumview.server.entities.MobEventQueue;
+import com.matthieu.planariumview.server.entities.OutsideMobsServer;
 import com.google.common.collect.ImmutableList;
-import com.matthieu.planariumview.client.scenery.OutsideMobs;
+import com.matthieu.planariumview.client.scenery.entities.OutsideMobs;
 import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.mixin.SceneryEntityAccessor;
+import com.matthieu.planariumview.mixin.entities.SceneryEntityAccessor;
 import com.matthieu.planariumview.network.*;
 import com.matthieu.planariumview.server.*;
 import net.minecraft.client.Minecraft;

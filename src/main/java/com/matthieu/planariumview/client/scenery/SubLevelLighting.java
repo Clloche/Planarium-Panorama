@@ -1,6 +1,6 @@
 package com.matthieu.planariumview.client.scenery;
 
-import com.matthieu.planariumview.compat.SourceView;
+import com.matthieu.planariumview.compat.contraption_lights.SourceView;
 import com.matthieu.planariumview.network.SubLevelTransforms;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;

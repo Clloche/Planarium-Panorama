@@ -1,6 +1,6 @@
 package com.matthieu.planariumview.mixin;
 
-import com.matthieu.planariumview.compat.CreateCopies;
+import com.matthieu.planariumview.compat.create.CreateCopies;
 import com.matthieu.planariumview.client.scenery.OutsideFluidView;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;

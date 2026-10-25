@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.client.jar;
 
 import com.matthieu.planariumview.client.sky.SkySync;
-import com.matthieu.planariumview.compat.SubLevelCompat;
+import com.matthieu.planariumview.compat.sable.SubLevelCompat;
 import com.matthieu.planariumview.config.Config;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;

@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.mixin;
 
 import com.matthieu.planariumview.client.scenery.LitRenderingWorld;
-import com.matthieu.planariumview.compat.FallingLeavesCompat;
+import com.matthieu.planariumview.compat.falling_leaves.FallingLeavesCompat;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;

@@ -165,13 +165,13 @@ public final class MiniParticles {
                 BlockState state = mini.world().getBlockState(pos);
                 if (!state.isAir()) {
                     ClientView.animateBlock(mini.world(), pos.immutable(), state);
-                    com.matthieu.planariumview.compat.DsFirefliesCompat.animate(mini.world(), pos, state, RANDOM, tile);
+                    com.matthieu.planariumview.compat.dynamic_surroundings.DsFirefliesCompat.animate(mini.world(), pos, state, RANDOM, tile);
                 }
             }
             for (BlockPos at : mini.campfires()) {
                 ClientView.campfireTick(mini.world(), at, mini.world().getBlockState(at));
             }
-            com.matthieu.planariumview.compat.ArsParticles.tick(mini.world(),
+            com.matthieu.planariumview.compat.ars_nouveau.ArsParticles.tick(mini.world(),
                     at -> PARTICLE_BOUNDS.contains(at.getCenter()));
         } finally {
             LitRenderingWorld.captureSceneryParticles(null);

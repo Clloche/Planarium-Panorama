@@ -1,6 +1,6 @@
 package com.matthieu.planariumview.client.jar;
 
-import com.matthieu.planariumview.compat.FlywheelCompat;
+import com.matthieu.planariumview.compat.flywheel.FlywheelCompat;
 import com.matthieu.planariumview.config.Config;
 
 import net.minecraft.client.Minecraft;

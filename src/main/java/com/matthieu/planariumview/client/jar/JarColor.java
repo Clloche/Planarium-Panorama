@@ -1,6 +1,6 @@
 package com.matthieu.planariumview.client.jar;
 
-import com.matthieu.planariumview.compat.ColorCompat;
+import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
 import com.matthieu.planariumview.config.Config;
 
 import com.mojang.logging.LogUtils;

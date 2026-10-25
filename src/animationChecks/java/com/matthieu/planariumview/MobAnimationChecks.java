@@ -1,9 +1,9 @@
 package com.matthieu.planariumview;
 
-import com.matthieu.planariumview.client.scenery.MobAnimationTimeline;
-import com.matthieu.planariumview.network.MobAnimations;
-import com.matthieu.planariumview.network.OutsideMobsPayload;
-import com.matthieu.planariumview.server.MobEventQueue;
+import com.matthieu.planariumview.client.scenery.entities.MobAnimationTimeline;
+import com.matthieu.planariumview.network.entities.MobAnimations;
+import com.matthieu.planariumview.network.entities.OutsideMobsPayload;
+import com.matthieu.planariumview.server.entities.MobEventQueue;
 import io.netty.buffer.Unpooled;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;

@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.server;
 
 import com.matthieu.planariumview.compat.SafeReflect;
-import com.matthieu.planariumview.compat.SubLevelCompat;
+import com.matthieu.planariumview.compat.sable.SubLevelCompat;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;

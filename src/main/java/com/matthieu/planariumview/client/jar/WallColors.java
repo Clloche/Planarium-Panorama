@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.client.jar;
 
 import com.matthieu.planariumview.client.sky.SkySync;
-import com.matthieu.planariumview.compat.ColorCompat;
+import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.WallPayload;
 

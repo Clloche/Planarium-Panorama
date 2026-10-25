@@ -1,13 +1,14 @@
 package com.matthieu.planariumview.server;
 
+import com.matthieu.planariumview.server.entities.OutsideMobsServer;
 import com.matthieu.planariumview.client.jar.JarWalls;
 import com.matthieu.planariumview.client.scenery.BiomeGrid;
-import com.matthieu.planariumview.client.scenery.GiantEntities;
-import com.matthieu.planariumview.compat.SeasonCompat;
+import com.matthieu.planariumview.client.scenery.entities.GiantEntities;
+import com.matthieu.planariumview.compat.serene_seasons.SeasonCompat;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.AmbiencePayload;
 import com.matthieu.planariumview.network.LightningPayload;
-import com.matthieu.planariumview.network.MiniEntitiesPayload;
+import com.matthieu.planariumview.network.entities.MiniEntitiesPayload;
 import com.matthieu.planariumview.network.MiniLightPayload;
 import com.matthieu.planariumview.network.OutsideRecordPayload;
 import com.matthieu.planariumview.network.OutsideSoundPayload;
@@ -284,7 +285,7 @@ public final class ServerView {
             ServerLevel previous = player.server.getLevel(event.getFrom());
             if (previous != null && (isPocket(previous) || isPocket(player.serverLevel()))) {
                 // The client has already discarded that dimension. Do not let Sable send its removals to the new one.
-                com.matthieu.planariumview.compat.SubLevelCompat.forgetTracking(previous, player.getUUID());
+                com.matthieu.planariumview.compat.sable.SubLevelCompat.forgetTracking(previous, player.getUUID());
             }
             SubLevelServer.dimensionChanged(player.getUUID(), player.server.getTickCount());
             update(player, true);
@@ -325,7 +326,7 @@ public final class ServerView {
      * Ce que le client veut voir en plus des blocs (mobs du dehors). Afficher les mobs garde la zone autour du Planarium
      * active, meme avec les sons du monde exterieur coupes (sinon ils resteraient figes) : les tickets sont revus.
      */
-    public static void setViewPrefs(ServerPlayer player, com.matthieu.planariumview.network.ViewPrefsPayload prefs) {
+    public static void setViewPrefs(ServerPlayer player, com.matthieu.planariumview.network.entities.ViewPrefsPayload prefs) {
         UUID id = player.getUUID();
         if (!OutsideMobsServer.setPrefs(id, prefs)) {
             return;
@@ -538,7 +539,7 @@ public final class ServerView {
 
     /** Debut ("" = fin) d'un morceau de jukebox, pour les joueurs dont le Planarium est a portee (64 blocs). */
     private static void sendOutsideRecord(ServerLevel level, BlockPos pos, String song) {
-        Vec3 position = com.matthieu.planariumview.compat.SubLevelCompat.worldPosition(level, Vec3.atCenterOf(pos));
+        Vec3 position = com.matthieu.planariumview.compat.sable.SubLevelCompat.worldPosition(level, Vec3.atCenterOf(pos));
         for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
             Track track = TRACKS.get(player.getUUID());
             if (track == null || DISABLED.contains(player.getUUID())
@@ -584,7 +585,7 @@ public final class ServerView {
                             || !jukebox.getSongPlayer().isPlaying() || jukebox.getSongPlayer().getSong() == null) {
                         continue;
                     }
-                    Vec3 position = com.matthieu.planariumview.compat.SubLevelCompat.worldPosition(level, Vec3.atCenterOf(jukebox.getBlockPos()));
+                    Vec3 position = com.matthieu.planariumview.compat.sable.SubLevelCompat.worldPosition(level, Vec3.atCenterOf(jukebox.getBlockPos()));
                     Vec3 relative = relative(track, position);
                     double dx = relative.x;
                     double dy = relative.y;
@@ -657,7 +658,7 @@ public final class ServerView {
             return;
         }
         long now = System.nanoTime();
-        position = com.matthieu.planariumview.compat.SubLevelCompat.worldPosition(level, position);
+        position = com.matthieu.planariumview.compat.sable.SubLevelCompat.worldPosition(level, position);
         for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
             Track track = TRACKS.get(player.getUUID());
             if (track == null || DISABLED.contains(player.getUUID())
@@ -702,7 +703,7 @@ public final class ServerView {
         // Filet de securite si un appel de son a leve une exception avant l'injection RETURN du mixin.
         PlayerSoundCause.clear();
         MinecraftServer server = event.getServer();
-        if (server.getTickCount() % 2 == 0 && com.matthieu.planariumview.compat.SubLevelCompat.available()) {
+        if (server.getTickCount() % 2 == 0 && com.matthieu.planariumview.compat.sable.SubLevelCompat.available()) {
             try {
                 updateSubLevels(server);
             } catch (Exception e) {
@@ -793,7 +794,7 @@ public final class ServerView {
             track = new Track(id, level.dimension(), source);
             ServerLevel sourceLevel = player.server.getLevel(source.dimension());
             track.body = sourceLevel == null ? null
-                    : com.matthieu.planariumview.compat.SubLevelCompat.ownerId(sourceLevel, source.pos());
+                    : com.matthieu.planariumview.compat.sable.SubLevelCompat.ownerId(sourceLevel, source.pos());
             LOGGER.debug("[Planarium Panorama] Planarium trouve en {} (vaisseau {})", source.pos(), track.body);
             TRACKS.put(id, track);
             force = true;
@@ -1053,11 +1054,11 @@ public final class ServerView {
      * memorisee par Ars Nouveau (JarDimData.enteredFrom).
      */
     private static GlobalPos findPlanarium(ServerPlayer player, ServerLevel pocket) {
-        var entry = com.matthieu.planariumview.compat.ArsSableCompat.entry(pocket, player.getUUID());
+        var entry = com.matthieu.planariumview.compat.ars_sable.ArsSableCompat.entry(pocket, player.getUUID());
         if (entry != null && entry.body() != null) {
             ServerLevel source = player.server.getLevel(entry.position().dimension());
             if (source == null) return null;
-            BlockPos found = com.matthieu.planariumview.compat.SubLevelCompat.findPlanarium(source,
+            BlockPos found = com.matthieu.planariumview.compat.sable.SubLevelCompat.findPlanarium(source,
                     pocket.dimension(), null, entry.body(), 0);
             // A known vessel may still be loading. Never substitute another Planarium near the stale world position.
             return found == null ? null : GlobalPos.of(source.dimension(), found);
@@ -1090,7 +1091,7 @@ public final class ServerView {
             }
         }
         if (best == null) {
-            best = com.matthieu.planariumview.compat.SubLevelCompat.findPlanarium(sourceLevel, pocket.dimension(),
+            best = com.matthieu.planariumview.compat.sable.SubLevelCompat.findPlanarium(sourceLevel, pocket.dimension(),
                     Vec3.atLowerCornerOf(center), SEARCH_RADIUS);
         }
         return best == null ? null : GlobalPos.of(sourceLevel.dimension(), best);
@@ -1544,7 +1545,7 @@ public final class ServerView {
         // Planarium embarque : son plot doit toujours appartenir a son vaisseau. Sinon (vaisseau recharge sous un autre
         // plot, ou retire), la position du plot etait prise pour une position dans le monde et la vue ne suivait plus.
         if (here) {
-            if (body == null) body = com.matthieu.planariumview.compat.SubLevelCompat.ownerId(source, track.source.pos());
+            if (body == null) body = com.matthieu.planariumview.compat.sable.SubLevelCompat.ownerId(source, track.source.pos());
             anchor = trackedAnchor(source, track.source.pos(), body);
             here = anchor != null;
         }
@@ -1554,7 +1555,7 @@ public final class ServerView {
                 LOGGER.debug("[Planarium Panorama] Planarium perdu en {} (vaisseau {}) : recherche", track.source.pos(),
                         track.body);
             }
-            if (track.body != null && !com.matthieu.planariumview.compat.SubLevelCompat.available()) return false;
+            if (track.body != null && !com.matthieu.planariumview.compat.sable.SubLevelCompat.available()) return false;
             // Planarium casse ou introuvable : au plus une recherche par seconde (sinon 17^3 blocs toutes les 2 ticks).
             // La vue garde sa derniere position pendant ce temps.
             long tick = source.getServer().getTickCount();
@@ -1563,26 +1564,26 @@ public final class ServerView {
             BlockPos found = null;
             if (track.body != null) {
                 // Par le vaisseau, n'importe ou sur lui : son nouveau plot peut etre loin de l'ancien.
-                found = com.matthieu.planariumview.compat.SubLevelCompat.findPlanarium(source, track.pocket, null,
+                found = com.matthieu.planariumview.compat.sable.SubLevelCompat.findPlanarium(source, track.pocket, null,
                         track.body, 0);
             }
-            if (found == null) found = com.matthieu.planariumview.compat.SubLevelCompat.findPlanarium(source, track.pocket,
+            if (found == null) found = com.matthieu.planariumview.compat.sable.SubLevelCompat.findPlanarium(source, track.pocket,
                     new Vec3(track.anchor.m30(), track.anchor.m31(), track.anchor.m32()), SEARCH_RADIUS);
             if (found == null) {
                 for (BlockPos at : BlockPos.betweenClosed(track.center.offset(-SEARCH_RADIUS, -SEARCH_RADIUS, -SEARCH_RADIUS),
                         track.center.offset(SEARCH_RADIUS, SEARCH_RADIUS, SEARCH_RADIUS))) {
                     if (source.hasChunkAt(at) && source.getBlockEntity(at) instanceof PlanariumTile candidate
                             && track.pocket.equals(candidate.key)
-                            && !com.matthieu.planariumview.compat.SubLevelCompat.isPlotSpace(source, at)) {
+                            && !com.matthieu.planariumview.compat.sable.SubLevelCompat.isPlotSpace(source, at)) {
                         found = at.immutable();
                         break;
                     }
                 }
             }
             if (found == null) return false;
-            body = com.matthieu.planariumview.compat.SubLevelCompat.ownerId(source, found);
+            body = com.matthieu.planariumview.compat.sable.SubLevelCompat.ownerId(source, found);
             anchor = trackedAnchor(source, found, body);
-            if (anchor == null || track.body != null && !com.matthieu.planariumview.compat.SubLevelCompat.available()) return false;
+            if (anchor == null || track.body != null && !com.matthieu.planariumview.compat.sable.SubLevelCompat.available()) return false;
             track.source = GlobalPos.of(source.dimension(), found);
         }
         track.body = body;
@@ -1590,7 +1591,7 @@ public final class ServerView {
             track.lost = false;
             LOGGER.debug("[Planarium Panorama] Planarium retrouve en {} (vaisseau {})", track.source.pos(), track.body);
         }
-        track.anchorBody = com.matthieu.planariumview.compat.SubLevelCompat.holdAnchor(source, track.source.pos(),
+        track.anchorBody = com.matthieu.planariumview.compat.sable.SubLevelCompat.holdAnchor(source, track.source.pos(),
                 track.owner, track.anchorBody);
         BlockPos center = BlockPos.containing(anchor.m30(), anchor.m31(), anchor.m32());
         // Pas de capture complete a chaque bloc parcouru : le client recale l'ancienne photo autour du bocal
@@ -1601,15 +1602,15 @@ public final class ServerView {
     }
 
     private static org.joml.Matrix4d trackedAnchor(ServerLevel source, BlockPos pos, UUID body) {
-        if (body != null) return com.matthieu.planariumview.compat.SubLevelCompat.anchorOnBody(source, pos, body);
-        return com.matthieu.planariumview.compat.SubLevelCompat.isPlotSpace(source, pos) ? null
-                : com.matthieu.planariumview.compat.SubLevelCompat.anchor(source, pos);
+        if (body != null) return com.matthieu.planariumview.compat.sable.SubLevelCompat.anchorOnBody(source, pos, body);
+        return com.matthieu.planariumview.compat.sable.SubLevelCompat.isPlotSpace(source, pos) ? null
+                : com.matthieu.planariumview.compat.sable.SubLevelCompat.anchor(source, pos);
     }
 
     @SubscribeEvent
     public static void onServerStarted(net.neoforged.neoforge.event.server.ServerStartedEvent event) {
         for (ServerLevel level : event.getServer().getAllLevels()) {
-            com.matthieu.planariumview.compat.SubLevelCompat.clearVisitorTickets(level);
+            com.matthieu.planariumview.compat.sable.SubLevelCompat.clearVisitorTickets(level);
         }
     }
 
@@ -1627,7 +1628,7 @@ public final class ServerView {
     @SubscribeEvent
     public static void onServerStopped(net.neoforged.neoforge.event.server.ServerStoppedEvent event) {
         SubLevelServer.clear();
-        com.matthieu.planariumview.compat.SubLevelCompat.clearRestoreFailures();
+        com.matthieu.planariumview.compat.sable.SubLevelCompat.clearRestoreFailures();
         TRACKS.clear();
     }
 
@@ -1720,7 +1721,7 @@ public final class ServerView {
         }
         ServerLevel source = server.getLevel(track.source.dimension());
         if (source != null) {
-            com.matthieu.planariumview.compat.SubLevelCompat.releaseAnchor(source, id, track.anchorBody);
+            com.matthieu.planariumview.compat.sable.SubLevelCompat.releaseAnchor(source, id, track.anchorBody);
             releaseTickets(source, track);
         }
         track.ticketChunks = -1;

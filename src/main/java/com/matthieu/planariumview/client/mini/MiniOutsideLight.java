@@ -5,7 +5,7 @@ import com.matthieu.planariumview.client.jar.JarLight;
 import com.matthieu.planariumview.client.jar.JarWalls;
 import com.matthieu.planariumview.client.jar.WallColors;
 import com.matthieu.planariumview.client.scenery.LitRenderingWorld;
-import com.matthieu.planariumview.compat.ColorCompat;
+import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
 import com.matthieu.planariumview.config.Config;
 
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer;

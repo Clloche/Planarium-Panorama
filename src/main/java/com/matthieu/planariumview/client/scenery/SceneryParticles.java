@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.client.scenery;
 
-import com.matthieu.planariumview.compat.ColorCompat;
-import com.matthieu.planariumview.compat.ArsParticles;
+import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
+import com.matthieu.planariumview.compat.ars_nouveau.ArsParticles;
 
 import com.matthieu.planariumview.mixin.ParticleAccessor;
 import net.minecraft.client.Minecraft;
@@ -698,7 +698,7 @@ public final class SceneryParticles {
             particle.remove();
             return false;
         }
-        if (particle instanceof com.matthieu.planariumview.compat.SceneryFirefly firefly) {
+        if (particle instanceof com.matthieu.planariumview.compat.dynamic_surroundings.SceneryFirefly firefly) {
             firefly.planariumview$space(space);
             // Le vol de DS evite deja les blocs : ici, garder seulement les limites du bocal.
             NO_COLLISION.put(particle, Boolean.TRUE);
@@ -711,7 +711,7 @@ public final class SceneryParticles {
             access.planariumview$setGravity(access.planariumview$getGravity() * scale);
             // Sauver le choix natif avant de couper les collisions avec les vrais blocs.
             // Falling Leaves deplace ses feuilles lui-meme : son sol est gere par endTick.
-            boolean leaf = com.matthieu.planariumview.compat.FallingLeavesCompat.isLeaf(particle);
+            boolean leaf = com.matthieu.planariumview.compat.falling_leaves.FallingLeavesCompat.isLeaf(particle);
             if (!access.planariumview$getHasPhysics() && !leaf) {
                 NO_COLLISION.put(particle, Boolean.TRUE);
             }
@@ -743,8 +743,8 @@ public final class SceneryParticles {
         // se dessinent souvent a leur facon et restent geantes meme rapetissees.
         if (!particle.getClass().getName().startsWith("net.minecraft.")
                 && !particle.getClass().getName().endsWith(".HotAirEmberParticle")
-                && !com.matthieu.planariumview.compat.FallingLeavesCompat.isLeaf(particle)
-                && !(particle instanceof com.matthieu.planariumview.compat.SceneryFirefly)) {
+                && !com.matthieu.planariumview.compat.falling_leaves.FallingLeavesCompat.isLeaf(particle)
+                && !(particle instanceof com.matthieu.planariumview.compat.dynamic_surroundings.SceneryFirefly)) {
             noteForeign(particle);
             return false;
         }
@@ -774,7 +774,7 @@ public final class SceneryParticles {
             // Le vent de Falling Leaves souffle en blocs du vrai monde : a l'echelle du faux monde pour ses feuilles.
             Space space = SPACE.get(particle);
             if (space != null) {
-                savedWind = com.matthieu.planariumview.compat.FallingLeavesCompat.scaleWind(particle, space.scale());
+                savedWind = com.matthieu.planariumview.compat.falling_leaves.FallingLeavesCompat.scaleWind(particle, space.scale());
             }
         }
     }
@@ -783,13 +783,13 @@ public final class SceneryParticles {
         Particle was = ticking;
         ticking = null;
         if (savedWind != null) {
-            com.matthieu.planariumview.compat.FallingLeavesCompat.restoreWind(savedWind);
+            com.matthieu.planariumview.compat.falling_leaves.FallingLeavesCompat.restoreWind(savedWind);
             savedWind = null;
         }
         // Une particule qui bouge a sa facon (sans le move de Minecraft, comme les feuilles de Falling Leaves) : le
         // sol et les bords du faux monde quand meme.
         if (was != null && was == particle && !collided && particle.isAlive()
-                && com.matthieu.planariumview.compat.FallingLeavesCompat.isLeaf(particle) && particle instanceof ParticleAccessor access) {
+                && com.matthieu.planariumview.compat.falling_leaves.FallingLeavesCompat.isLeaf(particle) && particle instanceof ParticleAccessor access) {
             collide(particle, access.planariumview$getY() - access.planariumview$getYo());
         }
     }
@@ -920,7 +920,7 @@ public final class SceneryParticles {
         double wx = (box.minX + box.maxX) * 0.5;
         double wz = (box.minZ + box.maxZ) * 0.5;
         // Feuilles de Falling Leaves : dessinees un peu plus haut que leur position.
-        double lift = com.matthieu.planariumview.compat.FallingLeavesCompat.renderLift(particle);
+        double lift = com.matthieu.planariumview.compat.falling_leaves.FallingLeavesCompat.renderLift(particle);
         double tx = (wx - space.ox()) / scale;
         double ty = (box.minY + lift - space.oy()) / scale;
         double tz = (wz - space.oz()) / scale;
@@ -986,7 +986,7 @@ public final class SceneryParticles {
         }
         // Partie dessinee sous sa position : la moitie d'une particule normale (son carre est centre sur elle, et une
         // goutte du decor fait plusieurs blocs) ; rien pour une feuille de Falling Leaves, dessinee un peu plus haut.
-        double lift = com.matthieu.planariumview.compat.FallingLeavesCompat.renderLift(particle);
+        double lift = com.matthieu.planariumview.compat.falling_leaves.FallingLeavesCompat.renderLift(particle);
         double under = lift > 0.0 ? -lift
                 : particle instanceof net.minecraft.client.particle.SingleQuadParticle quad ? quad.getQuadSize(0.0F) : 0.0;
         double low = box.minY - under;
@@ -1116,7 +1116,7 @@ public final class SceneryParticles {
 
     public static void clear() {
         ArsParticles.clear();
-        com.matthieu.planariumview.compat.DsFirefliesCompat.clear();
+        com.matthieu.planariumview.compat.dynamic_surroundings.DsFirefliesCompat.clear();
         LIGHT.clear();
         SPACE.clear();
         NO_COLLISION.clear();

@@ -45,9 +45,9 @@ public abstract class LevelRendererLightMixin {
             // deja calcule sa couleur avec l'ancienne lumiere. On la recalcule avec la nouvelle, quel que soit l'ordre.
             // Dans les chunks (Sodium), c'est le cas des coffres, lits, panneaux et cloches de Better Block Entities.
             if (level instanceof net.minecraft.client.multiplayer.ClientLevel) {
-                next = com.matthieu.planariumview.compat.ClTag.retagJar(next, level, pos);
+                next = com.matthieu.planariumview.compat.contraption_lights.ClTag.retagJar(next, level, pos);
             } else {
-                next = com.matthieu.planariumview.compat.ClTag.retagBakedJar(next, level, pos);
+                next = com.matthieu.planariumview.compat.contraption_lights.ClTag.retagBakedJar(next, level, pos);
             }
             cir.setReturnValue(next);
         }

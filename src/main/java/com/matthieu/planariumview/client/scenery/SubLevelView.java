@@ -5,9 +5,9 @@ import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer;
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer.StructureRenderData;
 import com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos;
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
-import com.matthieu.planariumview.compat.BearingAngles;
-import com.matthieu.planariumview.compat.ColorCompat;
-import com.matthieu.planariumview.compat.SwingingLanternsCompat;
+import com.matthieu.planariumview.compat.create.BearingAngles;
+import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
+import com.matthieu.planariumview.compat.swinging_lanterns.SwingingLanternsCompat;
 import com.matthieu.planariumview.client.mini.MiniOutsideLight;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.SubLevelPayload;
@@ -770,7 +770,7 @@ public final class SubLevelView {
                     try {
                         pose.translate(at.getX(), at.getY(), at.getZ());
                         int light = entityLight.getOrDefault(at, 0x00F000F0);
-                        com.matthieu.planariumview.compat.CreateCopies.render(renderer, entity, data.fakeRenderingWorld,
+                        com.matthieu.planariumview.compat.create.CreateCopies.render(renderer, entity, data.fakeRenderingWorld,
                                 partialTick, pose, HueKeepingBuffers.of(buffers, light), light, OverlayTexture.NO_OVERLAY);
                     } catch (RuntimeException e) {
                         LOGGER.debug("[Planarium Panorama] Sub-level block entity skipped", e);

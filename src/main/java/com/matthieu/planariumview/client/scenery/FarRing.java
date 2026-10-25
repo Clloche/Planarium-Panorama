@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.client.scenery;
 
 import com.hollingsworth.arsnouveau.client.renderer.LiquidBlockVertexConsumer;
-import com.matthieu.planariumview.compat.ColorCompat;
+import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.FarRingPayload;
 

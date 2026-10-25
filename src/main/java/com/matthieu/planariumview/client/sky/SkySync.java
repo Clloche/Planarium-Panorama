@@ -5,7 +5,7 @@ import com.matthieu.planariumview.client.jar.JarLight;
 import com.matthieu.planariumview.client.jar.WallColors;
 import com.matthieu.planariumview.client.scenery.ClientView;
 import com.matthieu.planariumview.client.sound.OutsideAmbience;
-import com.matthieu.planariumview.compat.SeasonColors;
+import com.matthieu.planariumview.compat.serene_seasons.SeasonColors;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.SkyPayload;
 
