@@ -1645,9 +1645,12 @@ public final class ServerView {
      * le chunk soit charge et lisible, sans rien y faire tourner (comme quand un joueur s'en va).
      */
     private static void keepLoaded(MinecraftServer server, UUID player, Track track, int radius) {
-        int chunks = Math.floorDiv(radius + 15, 16) + 1;
         // Zone active pour les sons du monde exterieur, ou pour que les mobs affiches bougent.
-        boolean active = prefsOf(player).world() || OutsideMobsServer.wants(player);
+        boolean mobs = OutsideMobsServer.wants(player);
+        boolean active = prefsOf(player).world() || mobs;
+        int chunks = active
+                ? activeTicketDistance(track.center, radius + (mobs ? OutsideMobsServer.SIMULATION_MARGIN : 0))
+                : Math.floorDiv(radius + 15, 16) + 1;
         ChunkPos center = new ChunkPos(track.center);
         if (chunks == track.ticketChunks && active == track.ticketActive && center.equals(track.ticketCenter)) {
             return;
@@ -1670,6 +1673,19 @@ public final class ServerView {
         track.ticketChunks = chunks;
         track.ticketActive = active;
         track.ticketCenter = center;
+    }
+
+    /**
+     * addRegionTicket part du niveau FULL (33). Il faut deux niveaux de plus pour que tous les chunks vises tournent
+     * aussi leurs entites (niveau 31), en tenant compte du decalage du Planarium dans son chunk.
+     */
+    private static int activeTicketDistance(BlockPos pos, int radius) {
+        ChunkPos center = new ChunkPos(pos);
+        int x = Math.max(center.x - Math.floorDiv(pos.getX() - radius, 16),
+                Math.floorDiv(pos.getX() + radius, 16) - center.x);
+        int z = Math.max(center.z - Math.floorDiv(pos.getZ() - radius, 16),
+                Math.floorDiv(pos.getZ() + radius, 16) - center.z);
+        return Math.max(x, z) + 2;
     }
 
     /** Retire les tickets de chargement de ce suivi, selon le mode avec lequel ils ont ete poses. */

@@ -30,7 +30,7 @@ import java.util.Set;
 
 /**
  * Mobs du dehors dans le decor geant (voir OutsideMobsServer) : des copies jamais ajoutees a un monde, sans IA,
- * placees chaque image entre les deux derniers etats recus, environ 250 ms en arriere (le serveur envoie 5 fois par
+ * placees chaque image entre les deux derniers etats recus, environ 150 ms en arriere (le serveur envoie 10 fois par
  * seconde). La marche est animee chaque tick d'apres le deplacement interpole, comme Minecraft le fait pour les
  * entites lointaines.
  *
@@ -39,8 +39,8 @@ import java.util.Set;
  */
 public final class OutsideMobs {
     private static final Logger LOGGER = LogUtils.getLogger();
-    /** Retard du dessin sur le dernier etat recu, en ticks : un intervalle d'envoi (4) et un de marge. */
-    private static final double DELAY = 5.0;
+    /** Retard du dessin sur le dernier etat recu, en ticks : un intervalle d'envoi et un de marge. */
+    private static final double DELAY = OutsideMobsPayload.UPDATE_INTERVAL + 1.0;
     /** Au-dela de ce saut entre deux etats (en blocs), le mob est place directement (teleportation). */
     private static final double TELEPORT = 4.0;
     /** Etats gardes par mob. */
@@ -74,6 +74,10 @@ public final class OutsideMobs {
     private static int clientTick;
     /** Tick du serveur moins tick du client, estime d'apres les arrivees (voir receive). */
     private static double offset = Double.NaN;
+    /** Recalage vise et precedent : l'horloge avance doucement, jamais par saut a l'arrivee d'un paquet. */
+    private static double targetOffset = Double.NaN;
+    private static double previousOffset = Double.NaN;
+    private static final double MAX_CLOCK_CORRECTION = 0.1;
     /** Augmente quand on a besoin que le serveur renvoie tout (voir ViewPrefsPayload). */
     private static int resync;
     private static long lastResync = Long.MIN_VALUE / 2;
@@ -110,8 +114,11 @@ public final class OutsideMobs {
             if (had) return; // clear a change le compteur : attendre le nouvel envoi complet.
         }
         double arrival = payload.tick() - clientTick;
-        // Un envoi en avance releve l'estimation tout de suite ; un envoi en retard ne la baisse que doucement.
-        offset = Double.isNaN(offset) || arrival > offset ? arrival : offset + (arrival - offset) * 0.02;
+        // Estimation de la meilleure arrivee recente. Le recalage reel est lisse par tick et par image :
+        // changer directement offset ici faisait sauter les rotations lorsqu'un paquet arrivait plus vite.
+        targetOffset = Double.isNaN(targetOffset) || arrival > targetOffset
+                ? arrival : targetOffset + (arrival - targetOffset) * 0.02;
+        if (Double.isNaN(offset)) offset = previousOffset = targetOffset;
         BlockPos origin = payload.origin();
         Set<Integer> seen = payload.full() ? new HashSet<>() : null;
         for (OutsideMobsPayload.Entry entry : payload.entries()) {
@@ -133,16 +140,15 @@ public final class OutsideMobs {
             }
             apply(copy, entry);
             State state = new State(payload.tick(), origin.getX() + (double) entry.x(), origin.getY() + (double) entry.y(),
-                    origin.getZ() + (double) entry.z(), degrees(entry.yRot()), degrees(entry.xRot()),
-                    degrees(entry.headRot()), degrees(entry.bodyRot()));
+                    origin.getZ() + (double) entry.z(), entry.yRot(), entry.xRot(), entry.headRot(), entry.bodyRot());
             // Dans l'ordre des ticks (un envoi ne revient jamais en arriere, sauf redemarrage du serveur).
             if (!copy.states.isEmpty()) {
                 State previous = copy.states.peekLast();
                 if (previous.tick() >= state.tick()) {
                     copy.states.clear();
-                } else if (state.tick() - previous.tick() > 4) {
+                } else if (state.tick() - previous.tick() > OutsideMobsPayload.UPDATE_INTERVAL) {
                     // Sans delta, le mob etait immobile jusqu'au precedent passage du serveur.
-                    copy.states.addLast(new State(state.tick() - 4, previous.x(), previous.y(), previous.z(),
+                    copy.states.addLast(new State(state.tick() - OutsideMobsPayload.UPDATE_INTERVAL, previous.x(), previous.y(), previous.z(),
                             previous.yRot(), previous.xRot(), previous.headRot(), previous.bodyRot()));
                 }
             }
@@ -220,6 +226,10 @@ public final class OutsideMobs {
             return;
         }
         if (COPIES.isEmpty()) return;
+        previousOffset = offset;
+        if (!Double.isNaN(targetOffset)) {
+            offset += Mth.clamp(targetOffset - offset, -MAX_CLOCK_CORRECTION, MAX_CLOCK_CORRECTION);
+        }
         double time = clientTick + offset - DELAY;
         Iterator<Copy> iterator = COPIES.values().iterator();
         while (iterator.hasNext()) {
@@ -265,7 +275,8 @@ public final class OutsideMobs {
      */
     static List<Entity> prepare(float partialTick, BlockPos photoOrigin) {
         if (COPIES.isEmpty() || photoOrigin == null || FlightView.active() || !Config.outsideMobs()) return List.of();
-        double time = clientTick + partialTick + offset - DELAY;
+        double frameOffset = Double.isNaN(previousOffset) ? offset : Mth.lerp(partialTick, previousOffset, offset);
+        double time = clientTick + partialTick + frameOffset - DELAY;
         List<Entity> result = new ArrayList<>(COPIES.size());
         for (Copy copy : COPIES.values()) {
             State state = at(copy, time);
@@ -295,11 +306,6 @@ public final class OutsideMobs {
             result.add(entity);
         }
         return result;
-    }
-
-    /** Angle envoye en octet (256 crans par tour, comme Minecraft). */
-    private static float degrees(byte packed) {
-        return packed * 360.0F / 256.0F;
     }
 
     /** Le dessin d'un mob a echoue : son type n'est plus dessine. */
@@ -340,6 +346,8 @@ public final class OutsideMobs {
         level = null;
         pocket = null;
         offset = Double.NaN;
+        targetOffset = Double.NaN;
+        previousOffset = Double.NaN;
     }
 
     public static void logout() {

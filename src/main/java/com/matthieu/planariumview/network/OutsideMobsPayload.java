@@ -23,13 +23,17 @@ import java.util.List;
 public record OutsideMobsPayload(ResourceLocation pocketDim, int resync, BlockPos origin, int tick, boolean full,
                                  List<Entry> entries, int[] removed) implements CustomPacketPayload {
 
+    /** Un etat toutes les deux ticks : mouvements plus precis, l'apparence garde son propre intervalle. */
+    public static final int UPDATE_INTERVAL = 2;
+
     /**
-     * Un mob : identifiant reseau, position, rotations (comme Minecraft, en octets). {@code create} : de quoi le
+     * Un mob : identifiant reseau, position, rotations en degres (sans les marches visibles des angles en octets).
+     * {@code create} : de quoi le
      * recreer (type et NBT allege), seulement a sa premiere apparition. {@code data} : ses donnees synchronisees
      * (pose, variante, bebe, en feu...), {@code equipment} : son equipement, encodes comme Minecraft les envoie, ou
      * vides s'ils n'ont pas change.
      */
-    public record Entry(int id, float x, float y, float z, byte yRot, byte xRot, byte headRot, byte bodyRot,
+    public record Entry(int id, float x, float y, float z, float yRot, float xRot, float headRot, float bodyRot,
                         CompoundTag create, byte[] data, byte[] equipment) {
     }
 
@@ -55,10 +59,10 @@ public record OutsideMobsPayload(ResourceLocation pocketDim, int resync, BlockPo
             buf.writeFloat(entry.x());
             buf.writeFloat(entry.y());
             buf.writeFloat(entry.z());
-            buf.writeByte(entry.yRot());
-            buf.writeByte(entry.xRot());
-            buf.writeByte(entry.headRot());
-            buf.writeByte(entry.bodyRot());
+            buf.writeFloat(entry.yRot());
+            buf.writeFloat(entry.xRot());
+            buf.writeFloat(entry.headRot());
+            buf.writeFloat(entry.bodyRot());
             buf.writeBoolean(entry.create() != null);
             if (entry.create() != null) buf.writeNbt(entry.create());
             buf.writeByteArray(entry.data());
@@ -79,7 +83,7 @@ public record OutsideMobsPayload(ResourceLocation pocketDim, int resync, BlockPo
         for (int i = 0; i < count; i++) {
             int id = buf.readVarInt();
             float x = buf.readFloat(), y = buf.readFloat(), z = buf.readFloat();
-            byte yRot = buf.readByte(), xRot = buf.readByte(), headRot = buf.readByte(), bodyRot = buf.readByte();
+            float yRot = buf.readFloat(), xRot = buf.readFloat(), headRot = buf.readFloat(), bodyRot = buf.readFloat();
             CompoundTag create = buf.readBoolean() ? buf.readNbt() : null;
             byte[] data = buf.readByteArray(MAX_BYTES);
             byte[] equipment = buf.readByteArray(MAX_BYTES);

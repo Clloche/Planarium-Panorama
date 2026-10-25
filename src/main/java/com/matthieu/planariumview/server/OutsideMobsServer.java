@@ -15,7 +15,6 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
@@ -40,21 +39,23 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Mobs du rayon detaille, envoyes aux joueurs qui ont l'option "Mobs du dehors" (voir OutsideMobs cote client).
  *
- * Un flux a part des blocs : leger (positions et rotations) et frequent (5 fois par seconde), interpole par le client.
+ * Un flux a part des blocs : leger (positions et rotations) et frequent (10 fois par seconde), interpole par le client.
  * L'apparence (donnees synchronisees, equipement) n'est envoyee qu'a la premiere apparition puis quand elle change,
  * d'apres nos propres copies de ce qui a ete envoye : on ne touche jamais aux changements que Minecraft garde pour
  * les vrais clients (pas de packDirty).
  */
 public final class OutsideMobsServer {
     private static final Logger LOGGER = LogUtils.getLogger();
-    /** Un envoi tous les 4 ticks (5 par seconde). */
-    private static final int INTERVAL = 4;
+    /** Un envoi tous les 2 ticks (10 par seconde). */
+    private static final int INTERVAL = OutsideMobsPayload.UPDATE_INTERVAL;
     /** Un envoi complet (tous les mobs suivis) toutes les 2 secondes, par securite. */
     private static final int FULL_INTERVAL = 40;
     /** Apparence verifiee au plus toutes les 10 ticks par mob. */
     private static final int APPEARANCE_INTERVAL = 10;
     /** Les plus proches seulement (fermes de mobs). */
     private static final int MAX_MOBS = 64;
+    /** Marge hors champ : les mobs terminent leurs trajets avant de quitter la zone simulee. */
+    public static final int SIMULATION_MARGIN = 16;
     /** Champs retires du NBT de creation : inutiles a l'affichage, souvent gros, ou qui changent sans arret. */
     private static final String[] STRIPPED = {"UUID", "Motion", "FallDistance", "Fire", "Air", "OnGround", "PortalCooldown",
             "HurtTime", "HurtByTimestamp", "DeathTime", "AbsorptionAmount", "Brain", "FallFlying", "Health", "Passengers",
@@ -74,7 +75,7 @@ public final class OutsideMobsServer {
 
     private static final class Sent {
         float x, y, z;
-        byte yRot, xRot, headRot, bodyRot;
+        float yRot, xRot, headRot, bodyRot;
         byte[] data = new byte[0];
         byte[] equipment = new byte[0];
         int checkedAt = Integer.MIN_VALUE / 2;
@@ -140,7 +141,11 @@ public final class OutsideMobsServer {
         int size = radius * 2 + 1;
         AABB box = new AABB(origin.getX(), origin.getY(), origin.getZ(),
                 origin.getX() + size, origin.getY() + size, origin.getZ() + size);
-        List<LivingEntity> mobs = source.getEntitiesOfClass(LivingEntity.class, box, OutsideMobsServer::shown);
+        List<LivingEntity> mobs = source.getEntitiesOfClass(LivingEntity.class, box.inflate(SIMULATION_MARGIN),
+                mob -> mob.isAlive() && !(mob instanceof Player) && !(mob instanceof ArmorStand));
+        keepAwake(mobs);
+        // La marge sert a la simulation. Seuls les mobs qui touchent la photo sont envoyes et dessines.
+        mobs.removeIf(mob -> !shown(mob) || !mob.getBoundingBox().intersects(box));
         if (mobs.size() > MAX_MOBS) {
             double cx = capturedCenter.getX() + 0.5, cy = capturedCenter.getY() + 0.5, cz = capturedCenter.getZ() + 0.5;
             mobs.sort((a, b) -> Double.compare(a.distanceToSqr(cx, cy, cz), b.distanceToSqr(cx, cy, cz)));
@@ -178,9 +183,13 @@ public final class OutsideMobsServer {
                 && !(entity instanceof Player) && !(entity instanceof ArmorStand);
     }
 
-    /** Angle en octet (256 crans par tour, comme Minecraft). */
-    private static byte packDegrees(float degrees) {
-        return (byte) Mth.floor(degrees * 256.0F / 360.0F);
+    /**
+     * Un ticket fait tourner les entites, mais sans joueur proche le compteur d'inactivite monte quand meme :
+     * RandomStrollGoal refuse alors toute nouvelle promenade apres 100 ticks. Les mobs observes restent actifs,
+     * y compris ceux au-dela de la limite de rendu, sans changer leur persistance ni ajouter de faux joueur.
+     */
+    private static void keepAwake(List<? extends LivingEntity> mobs) {
+        for (LivingEntity mob : mobs) mob.setNoActionTime(0);
     }
 
     /** Ce qu'il faut envoyer pour ce mob, ou null si rien n'a change (et que ce n'est pas un envoi complet). */
@@ -196,10 +205,10 @@ public final class OutsideMobsServer {
         float x = (float) (mob.getX() - origin.getX());
         float y = (float) (mob.getY() - origin.getY());
         float z = (float) (mob.getZ() - origin.getZ());
-        byte yRot = packDegrees(mob.getYRot());
-        byte xRot = packDegrees(mob.getXRot());
-        byte headRot = packDegrees(mob.getYHeadRot());
-        byte bodyRot = packDegrees(mob.yBodyRot);
+        float yRot = mob.getYRot();
+        float xRot = mob.getXRot();
+        float headRot = mob.getYHeadRot();
+        float bodyRot = mob.yBodyRot;
         byte[] data = new byte[0];
         byte[] equipment = new byte[0];
         if (create != null || now - sent.checkedAt >= APPEARANCE_INTERVAL) {

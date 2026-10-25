@@ -118,7 +118,7 @@ public final class Config {
                 .define("worldSounds", true);
         OUTSIDE_MOBS = client
                 .comment("Mobs around the Planarium, in the detail radius of the giant scenery (up to 64, the closest).",
-                        "While ON, the detail radius keeps running so they move, even with outside world sounds OFF.",
+                        "While ON, the detail radius and a small surrounding margin keep running so they move, even with outside world sounds OFF.",
                         "OFF: mobs are not shown and their sounds are not played either.")
                 .define("outsideMobs", false);
         OUTSIDE_AMBIENCE = client
