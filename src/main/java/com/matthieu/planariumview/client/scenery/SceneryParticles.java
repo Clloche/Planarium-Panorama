@@ -273,6 +273,23 @@ public final class SceneryParticles {
         return new Space(world, giant, origin, origin - ClientView.Y_SHIFT, origin, null, true, null);
     }
 
+    /** Vanilla's twenty poofs, simulated in captured coordinates and rendered in the mob's frame. */
+    static void mobDeath(LitRenderingWorld world, FramedParticle.Frame frame,
+                         double x, double y, double z, float width, float height) {
+        Space space = new Space(world, frame.scale(), FramedParticle.OFFSET, FramedParticle.OFFSET,
+                FramedParticle.OFFSET, null, true, null);
+        int light = com.matthieu.planariumview.config.Config.realLighting()
+                ? rawLight(world, net.minecraft.core.BlockPos.containing(x, y, z)) : 0x00F000F0;
+        framed(frame, () -> {
+            for (int i = 0; i < 20; i++) {
+                if (!allowed()) continue;
+                spawn(space, ParticleTypes.POOF, x + (RANDOM.nextDouble() * 2 - 1) * width,
+                        y + RANDOM.nextDouble() * height, z + (RANDOM.nextDouble() * 2 - 1) * width,
+                        RANDOM.nextGaussian() * 0.02, RANDOM.nextGaussian() * 0.02, RANDOM.nextGaussian() * 0.02, light);
+            }
+        });
+    }
+
     /**
      * Particule loin dans le decor (vent de Windy, a 40-70 blocs du point tire), a sa vraie place, seulement dans le
      * decor dessine (anneau lointain compris) et hors des blocs pleins. Lumiere fixe ({@code light}).

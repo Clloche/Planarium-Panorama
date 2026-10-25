@@ -84,8 +84,46 @@ sourceSets.test {
     runtimeClasspath += sourceSets.main.compileClasspath + sourceSets.main.runtimeClasspath
 }
 
+// Self-contained, tracked checks; local diagnostics under src/test are optional and ignored by Git.
+sourceSets {
+    animationChecks {
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath + sourceSets.main.compileClasspath
+    }
+}
+
+tasks.register('checkOutsideMobAnimations', JavaExec) {
+    group = 'verification'
+    description = 'Checks outside-mob event delivery, wire format and visual timelines.'
+    dependsOn tasks.named('animationChecksClasses')
+    classpath = sourceSets.animationChecks.runtimeClasspath
+    mainClass = 'com.matthieu.planariumview.MobAnimationChecks'
+    workingDir = layout.buildDirectory.dir('mob-animation-checks').get().asFile
+    doFirst { workingDir.mkdirs() }
+}
+
+tasks.register('mobAnimationFixtureAgent', Jar) {
+    dependsOn tasks.named('animationChecksClasses')
+    from(sourceSets.animationChecks.output) { include 'com/matthieu/planariumview/AnimationFixtureAgent*.class' }
+    archiveFileName = 'mob-animation-fixtures.jar'
+    destinationDirectory = layout.buildDirectory.dir('mob-animation-checks')
+    manifest { attributes 'Premain-Class': 'com.matthieu.planariumview.AnimationFixtureAgent' }
+}
+
+tasks.register('checkOutsideMobIntegration', JavaExec) {
+    group = 'verification'
+    description = 'Checks production mob capture and playback with isolated world fixtures.'
+    dependsOn tasks.named('mobAnimationFixtureAgent')
+    classpath = sourceSets.animationChecks.runtimeClasspath
+    mainClass = 'com.matthieu.planariumview.MobAnimationIntegrationChecks'
+    workingDir = layout.buildDirectory.dir('mob-animation-checks').get().asFile
+    doFirst { jvmArgs '-javaagent:' + tasks.named('mobAnimationFixtureAgent').get().archiveFile.get().asFile.absolutePath }
+}
+
 tasks.named('check') {
     dependsOn tasks.named('checkSubLevels')
+    dependsOn tasks.named('checkOutsideMobAnimations')
+    dependsOn tasks.named('checkOutsideMobIntegration')
 }
 
 // La version affichee dans la liste des mods vient de gradle.properties (mod_version).

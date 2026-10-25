@@ -980,6 +980,27 @@ public final class ClientView {
         }
     }
 
+    /** Death particles follow the same captured origin and moving frame as the rendered mob. */
+    static void onMobDeath(double sourceX, double sourceY, double sourceZ, float width, float height) {
+        LitRenderingWorld world = sceneryWorld();
+        if (!Config.sceneryParticles() || lastInfo == null || world == null || FlightView.active()) return;
+        BlockPos origin = lastInfo.origin();
+        int radius = currentRadius;
+        double x = sourceX - origin.getX(), y = sourceY - origin.getY(), z = sourceZ - origin.getZ();
+        if (!liveArea(x - radius - 0.5, z - radius - 0.5, viewRadius() + 1.0)) return;
+        var level = Minecraft.getInstance().level;
+        FramedParticle.Frame frame = new FramedParticle.Frame(() -> {
+            PoseStack pose = new PoseStack();
+            SubLevelView.terrain(pose, origin.offset(radius, radius, radius));
+            pose.translate(-ARS_OFFSET * GIANT, -ARS_OFFSET * GIANT - Y_SHIFT, -ARS_OFFSET * GIANT);
+            pose.scale(GIANT, GIANT, GIANT);
+            pose.translate(-radius, -radius, -radius);
+            return new org.joml.Matrix4d(pose.last().pose());
+        }, () -> Minecraft.getInstance().level == level && currentDim != null && Config.outsideMobs()
+                && Config.sceneryParticles() && !FlightView.active(), GIANT);
+        SceneryParticles.mobDeath(world, frame, x, y, z, width, height);
+    }
+
     /** Explosion du dehors (position par rapport au Planarium) : ses particules, si elle est dans le rayon de vue. */
     public static void onOutsideExplosion(double dx, double dy, double dz) {
         int view = viewRadius();

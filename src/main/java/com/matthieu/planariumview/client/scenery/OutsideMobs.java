@@ -3,6 +3,7 @@ package com.matthieu.planariumview.client.scenery;
 import com.matthieu.planariumview.client.sound.OutsideMinecartSound;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.OutsideMobsPayload;
+import com.matthieu.planariumview.network.MobAnimations;
 import com.matthieu.planariumview.mixin.SceneryEntityAccessor;
 
 import com.google.common.collect.ImmutableList;
@@ -15,6 +16,7 @@ import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
@@ -66,6 +68,8 @@ public final class OutsideMobs {
         final Entity entity;
         final ArrayDeque<State> states = new ArrayDeque<>();
         int lastUpdate;
+        int removeAt = Integer.MAX_VALUE;
+        final MobAnimationTimeline livingAnimation = new MobAnimationTimeline();
         /** Position au dernier tick (monde d'origine), pour l'animation de marche. */
         double tickX, tickY, tickZ;
         boolean placed;
@@ -98,6 +102,7 @@ public final class OutsideMobs {
     private static Level level;
     private static ResourceLocation pocket;
     private static int clientTick;
+    private static int lastPacketTick = Integer.MIN_VALUE;
     /** Tick du serveur moins tick du client, estime d'apres les arrivees (voir receive). */
     private static double offset = Double.NaN;
     /** Recalage vise et precedent : l'horloge avance doucement, jamais par saut a l'arrivee d'un paquet. */
@@ -163,6 +168,9 @@ public final class OutsideMobs {
             // Le serveur a peut-etre deja envoye ces mobs a l'ancien monde : tout redemander.
             if (had) return; // clear a change le compteur : attendre le nouvel envoi complet.
         }
+        if (payload.tick() <= lastPacketTick) return;
+        lastPacketTick = payload.tick();
+        if (payload.resetAnimations()) COPIES.values().forEach(copy -> copy.livingAnimation.resetPending());
         double arrival = payload.tick() - clientTick;
         // Estimation de la meilleure arrivee recente. Le recalage reel est lisse par tick et par image :
         // changer directement offset ici faisait sauter les rotations lorsqu'un paquet arrivait plus vite.
@@ -179,7 +187,9 @@ public final class OutsideMobs {
         }
         BlockPos origin = payload.origin();
         Set<Integer> seen = payload.full() ? new HashSet<>() : null;
+        Set<Integer> updated = new HashSet<>();
         for (OutsideMobsPayload.Entry entry : payload.entries()) {
+            updated.add(entry.id());
             if (seen != null) seen.add(entry.id());
             if (IGNORED.contains(entry.id())) continue;
             Copy copy = COPIES.get(entry.id());
@@ -197,6 +207,8 @@ public final class OutsideMobs {
                 COPIES.put(entry.id(), copy);
             }
             apply(copy, entry);
+            copy.removeAt = Integer.MAX_VALUE;
+            if (entry.living() != null) copy.livingAnimation.snapshot(payload.tick(), entry.living());
             State state = new State(payload.tick(), origin.getX() + (double) entry.x(), origin.getY() + (double) entry.y(),
                     origin.getZ() + (double) entry.z(), entry.yRot(), entry.xRot(), entry.headRot(), entry.bodyRot(),
                     entry.vehicleId(), entry.seat(), entry.visual());
@@ -216,14 +228,28 @@ public final class OutsideMobs {
             while (copy.states.size() > MAX_STATES) copy.states.pollFirst();
             copy.lastUpdate = clientTick;
         }
+        for (MobAnimations.Event event : payload.events()) {
+            Copy copy = COPIES.get(event.entityId());
+            if (copy != null) copy.livingAnimation.event(event);
+        }
         for (int id : payload.removed()) {
-            removeCopy(id);
+            scheduleRemoval(id, payload.tick());
             IGNORED.remove(id);
         }
         if (seen != null) {
             // Envoi complet : les copies gardees sont mises a jour, celles qui manquent sont retirees.
-            for (int id : new ArrayList<>(COPIES.keySet())) if (!seen.contains(id)) removeCopy(id);
+            for (int id : COPIES.keySet()) if (!seen.contains(id)) scheduleRemoval(id, payload.tick());
             IGNORED.removeIf(id -> !seen.contains(id));
+        }
+        // An omitted delta confirms the old pose at this tick. Keep two states even for stationary mobs.
+        for (Map.Entry<Integer, Copy> item : COPIES.entrySet()) {
+            Copy copy = item.getValue();
+            if (updated.contains(item.getKey()) || copy.removeAt != Integer.MAX_VALUE || copy.states.isEmpty()) continue;
+            State last = copy.states.peekLast();
+            copy.states.addLast(new State(payload.tick(), last.x(), last.y(), last.z(), last.yRot(), last.xRot(),
+                    last.headRot(), last.bodyRot(), last.vehicleId(), last.seat(), last.visual()));
+            while (copy.states.size() > MAX_STATES) copy.states.pollFirst();
+            copy.lastUpdate = clientTick;
         }
     }
 
@@ -340,15 +366,41 @@ public final class OutsideMobs {
                 copy.tickZ = state.z();
                 copy.placed = true;
                 if (entity instanceof LivingEntity living) {
+                    copy.livingAnimation.advance((int) Math.floor(time));
+                    applyAnimation(living, copy.livingAnimation);
                     if (state.vehicleId() >= 0) living.walkAnimation.update(0, 0.4F);
                     else living.calculateEntityAnimation(false);
+                    if (copy.livingAnimation.takePoof() && warmedUp && copy.ready && copy.rendered != null) {
+                        ClientView.onMobDeath(copy.tickX, copy.tickY, copy.tickZ, entity.getBbWidth(), entity.getBbHeight());
+                    }
                 }
                 copy.animation.tick(entity, state.visual());
                 entity.tickCount++;
+                if (time >= copy.removeAt || copy.livingAnimation.ended()) {
+                    unlinkAll();
+                    copy.stopSound();
+                    iterator.remove();
+                }
             } catch (RuntimeException e) {
                 LOGGER.debug("[Planarium Panorama] Animation d'un mob du dehors ignoree", e);
             }
         }
+    }
+
+    /** Only renderer fields: no AI, damage handling, drops, sounds or entity tick. */
+    private static void applyAnimation(LivingEntity entity, MobAnimationTimeline animation) {
+        if (animation.takeHurt()) entity.animateHurt(0);
+        MobAnimations.Snapshot state = animation.state();
+        entity.hurtTime = state.hurtTime();
+        entity.hurtDuration = state.hurtDuration();
+        entity.deathTime = state.deathTime();
+        if (state.dying()) entity.setHealth(0);
+        else if (entity.getHealth() <= 0) entity.setHealth(1); // Health metadata can arrive before its delayed death event.
+        entity.swinging = state.swinging();
+        entity.swingingArm = state.offHand() ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
+        entity.swingTime = state.swingTime();
+        entity.oAttackAnim = animation.previousAttack();
+        entity.attackAnim = animation.attack();
     }
 
     /** Boucles creees normalement a l'ajout d'un wagonnet au monde client, et donc absentes de nos copies. */
@@ -482,10 +534,9 @@ public final class OutsideMobs {
         }
     }
 
-    private static void removeCopy(int id) {
-        unlinkAll();
-        Copy copy = COPIES.remove(id);
-        if (copy != null) copy.stopSound();
+    private static void scheduleRemoval(int id, int tick) {
+        Copy copy = COPIES.get(id);
+        if (copy != null) copy.removeAt = Math.min(copy.removeAt, tick);
     }
 
     /** Le dessin d'un mob a echoue : son type n'est plus dessine. */
@@ -534,6 +585,7 @@ public final class OutsideMobs {
         warmedUp = false;
         regularPackets = 0;
         tickHitch = false;
+        lastPacketTick = Integer.MIN_VALUE;
     }
 
     public static void logout() {

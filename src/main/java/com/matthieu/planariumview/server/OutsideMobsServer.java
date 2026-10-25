@@ -1,6 +1,7 @@
 package com.matthieu.planariumview.server;
 
 import com.matthieu.planariumview.network.OutsideMobsPayload;
+import com.matthieu.planariumview.network.MobAnimations;
 import com.matthieu.planariumview.network.ViewPrefsPayload;
 import com.matthieu.planariumview.mixin.SynchedEntityDataAccessor;
 import com.matthieu.planariumview.mixin.BoatAccessor;
@@ -11,6 +12,10 @@ import io.netty.buffer.Unpooled;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientboundAnimatePacket;
+import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
+import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -18,6 +23,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
@@ -72,6 +78,7 @@ public final class OutsideMobsServer {
 
     private static final Map<UUID, ViewPrefsPayload> PREFS = new ConcurrentHashMap<>();
     private static final Map<UUID, State> STATES = new HashMap<>();
+    private static long eventSequence;
 
     /** Ce qui a ete envoye a un joueur, par mob. */
     private static final class State {
@@ -79,6 +86,7 @@ public final class OutsideMobsServer {
         ResourceKey<Level> source;
         BlockPos origin;
         final Map<Integer, Sent> sent = new HashMap<>();
+        final MobEventQueue events = new MobEventQueue();
         int lastFull = Integer.MIN_VALUE / 2;
     }
 
@@ -88,6 +96,7 @@ public final class OutsideMobsServer {
         int vehicleId = -1;
         int seat;
         OutsideMobsPayload.VehicleState visual;
+        boolean dying;
         byte[] data = new byte[0];
         byte[] equipment = new byte[0];
         int checkedAt = Integer.MIN_VALUE / 2;
@@ -128,6 +137,31 @@ public final class OutsideMobsServer {
         STATES.clear();
         PREFS.clear();
         OBSERVED.clear();
+        eventSequence = 0;
+    }
+
+    /** Observe accepted vanilla broadcasts, even when no real player is tracking the source mob. */
+    public static void capture(Entity entity, Packet<?> packet) {
+        if (STATES.isEmpty() || !(entity instanceof LivingEntity living) || entity instanceof Player
+                || entity instanceof ArmorStand || !(entity.level() instanceof ServerLevel source)) return;
+        MobAnimations.Kind kind;
+        boolean offHand = false;
+        int duration = 0;
+        if (packet instanceof ClientboundDamageEventPacket) {
+            kind = MobAnimations.Kind.HURT;
+            duration = 10;
+        } else if (packet instanceof ClientboundAnimatePacket animation && (animation.getAction() == 0 || animation.getAction() == 3)) {
+            kind = MobAnimations.Kind.SWING;
+            offHand = animation.getAction() == 3;
+            duration = Math.clamp(living.getCurrentSwingDuration(), 1, MobAnimations.MAX_DURATION);
+        } else if (packet instanceof ClientboundEntityEventPacket event && (event.getEventId() == 3 || event.getEventId() == 60)) {
+            kind = event.getEventId() == 3 ? MobAnimations.Kind.DEATH : MobAnimations.Kind.POOF;
+        } else return;
+        MobAnimations.Event event = new MobAnimations.Event(++eventSequence, entity.getId(), source.getServer().getTickCount(),
+                kind, offHand, duration);
+        for (State state : STATES.values()) {
+            if (source.dimension().equals(state.source) && state.sent.containsKey(entity.getId())) state.events.add(event);
+        }
     }
 
     /**
@@ -145,6 +179,7 @@ public final class OutsideMobsServer {
         if ((now + (id.hashCode() & 3)) % INTERVAL != 0) return;
         State state = STATES.computeIfAbsent(id, ignored -> new State());
         BlockPos origin = capturedCenter.offset(-radius, -radius, -radius);
+        if (!pocket.equals(state.pocket) || !source.dimension().equals(state.source)) state.events.clear();
         if (!pocket.equals(state.pocket) || !source.dimension().equals(state.source) || !origin.equals(state.origin)) {
             state.sent.clear();
             state.lastFull = Integer.MIN_VALUE / 2;
@@ -160,7 +195,8 @@ public final class OutsideMobsServer {
         List<Entity> candidates = new ArrayList<>();
         // Les index par classe evitent de parcourir aussi les objets au sol et les projectiles a chaque envoi.
         if (prefs.mobs()) {
-            candidates.addAll(source.getEntitiesOfClass(LivingEntity.class, simulated, entity -> entity.isAlive() && enabled(entity, prefs)));
+            candidates.addAll(source.getEntitiesOfClass(LivingEntity.class, simulated,
+                    entity -> !entity.isRemoved() && (entity.isAlive() || entity.isDeadOrDying()) && enabled(entity, prefs)));
             observe(candidates, now);
         }
         if (prefs.vehicles()) {
@@ -170,7 +206,8 @@ public final class OutsideMobsServer {
         List<Entity> mobs = select(candidates, box, capturedCenter);
         Set<Integer> selected = new HashSet<>();
         for (Entity entity : mobs) selected.add(entity.getId());
-        boolean full = now - state.lastFull >= FULL_INTERVAL;
+        boolean resetAnimations = state.events.resetRequired();
+        boolean full = resetAnimations || now - state.lastFull >= FULL_INTERVAL;
         if (full) state.lastFull = now;
         List<OutsideMobsPayload.Entry> entries = new ArrayList<>();
         Set<Integer> present = new HashSet<>();
@@ -189,11 +226,11 @@ public final class OutsideMobsServer {
             gone.add(mobId);
             return true;
         });
-        if (!full && entries.isEmpty() && gone.isEmpty()) return;
+        // Empty updates are also a clock/pose heartbeat: an immobile mob still warms up and animates.
         int[] removed = new int[gone.size()];
         for (int i = 0; i < removed.length; i++) removed[i] = gone.get(i);
         PacketDistributor.sendToPlayer(player, new OutsideMobsPayload(pocket.location(), PREFS.get(id).resync(), origin, now, full, entries,
-                removed));
+                removed, state.events.drain(), resetAnimations));
     }
 
     /** Choix independants : les joueurs et les decorations ne font pas partie de ce flux. */
@@ -273,6 +310,9 @@ public final class OutsideMobsServer {
         int vehicleId = vehicle != null && selected.contains(vehicle.getId()) ? vehicle.getId() : -1;
         int seat = vehicleId >= 0 ? vehicle.getPassengers().indexOf(mob) : 0;
         OutsideMobsPayload.VehicleState visual = visual(mob);
+        boolean dying = mob instanceof LivingEntity living && living.isDeadOrDying();
+        MobAnimations.Snapshot animation = mob instanceof LivingEntity living && (create != null || full || dying != sent.dying)
+                ? snapshot(living) : null;
         byte[] data = new byte[0];
         byte[] equipment = new byte[0];
         if (create != null || now - sent.checkedAt >= (mob instanceof VehicleEntity ? INTERVAL : APPEARANCE_INTERVAL)) {
@@ -295,7 +335,7 @@ public final class OutsideMobsServer {
         boolean moved = Math.abs(x - sent.x) > 1.0F / 64 || Math.abs(y - sent.y) > 1.0F / 64 || Math.abs(z - sent.z) > 1.0F / 64
                 || yRot != sent.yRot || xRot != sent.xRot || headRot != sent.headRot || bodyRot != sent.bodyRot;
         boolean changed = vehicleId != sent.vehicleId || seat != sent.seat || !Objects.equals(visual, sent.visual);
-        if (!full && create == null && !moved && !changed && data.length == 0 && equipment.length == 0) return null;
+        if (!full && create == null && !moved && !changed && data.length == 0 && equipment.length == 0 && animation == null) return null;
         sent.x = x;
         sent.y = y;
         sent.z = z;
@@ -306,8 +346,17 @@ public final class OutsideMobsServer {
         sent.vehicleId = vehicleId;
         sent.seat = seat;
         sent.visual = visual;
+        sent.dying = dying;
         return new OutsideMobsPayload.Entry(mob.getId(), x, y, z, yRot, xRot, headRot, bodyRot,
-                vehicleId, seat, visual, create, data, equipment);
+                vehicleId, seat, visual, create, data, equipment, animation);
+    }
+
+    private static MobAnimations.Snapshot snapshot(LivingEntity entity) {
+        return new MobAnimations.Snapshot(Math.clamp(entity.hurtTime, 0, MobAnimations.MAX_DURATION),
+                Math.clamp(entity.hurtDuration, 0, MobAnimations.MAX_DURATION), entity.isDeadOrDying(),
+                Math.clamp(entity.deathTime, 0, MobAnimations.MAX_DURATION), entity.swinging,
+                entity.swingingArm == InteractionHand.OFF_HAND, Math.clamp(entity.swingTime, -1, MobAnimations.MAX_DURATION),
+                Math.clamp(entity.getCurrentSwingDuration(), 1, MobAnimations.MAX_DURATION));
     }
 
     private static OutsideMobsPayload.VehicleState visual(Entity entity) {
