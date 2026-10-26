@@ -991,8 +991,24 @@ public final class ClientView {
         int radius = currentRadius;
         double x = sourceX - origin.getX(), y = sourceY - origin.getY(), z = sourceZ - origin.getZ();
         if (!liveArea(x - radius - 0.5, z - radius - 0.5, viewRadius() + 1.0)) return;
+        SceneryParticles.mobDeath(world, mobFrame(origin, radius), x, y, z, width, height);
+    }
+
+    /** Potion particles start at the interpolated mob, in source-world coordinates, just like its death puff. */
+    public static void onMobParticle(net.minecraft.core.particles.ParticleOptions options,
+                                     double sourceX, double sourceY, double sourceZ) {
+        LitRenderingWorld world = sceneryWorld();
+        if (!Config.sceneryParticles() || lastInfo == null || world == null || FlightView.active()) return;
+        BlockPos origin = lastInfo.origin();
+        int radius = currentRadius;
+        double x = sourceX - origin.getX(), y = sourceY - origin.getY(), z = sourceZ - origin.getZ();
+        if (!liveArea(x - radius - 0.5, z - radius - 0.5, viewRadius() + 1.0)) return;
+        SceneryParticles.mobParticle(world, mobFrame(origin, radius), options, x, y, z);
+    }
+
+    private static FramedParticle.Frame mobFrame(BlockPos origin, int radius) {
         var level = Minecraft.getInstance().level;
-        FramedParticle.Frame frame = new FramedParticle.Frame(() -> {
+        return new FramedParticle.Frame(() -> {
             PoseStack pose = new PoseStack();
             SubLevelView.terrain(pose, origin.offset(radius, radius, radius));
             pose.translate(-ARS_OFFSET * GIANT, -ARS_OFFSET * GIANT - Y_SHIFT, -ARS_OFFSET * GIANT);
@@ -1001,7 +1017,6 @@ public final class ClientView {
             return new org.joml.Matrix4d(pose.last().pose());
         }, () -> Minecraft.getInstance().level == level && currentDim != null && Config.outsideMobs()
                 && Config.sceneryParticles() && !FlightView.active(), GIANT);
-        SceneryParticles.mobDeath(world, frame, x, y, z, width, height);
     }
 
     /** Explosion du dehors (position par rapport au Planarium) : ses particules, si elle est dans le rayon de vue. */
@@ -2528,6 +2543,8 @@ public final class ClientView {
         }
         // Mobs du dehors : places pour cette image, une pile de matrices neuve par mob (un rendu modde qui plante en
         // plein milieu ne laisse pas la pile decalee pour les suivants).
+        var flameRotation = com.matthieu.planariumview.client.scenery.entities.MobEffects.flameRotation(terrain,
+                Minecraft.getInstance().gameRenderer.getMainCamera().rotation());
         for (net.minecraft.world.entity.Entity mob : OutsideMobs.prepare(partialTick, info.origin())) {
             if (!liveArea(mob.getX() - radius - 0.5, mob.getZ() - radius - 0.5, view + 1.0)
                     || !specialVisible(mob.getBoundingBoxForCulling().inflate(1.0), radius)) {
@@ -2548,7 +2565,7 @@ public final class ClientView {
                 } finally {
                     ColorCompat.end();
                 }
-                OutsideVehicles.render(mob, fake, partialTick, mobStack, blockEntityBuffers, light);
+                OutsideVehicles.render(mob, fake, partialTick, mobStack, blockEntityBuffers, light, flameRotation);
             } catch (Exception | LinkageError e) {
                 OutsideMobs.broken(mob);
                 LOGGER.debug("[Planarium Panorama] Mob du dehors ignore", e);

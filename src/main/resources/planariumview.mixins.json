@@ -20,6 +20,8 @@
   "client": [
     "FlameParticleLightMixin",
     "entities.SceneryEntityAccessor",
+    "entities.LivingEffectParticlesMixin",
+    "entities.EntityRenderDispatcherInvoker",
     "entities.BoatSceneryMixin",
     "entities.TntMinecartAccessor",
     "ClientLevelMixin",

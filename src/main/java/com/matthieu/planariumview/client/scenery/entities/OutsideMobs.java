@@ -266,6 +266,8 @@ public final class OutsideMobs {
                     || entity instanceof Player || entity instanceof ArmorStand) return null;
             entity.setId(entry.id());
             entity.noPhysics = true;
+            // NBT carries a server fire timer. A copy never ticks it down: only the synchronized flag may keep it lit.
+            entity.setRemainingFireTicks(0);
             return new Copy(entity);
         } catch (RuntimeException | LinkageError e) {
             BROKEN.add(type);
@@ -376,8 +378,13 @@ public final class OutsideMobs {
                     if (copy.livingAnimation.takePoof() && warmedUp && copy.ready && copy.rendered != null) {
                         ClientView.onMobDeath(copy.tickX, copy.tickY, copy.tickZ, entity.getBbWidth(), entity.getBbHeight());
                     }
+                    if (warmedUp && copy.ready && copy.rendered != null && !copy.livingAnimation.ended()
+                            && Config.sceneryParticles() && !FlightView.active()) {
+                        MobEffects.tick(living);
+                    }
                 }
                 copy.animation.tick(entity, state.visual());
+                // LivingEntityRenderer uses this clock for the shaking caused by synchronized TicksFrozen.
                 entity.tickCount++;
                 if (time >= copy.removeAt || copy.livingAnimation.ended()) {
                     unlinkAll();

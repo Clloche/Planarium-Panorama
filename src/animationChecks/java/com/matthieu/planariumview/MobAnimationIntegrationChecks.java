@@ -6,6 +6,7 @@ import com.matthieu.planariumview.server.entities.MobEventQueue;
 import com.matthieu.planariumview.server.entities.OutsideMobsServer;
 import com.google.common.collect.ImmutableList;
 import com.matthieu.planariumview.client.scenery.entities.OutsideMobs;
+import com.matthieu.planariumview.client.scenery.entities.MobEffects;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.mixin.entities.SceneryEntityAccessor;
 import com.matthieu.planariumview.network.*;
@@ -14,8 +15,10 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.*;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.network.protocol.game.*;
 import net.minecraft.resources.*;
+import net.minecraft.util.RandomSource;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.dedicated.DedicatedServer;
 import net.minecraft.server.level.ServerLevel;
@@ -27,6 +30,8 @@ import net.minecraft.world.level.entity.EntityInLevelCallback;
 import net.minecraft.world.phys.*;
 import net.neoforged.neoforge.common.ModConfigSpec;
 import sun.misc.Unsafe;
+import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 import java.lang.reflect.*;
 import java.util.*;
 
@@ -51,10 +56,15 @@ public final class MobAnimationIntegrationChecks {
         field(ModConfigSpec.ConfigValue.class, "cachedValue").set(option, value);
     }
 
-    public static class VisualMob extends LivingEntity implements SceneryEntityAccessor {
+    public static class VisualMob extends LivingEntity implements SceneryEntityAccessor, MobEffects.PotionParticles {
         float health;
         int hurtCalls;
+        List<ParticleOptions> effects;
+        boolean ambient, invisible;
         public VisualMob() { super(null, null); }
+        public List<ParticleOptions> planariumview$effectParticles() { return effects; }
+        public boolean planariumview$ambientEffects() { return ambient; }
+        @Override public boolean isInvisible() { return invisible; }
         @Override public float getHealth() { return health; }
         @Override public void setHealth(float value) { health = value; }
         @Override public void calculateEntityAnimation(boolean flying) {}
@@ -76,7 +86,10 @@ public final class MobAnimationIntegrationChecks {
         field(Entity.class, "blockPosition").set(mob, BlockPos.ZERO);
         field(Entity.class, "chunkPosition").set(mob, new ChunkPos(0, 0));
         field(Entity.class, "levelCallback").set(mob, EntityInLevelCallback.NULL);
+        field(Entity.class, "dimensions").set(mob, EntityDimensions.scalable(.6F, 1.8F));
+        field(Entity.class, "random").set(mob, RandomSource.create(id));
         field(LivingEntity.class, "walkAnimation").set(mob, new WalkAnimationState());
+        mob.effects = List.of();
         mob.planariumview$setPassengers(ImmutableList.of());
         return mob;
     }
@@ -130,6 +143,7 @@ public final class MobAnimationIntegrationChecks {
 
     @SuppressWarnings("unchecked") private static void client() throws Exception {
         config(Config.ENABLED, true); config(Config.OUTSIDE_MOBS, true); config(Config.OUTSIDE_VEHICLES, false);
+        config(Config.SCENERY_PARTICLES, false); // Particle sampling is checked separately without a GPU engine.
         OutsideMobs.logout();
         ClientLevel world = fixture(ClientLevel.class);
         field(Level.class, "dimension").set(world, ResourceKey.create(Registries.DIMENSION, POCKET));
@@ -183,8 +197,47 @@ public final class MobAnimationIntegrationChecks {
         OutsideMobs.logout(); Minecraft.getInstance().level = null;
     }
 
+    private static void effects() throws Exception {
+        VisualMob mob = mob(72);
+        mob.setPos(100, 64, -100);
+        ParticleOptions first = () -> null, second = () -> null; // Opaque options must survive sampling unchanged.
+        mob.effects = List.of(first, second);
+        for (boolean invisible : List.of(false, true)) for (boolean ambient : List.of(false, true)) {
+            mob.invisible = invisible; mob.ambient = ambient;
+            RandomSource random = RandomSource.create(72);
+            int count = 0, firstCount = 0;
+            for (int i = 0; i < 16000; i++) {
+                MobEffects.Emission emission = MobEffects.sample(mob, random);
+                if (emission == null) continue;
+                count++;
+                require(emission.options() == first || emission.options() == second, "particle options retain their identity and metadata");
+                if (emission.options() == first) firstCount++;
+                require(emission.x() >= 100 - mob.getBbWidth() / 2 && emission.x() <= 100 + mob.getBbWidth() / 2
+                        && emission.y() >= 64 && emission.y() <= 64 + mob.getBbHeight()
+                        && emission.z() >= -100 - mob.getBbWidth() / 2 && emission.z() <= -100 + mob.getBbWidth() / 2,
+                        "potion particles start within the interpolated mob's dimensions");
+            }
+            double expected = 16000.0 / ((invisible ? 15 : 4) * (ambient ? 5 : 1));
+            require(Math.abs(count - expected) < expected * .15 + 20, "vanilla ambient/invisible emission rates");
+            require(firstCount > count * .35 && firstCount < count * .65, "all synchronized potion types are represented");
+        }
+        mob.effects = List.of();
+        for (int i = 0; i < 100; i++) require(MobEffects.sample(mob, mob.getRandom()) == null, "removed or hidden effects stop emitting");
+
+        for (Quaternionf rotation : List.of(new Quaternionf(), new Quaternionf().rotationXYZ(.8F, -.4F, .3F))) {
+            Quaternionf yaw = new Quaternionf().rotationY(1.2F);
+            Quaternionf camera = new Quaternionf(rotation).mul(yaw).rotateX(-.5F);
+            Matrix4f terrain = new Matrix4f().translation(100, -40, 250).rotate(rotation).scale(32);
+            Quaternionf savedCamera = new Quaternionf(camera);
+            Matrix4f savedTerrain = new Matrix4f(terrain);
+            Quaternionf actual = MobEffects.flameRotation(terrain, camera);
+            require(Math.abs(actual.dot(yaw)) > .99999F, "flames face the camera around the scenery's vertical, including tilted views");
+            require(camera.equals(savedCamera) && terrain.equals(savedTerrain), "flames leave the shared camera and terrain transforms intact");
+        }
+    }
+
     public static void main(String[] args) throws Exception {
-        server(); client();
-        System.out.println("PASS: production capture, independent observers, world isolation, stationary readiness, delayed removals, mount links and hurt playback");
+        server(); client(); effects();
+        System.out.println("PASS: production capture, independent observers, world isolation, stationary readiness, delayed removals, mount links, hurt playback, potion particles and flame orientation");
     }
 }

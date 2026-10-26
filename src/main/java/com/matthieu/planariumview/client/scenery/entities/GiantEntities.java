@@ -3,6 +3,7 @@ package com.matthieu.planariumview.client.scenery.entities;
 import com.matthieu.planariumview.client.scenery.FaceHueConsumer;
 import com.matthieu.planariumview.compat.contraption_lights.ClTag;
 import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
+import com.matthieu.planariumview.mixin.entities.EntityRenderDispatcherInvoker;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
@@ -24,6 +25,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.joml.Quaternionf;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -154,6 +156,13 @@ public final class GiantEntities {
     /** Comme render, avec une lumiere imposee ({@code light}, ou null pour celle du faux monde). */
     public static void render(Entity entity, Level fakeWorld, float partialTick, PoseStack poseStack, MultiBufferSource buffers,
                               Integer light) {
+        render(entity, fakeWorld, partialTick, poseStack, buffers, light, null);
+    }
+
+    /** flameRotation is expressed in the scenery's axes, before the pose's scale and rotation. */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    public static void render(Entity entity, Level fakeWorld, float partialTick, PoseStack poseStack, MultiBufferSource buffers,
+                              Integer light, Quaternionf flameRotation) {
         EntityRenderer renderer = Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(entity);
         if (renderer == null) {
             return;
@@ -162,9 +171,16 @@ public final class GiantEntities {
         int packed = light != null ? light
                 : packedLight(fakeWorld, entity, partialTick);
         poseStack.pushPose();
-        poseStack.translate(entity.getX() + offset.x, entity.getY() + offset.y, entity.getZ() + offset.z);
-        renderer.render(entity, entity.getYRot(), partialTick, poseStack, buffers, packed);
-        poseStack.popPose();
+        try {
+            poseStack.translate(entity.getX() + offset.x, entity.getY() + offset.y, entity.getZ() + offset.z);
+            renderer.render(entity, entity.getYRot(), partialTick, poseStack, buffers, packed);
+            if (flameRotation != null && entity.displayFireAnimation()) {
+                ((EntityRenderDispatcherInvoker) Minecraft.getInstance().getEntityRenderDispatcher())
+                        .planariumview$renderFlame(poseStack, buffers, entity, flameRotation);
+            }
+        } finally {
+            poseStack.popPose();
+        }
     }
 
     /**
@@ -175,6 +191,7 @@ public final class GiantEntities {
     public static int packedLight(BlockAndTintGetter fakeWorld, Entity entity, float partialTick) {
         BlockPos pos = BlockPos.containing(entity.getLightProbePosition(partialTick));
         int light = LevelRenderer.getLightColor(fakeWorld, pos) & 0x00F000F0;
+        if (entity.isOnFire()) light |= 0xF0; // EntityRenderer's normal full block light while burning.
         if (ColorCompat.building()) {
             light = ClTag.retag(light, fakeWorld, pos);
             if ((light & 0xF0) != 0 && (light & ~0x00F000F0) == 0) {

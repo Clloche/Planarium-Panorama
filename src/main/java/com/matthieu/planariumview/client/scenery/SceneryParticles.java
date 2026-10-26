@@ -283,6 +283,17 @@ public final class SceneryParticles {
         return new Space(world, giant, origin, origin - ClientView.Y_SHIFT, origin, null, true, null);
     }
 
+    /** Native potion particle options retain their color, alpha and modded type. */
+    static void mobParticle(LitRenderingWorld world, FramedParticle.Frame frame, ParticleOptions options,
+                            double x, double y, double z) {
+        if (!allowed()) return;
+        Space space = new Space(world, frame.scale(), FramedParticle.OFFSET, FramedParticle.OFFSET,
+                FramedParticle.OFFSET, null, true, null);
+        int light = com.matthieu.planariumview.config.Config.realLighting()
+                ? rawLight(world, net.minecraft.core.BlockPos.containing(x, y, z)) : 0x00F000F0;
+        framed(frame, () -> spawn(space, options, x, y, z, 1.0, 1.0, 1.0, light));
+    }
+
     /** Vanilla's twenty poofs, simulated in captured coordinates and rendered in the mob's frame. */
     static void mobDeath(LitRenderingWorld world, FramedParticle.Frame frame,
                          double x, double y, double z, float width, float height) {

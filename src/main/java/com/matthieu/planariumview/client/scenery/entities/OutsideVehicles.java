@@ -11,6 +11,7 @@ import net.minecraft.world.entity.vehicle.Boat;
 import net.minecraft.world.entity.vehicle.MinecartTNT;
 import net.minecraft.world.entity.vehicle.VehicleEntity;
 import net.minecraft.world.level.Level;
+import org.joml.Quaternionf;
 
 /** Rendu et animations des vehicules. Les positions utilisent le meme flux interpole que les mobs. */
 public final class OutsideVehicles {
@@ -54,13 +55,14 @@ public final class OutsideVehicles {
         return new VehicleState(left, right, before.bubbleTicks(), before.underwater(), fuse);
     }
 
-    public static void render(Entity entity, Level scenery, float partialTick, PoseStack pose, MultiBufferSource buffers, int light) {
+    public static void render(Entity entity, Level scenery, float partialTick, PoseStack pose, MultiBufferSource buffers,
+                              int light, Quaternionf flameRotation) {
         Level original = entity.level();
         boolean vehicle = entity instanceof VehicleEntity;
         try {
             // MinecartRenderer.getPos/getPosOffs doivent lire les rails de la photo, dans le meme repere que la copie.
             if (vehicle) ((SceneryEntityAccessor) entity).planariumview$setLevel(scenery);
-            GiantEntities.render(entity, scenery, partialTick, pose, buffers, light);
+            GiantEntities.render(entity, scenery, partialTick, pose, buffers, light, flameRotation);
         } finally {
             if (vehicle) ((SceneryEntityAccessor) entity).planariumview$setLevel(original);
         }
