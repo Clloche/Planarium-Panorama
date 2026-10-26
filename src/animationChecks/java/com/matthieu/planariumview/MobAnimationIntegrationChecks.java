@@ -11,6 +11,16 @@ import com.matthieu.planariumview.client.scenery.entities.OutsideAquatic;
 import com.matthieu.planariumview.client.scenery.entities.MobEffects;
 import com.matthieu.planariumview.client.scenery.entities.MobShadows;
 import com.matthieu.planariumview.client.scenery.entities.GiantEntities;
+import com.matthieu.planariumview.client.scenery.entities.AquaticEffects;
+import com.matthieu.planariumview.client.scenery.SceneryParticles;
+import com.matthieu.planariumview.client.scenery.SceneryWaterParticles;
+import com.matthieu.planariumview.client.scenery.LitRenderingWorld;
+import net.minecraft.client.Camera;
+import net.minecraft.client.particle.Particle;
+import net.minecraft.client.particle.ParticleRenderType;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.Tesselator;
+import net.minecraft.client.renderer.texture.TextureManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -23,6 +33,8 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.*;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.network.protocol.game.*;
 import net.minecraft.resources.*;
 import net.minecraft.util.RandomSource;
@@ -32,10 +44,13 @@ import net.minecraft.server.dedicated.DedicatedServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.animal.Squid;
+import net.minecraft.world.entity.animal.Dolphin;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.entity.EntityInLevelCallback;
 import net.minecraft.world.phys.*;
@@ -152,6 +167,15 @@ public final class MobAnimationIntegrationChecks {
         List<MobAnimations.Event> events = firstQueue.drain();
         require(events.size() == 4 && secondQueue.drain().equals(events), "real capture dispatches all accepted animation kinds to both viewers");
         require(events.get(1).offHand() && events.get(1).duration() == 12, "capture reads the source hand and swing duration");
+        VisualSquid squid = fixture(VisualSquid.class);
+        squid.setId(71); field(Entity.class, "level").set(squid, world);
+        OutsideMobsServer.captureInk(squid);
+        events = firstQueue.drain();
+        require(events.size() == 1 && secondQueue.drain().equals(events)
+                && events.getFirst().kind() == MobAnimations.Kind.INK && events.getFirst().tick() == 100,
+                "actual ink emission reaches both observers at the source tick");
+        squid.setId(99); OutsideMobsServer.captureInk(squid);
+        require(firstQueue.drain().isEmpty(), "untracked squid cannot emit scenery ink");
         source.setId(99); OutsideMobsServer.capture(source, new ClientboundAnimatePacket(source, 0));
         require(firstQueue.drain().isEmpty(), "untracked entity cannot enqueue events");
         source.setId(71);
@@ -330,6 +354,140 @@ public final class MobAnimationIntegrationChecks {
         Method method = MobShadows.class.getDeclaredMethod(name, parameters); method.setAccessible(true); return method;
     }
 
+    public static class VisualDolphin extends Dolphin {
+        boolean wet, noAi;
+        public VisualDolphin() { super(null, null); }
+        @Override public boolean isInWater() { return wet; }
+        @Override public boolean isNoAi() { return noAi; }
+    }
+
+    private record Emission(ParticleOptions type, Vec3 at, Vec3 velocity) {}
+
+    private static void aquaticParticles() throws Exception {
+        // Particle identifiers only; no registries, providers or graphics context are needed by the sampler.
+        Class.forName(ParticleTypes.class.getName());
+        for (String name : List.of("DOLPHIN", "GLOW", "SQUID_INK", "GLOW_SQUID_INK")) {
+            Field target = field(ParticleTypes.class, name);
+            UNSAFE.putObject(UNSAFE.staticFieldBase(target), UNSAFE.staticFieldOffset(target), new SimpleParticleType(false));
+        }
+        List<Emission> emitted = new ArrayList<>();
+        AquaticEffects.Sink sink = (type, x, y, z, vx, vy, vz) -> emitted.add(new Emission(type, new Vec3(x, y, z), new Vec3(vx, vy, vz)));
+        VisualDolphin dolphin = fixture(VisualDolphin.class);
+        field(Entity.class, "position").set(dolphin, new Vec3(10, 20, 30));
+        dolphin.setDeltaMovement(.2, 0, 0); dolphin.wet = true;
+        for (float yaw : new float[]{0, 90, 180}) {
+            emitted.clear();
+            dolphin.setYRot(yaw + 90); // Rendering may have left a different orientation in the copy.
+            AquaticEffects.sample(dolphin, yaw, 0, RandomSource.create(1), sink);
+            require(emitted.size() == 4 && emitted.stream().allMatch(e -> e.type() == ParticleTypes.DOLPHIN
+                    && e.velocity().equals(Vec3.ZERO)), "moving dolphin emits four native wake particles");
+            Vec3 center = emitted.get(0).at().add(emitted.get(1).at()).scale(.5);
+            Vec3 behind = center.subtract(dolphin.position());
+            require(behind.dot(Vec3.directionFromRotation(0, yaw)) < -.49
+                    && Math.abs(emitted.get(0).at().distanceTo(emitted.get(1).at()) - .6) < .0001,
+                    "wake stays behind the delayed pose, on both sides, independent of stale render fields");
+        }
+        emitted.clear(); dolphin.wet = false;
+        AquaticEffects.sample(dolphin, 0, 0, RandomSource.create(1), sink);
+        dolphin.wet = true; dolphin.noAi = true;
+        AquaticEffects.sample(dolphin, 0, 0, RandomSource.create(1), sink);
+        dolphin.noAi = false; dolphin.setDeltaMovement(.01, 0, 0);
+        AquaticEffects.sample(dolphin, 0, 0, RandomSource.create(1), sink);
+        require(emitted.isEmpty(), "dry, stationary and no-AI dolphins leave no wake");
+
+        for (Squid squid : List.of(fixture(VisualSquid.class), fixture(GlowSquid.class))) {
+            field(Entity.class, "position").set(squid, new Vec3(10, 20, 30));
+            field(Entity.class, "dimensions").set(squid, EntityDimensions.scalable(.8F, .8F));
+            emitted.clear();
+            AquaticEffects.sample(squid, 0, 0, RandomSource.create(2), sink);
+            if (squid instanceof GlowSquid) {
+                require(emitted.size() == 1 && emitted.getFirst().type() == ParticleTypes.GLOW
+                        && emitted.getFirst().at().y >= 20 && emitted.getFirst().at().y <= 20.8,
+                        "glow squid emits its native sparkle within its body");
+            } else require(emitted.isEmpty(), "ordinary squid does not invent a constant bubble trail");
+            emitted.clear(); squid.xBodyRot = 90;
+            AquaticEffects.ink(squid, 90, RandomSource.create(3), sink);
+            ParticleOptions expected = squid instanceof GlowSquid ? ParticleTypes.GLOW_SQUID_INK : ParticleTypes.SQUID_INK;
+            Vec3 origin = new Vec3(9, 20.5, 30);
+            require(emitted.size() == 30 && emitted.stream().allMatch(e -> e.type() == expected
+                    && e.at().distanceTo(origin) < .0001 && e.velocity().x < -.029 && e.velocity().x > -.231),
+                    "ink uses the correct type, tilted mouth and server particle speed");
+        }
+    }
+
+    private static final class ProbeParticle extends Particle {
+        int ticks, renders, begins;
+        final ParticleRenderType type = new ParticleRenderType() {
+            public BufferBuilder begin(Tesselator tessellator, TextureManager textures) { begins++; return null; }
+            public boolean isTranslucent() { return false; }
+        };
+        ProbeParticle(ClientLevel level) { super(level, 1, 2, 3); }
+        @Override public void tick() { ticks++; setPos(x + 1, y, z); }
+        @Override public void render(VertexConsumer buffer, Camera camera, float partialTick) { renders++; }
+        @Override public ParticleRenderType getRenderType() { return type; }
+    }
+
+    public static class CapturedWater extends LitRenderingWorld {
+        BlockPos fluidQuery, blockQuery;
+        FluidState water;
+        BlockState block;
+        public CapturedWater() { super(null, List.of()); }
+        @Override public FluidState getFluidState(BlockPos pos) { fluidQuery = pos.immutable(); return water; }
+        @Override public BlockState getBlockState(BlockPos pos) { blockQuery = pos.immutable(); return block; }
+    }
+
+    @SuppressWarnings("unchecked") private static void capturedWater() throws Exception {
+        CapturedWater world = fixture(CapturedWater.class);
+        world.water = fixture(FluidState.class); world.block = fixture(BlockState.class);
+        Map<Particle, SceneryParticles.Space> spaces = (Map<Particle, SceneryParticles.Space>) field(SceneryParticles.class, "SPACE").get(null);
+        ProbeParticle particle = new ProbeParticle(fixture(ClientLevel.class));
+        try {
+            for (double scale : new double[]{32, 1D / 32}) {
+                spaces.put(particle, new SceneryParticles.Space(world, scale, 1024, 900, -500, null, true, null));
+                particle.setPos(1024 + 2.25 * scale, 900 + 70.5 * scale, -500 - 3.75 * scale);
+                require(SceneryParticles.fluidAt(particle) == world.water && SceneryParticles.blockAt(particle) == world.block
+                        && world.fluidQuery.equals(new BlockPos(2, 70, -4)) && world.blockQuery.equals(world.fluidQuery),
+                        "bubbles and ink query the captured water, including scale, offsets and negative positions");
+                require(SceneryParticles.motionScale(particle) == (float) scale,
+                        "particle acceleration uses the same scale as its position and initial velocity");
+            }
+        } finally { spaces.remove(particle); }
+    }
+
+    private static void waterParticleLifecycle() throws Exception {
+        config(Config.SCENERY_PARTICLES, true);
+        Minecraft.getInstance().level = fixture(ClientLevel.class);
+        Method wrap = SceneryWaterParticles.class.getDeclaredMethod("wrap", Particle.class); wrap.setAccessible(true);
+        Method clear = SceneryWaterParticles.class.getDeclaredMethod("clear"); clear.setAccessible(true);
+        Field drawing = field(SceneryWaterParticles.class, "drawing");
+        ProbeParticle inner = new ProbeParticle(Minecraft.getInstance().level);
+        Particle particle = (Particle) wrap.invoke(null, inner);
+        try {
+            particle.tick();
+            require(inner.ticks == 1 && particle.getBoundingBox().equals(inner.getBoundingBox()),
+                    "early rendering wrapper ticks once and keeps the engine's culling bounds current");
+            ParticleRenderType sheet = particle.getRenderType();
+            sheet.begin(null, null);
+            require(inner.begins == 0 && !sheet.isTranslucent(), "normal passes skip the early particles and retain their native sheet kind");
+            drawing.setBoolean(null, true); sheet.begin(null, null);
+            require(inner.begins == 1, "before-water pass delegates the original shader and blending setup");
+            particle.render(null, null, 0);
+            require(inner.renders == 1, "before-water rendering delegates once");
+            clear.invoke(null); particle.render(null, null, 0); particle.tick();
+            require(inner.renders == 1 && inner.ticks == 1 && !inner.isAlive() && !particle.isAlive(),
+                    "leaving the scenery immediately stops drawing and releases the old particles");
+            ProbeParticle next = new ProbeParticle(Minecraft.getInstance().level);
+            Particle nextWrapper = (Particle) wrap.invoke(null, next);
+            config(Config.SCENERY_PARTICLES, false); nextWrapper.tick();
+            require(!nextWrapper.isAlive() && !next.isAlive(), "disabling scenery particles removes both wrapper and contents");
+            require(SceneryParticles.fluidAt(next) == null && SceneryParticles.blockAt(next) == null
+                    && SceneryParticles.motionScale(next) == 1, "ordinary particles keep their native world and movement");
+        } finally {
+            drawing.setBoolean(null, false); clear.invoke(null); Minecraft.getInstance().level = null;
+            config(Config.SCENERY_PARTICLES, false);
+        }
+    }
+
     private static final class ShadowVertices implements VertexConsumer {
         final List<Vector3f> positions = new ArrayList<>();
         final List<float[]> uv = new ArrayList<>();
@@ -391,6 +549,29 @@ public final class MobAnimationIntegrationChecks {
         require(Arrays.equals(vertices.uv.get(0), new float[]{1, 1}) && Arrays.equals(vertices.uv.get(2), new float[]{0, 0}), "shadow texture stays centered on the mob");
     }
 
+    private static void modelLighting() {
+        for (float scale : new float[]{32, 1F / 32}) {
+            for (Quaternionf rotation : List.of(new Quaternionf(), new Quaternionf().rotationXYZ(.8F, -.4F, .3F))) {
+                PoseStack frame = new PoseStack();
+                frame.translate(100, 80, -40); frame.mulPose(rotation); frame.scale(scale, scale, scale);
+                Matrix4f saved = new Matrix4f(frame.last().pose());
+                PoseStack copy = GiantEntities.copyPose(frame.last());
+                require(copy.last().pose().equals(saved), "lighting fix preserves the scaled vertex positions");
+                for (Vector3f normal : List.of(new Vector3f(1, 0, 0), new Vector3f(0, 1, 0), new Vector3f(0, 0, 1))) {
+                    // GeckoLib reads normal() directly; vanilla uses transformNormal() and normalizes it.
+                    Vector3f gecko = copy.last().normal().transform(new Vector3f(normal));
+                    Vector3f vanilla = copy.last().transformNormal(normal, new Vector3f());
+                    Vector3f expected = new Vector3f(normal).rotate(rotation);
+                    require(Math.abs(gecko.length() - 1) < .00001 && gecko.distance(expected) < .00001
+                            && gecko.distance(vanilla) < .00001,
+                            "Ars/GeckoLib and vanilla receive equal unit lighting normals at giant and miniature scales");
+                }
+                copy.translate(5, 6, 7); copy.mulPose(new Quaternionf().rotationY(1));
+                require(frame.last().pose().equals(saved), "one renderer cannot change the next entity's placement or lighting");
+            }
+        }
+    }
+
     private static void camera() {
         // No GL context is needed: the actual RenderSystem model-view stack and its shader matrix are CPU state.
         RenderSystem.initRenderThread();
@@ -432,7 +613,7 @@ public final class MobAnimationIntegrationChecks {
     }
 
     public static void main(String[] args) throws Exception {
-        server(); client(); aquatic(); effects(); shadows(); camera();
-        System.out.println("PASS: production capture, independent observers, world isolation, stationary readiness, delayed removals, mount links, hurt playback, aquatic poses, potion particles, flame orientation, scenery shadows and camera alignment");
+        server(); client(); aquatic(); effects(); aquaticParticles(); waterParticleLifecycle(); capturedWater(); shadows(); modelLighting(); camera();
+        System.out.println("PASS: production capture, independent observers, world isolation, stationary readiness, delayed removals, mount links, hurt playback, aquatic poses/particles, ink, captured water, particle lifecycle, potion particles, flame orientation, scenery shadows, scaled model lighting and camera alignment");
     }
 }

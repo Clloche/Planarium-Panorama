@@ -9,7 +9,7 @@ Le second contrôle remplace les frontières du monde client et supprime l'initi
 
 ## Scénarios visuels
 
-Utiliser cette version du mod côté client et serveur : le flux optionnel des entités utilise désormais `5.entities5`.
+Utiliser cette version du mod côté client et serveur : le flux optionnel des entités utilise désormais `5.entities6`.
 
 1. Observer un mob immobile depuis le bocal, avec l'affichage des mobs activé, puis lui infliger des dégâts depuis le monde source : flash rouge bref, mouvement cohérent, pas de répétition à chaque paquet.
 2. Observer les attaques d'un mob, puis celles d'un mob gaucher. Vérifier la progression complète du geste et la réaction de sa cible.
@@ -28,5 +28,12 @@ Utiliser cette version du mod côté client et serveur : le flux optionnel des e
 14. Observer des calmars et calmars luisants : inclinaison du corps, rotation et tentacules fluides. Rester seul dans le bocal pendant plus de cinq secondes : les calmars observés continuent de nager. Blesser un calmar luisant dans l'obscurité et comparer son assombrissement puis sa récupération avec le monde source.
 15. Observer des tortues et axolotls qui passent de l'eau à la terre, puis nagent verticalement. Vérifier les pattes, la posture au sol et l'animation d'un axolotl qui fait le mort.
 16. Observer les animaux à travers l'eau et le verre : ils restent visibles par transparence, mais le terrain opaque les masque. Tourner la caméra et regarder vers le haut/bas : les animaux restent au même endroit dans le décor, sans glisser vers les bords de l'écran. Vérifier aussi les mobs terrestres, les bateaux et leurs passagers, puis incliner/déplacer le Planarium.
+
+17. Observer deux colonnes d'eau, sur sable des âmes et sur magma : bulles montantes et tourbillons descendants visibles à travers l'eau, arrêt à la sortie de l'eau. Incliner/déplacer le Planarium et vérifier que les particules suivent le décor sans changer de vitesse relative.
+18. Observer un dauphin qui nage puis s'arrête ou saute hors de l'eau : traînée derrière sa position interpolée uniquement pendant la nage. Blesser un calmar et un calmar luisant : un jet d'encre par émission réelle, de la bonne couleur et orienté avec le corps. Vérifier aussi les particules lumineuses du calmar luisant.
+19. Désactiver les particules, quitter puis rejoindre le bocal : aucune ancienne bulle ni ancien jet d'encre ne réapparaît. Répéter avec deux observateurs et après une saccade.
+20. Comparer un Drygmy et un Whirlisprig dehors et dans le décor : éclairage directionnel comparable. Tourner/incliner le Planarium et vérifier que les modèles vanilla gardent également leur éclairage.
+
+Les contrôles automatiques couvrent aussi les jets d'encre différés et uniques, la traînée des dauphins, les particules des calmars, les coordonnées de l'eau capturée, la durée de vie des particules et les normales d'éclairage des modèles agrandis.
 
 Les animations spécifiques aux boss ou aux systèmes propres aux mods seront traitées séparément.

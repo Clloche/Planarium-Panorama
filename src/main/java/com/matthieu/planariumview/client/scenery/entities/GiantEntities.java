@@ -165,6 +165,16 @@ public final class GiantEntities {
         }
     }
 
+    /** A fresh stack per renderer, preserving the lighting normals as well as the enlarged positions. */
+    public static PoseStack copyPose(PoseStack.Pose source) {
+        PoseStack result = new PoseStack();
+        result.mulPose(source.pose());
+        // mulPose recomputes inverse-transpose normals (1/32 for the giant scenery). Vanilla normalizes
+        // them per vertex, but GeckoLib reads the matrix directly. Keep the normals produced by scale().
+        result.last().normal().set(source.normal());
+        return result;
+    }
+
     /**
      * Dessine une entite du decor. La pose est deja agrandie et placee au coin de la photo (comme les blocs speciaux) :
      * il ne reste qu'a se placer a la position de l'entite.

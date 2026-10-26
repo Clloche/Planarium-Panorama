@@ -14,6 +14,7 @@ public final class MobAnimationTimeline {
     private int hurtTime, hurtDuration, deathTime, swingTime;
     private int swingDuration = 6;
     private boolean dying, swinging, offHand, ended, poof, hurtStarted;
+    private int inkBursts;
     private float attack, previousAttack;
 
     public void event(MobAnimations.Event event) {
@@ -26,7 +27,7 @@ public final class MobAnimationTimeline {
         pending.add(new Change(at, Long.MAX_VALUE, null, snapshot));
     }
 
-    public void resetPending() { pending.clear(); }
+    public void resetPending() { pending.clear(); inkBursts = 0; }
 
     public void advance(int target) {
         target = Math.max(target, tick);
@@ -52,6 +53,7 @@ public final class MobAnimationTimeline {
                     case SWING -> setSwing(true, event.offHand(), -1, Math.max(1, event.duration()), age);
                     case DEATH -> { dying = true; deathTime = age; }
                     case POOF -> { ended = true; poof = true; }
+                    case INK -> { if ((long) target - event.tick() < 10) inkBursts++; }
                 }
             }
         }
@@ -92,6 +94,11 @@ public final class MobAnimationTimeline {
     }
 
     public boolean ended() { return ended; }
+    public int takeInk() {
+        int result = inkBursts;
+        inkBursts = 0;
+        return result;
+    }
     public MobAnimations.Snapshot state() {
         return new MobAnimations.Snapshot(hurtTime, hurtDuration, dying, deathTime, swinging, offHand, swingTime, swingDuration);
     }

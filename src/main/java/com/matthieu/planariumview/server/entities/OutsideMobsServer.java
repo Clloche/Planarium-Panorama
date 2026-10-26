@@ -163,6 +163,16 @@ public final class OutsideMobsServer {
         } else if (packet instanceof ClientboundEntityEventPacket event && (event.getEventId() == 3 || event.getEventId() == 60)) {
             kind = event.getEventId() == 3 ? MobAnimations.Kind.DEATH : MobAnimations.Kind.POOF;
         } else return;
+        emit(entity, source, kind, offHand, duration);
+    }
+
+    public static void captureInk(Squid squid) {
+        if (!STATES.isEmpty() && squid.level() instanceof ServerLevel source) {
+            emit(squid, source, MobAnimations.Kind.INK, false, 0);
+        }
+    }
+
+    private static void emit(Entity entity, ServerLevel source, MobAnimations.Kind kind, boolean offHand, int duration) {
         MobAnimations.Event event = new MobAnimations.Event(++eventSequence, entity.getId(), source.getServer().getTickCount(),
                 kind, offHand, duration);
         for (State state : STATES.values()) {

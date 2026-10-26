@@ -998,13 +998,18 @@ public final class ClientView {
     /** Potion particles start at the interpolated mob, in source-world coordinates, just like its death puff. */
     public static void onMobParticle(net.minecraft.core.particles.ParticleOptions options,
                                      double sourceX, double sourceY, double sourceZ) {
+        onMobParticle(options, sourceX, sourceY, sourceZ, 1, 1, 1);
+    }
+
+    public static void onMobParticle(net.minecraft.core.particles.ParticleOptions options,
+                                    double sourceX, double sourceY, double sourceZ, double vx, double vy, double vz) {
         LitRenderingWorld world = sceneryWorld();
         if (!Config.sceneryParticles() || lastInfo == null || world == null || FlightView.active()) return;
         BlockPos origin = lastInfo.origin();
         int radius = currentRadius;
         double x = sourceX - origin.getX(), y = sourceY - origin.getY(), z = sourceZ - origin.getZ();
         if (!liveArea(x - radius - 0.5, z - radius - 0.5, viewRadius() + 1.0)) return;
-        SceneryParticles.mobParticle(world, mobFrame(origin, radius), options, x, y, z);
+        SceneryParticles.mobParticle(world, mobFrame(origin, radius), options, x, y, z, vx, vy, vz);
     }
 
     private static FramedParticle.Frame mobFrame(BlockPos origin, int radius) {
@@ -2573,6 +2578,7 @@ public final class ClientView {
             } finally {
                 blockEntityBuffers.endBatch();
             }
+            SceneryWaterParticles.render(event);
         });
     }
 
@@ -2585,8 +2591,7 @@ public final class ClientView {
         // plein milieu ne laisse pas la pile decalee pour les suivants).
         var flameRotation = com.matthieu.planariumview.client.scenery.entities.MobEffects.flameRotation(terrain,
                 Minecraft.getInstance().gameRenderer.getMainCamera().rotation());
-        PoseStack mobFrame = new PoseStack();
-        mobFrame.mulPose(poseStack.last().pose());
+        PoseStack mobFrame = GiantEntities.copyPose(poseStack.last());
         mobFrame.translate(-camera.x, -camera.y, -camera.z);
         mobFrame.mulPose(terrain);
         mobFrame.translate(-ARS_OFFSET * GIANT, -ARS_OFFSET * GIANT - Y_SHIFT, -ARS_OFFSET * GIANT);
@@ -2598,8 +2603,7 @@ public final class ClientView {
                     || !specialVisible(mob.getBoundingBoxForCulling().inflate(1.0), radius)) {
                 continue;
             }
-            PoseStack mobStack = new PoseStack();
-            mobStack.mulPose(mobFrame.last().pose());
+            PoseStack mobStack = GiantEntities.copyPose(mobFrame.last());
             try {
                 int light;
                 ColorCompat.begin(fake);

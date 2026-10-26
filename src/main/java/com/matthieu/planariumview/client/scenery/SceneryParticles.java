@@ -60,7 +60,12 @@ public final class SceneryParticles {
     }
 
     private static void add(Particle particle) {
-        Minecraft.getInstance().particleEngine.add(attaching == null ? particle : new FramedParticle(particle, attaching));
+        add(particle, false);
+    }
+
+    private static void add(Particle particle, boolean beforeWater) {
+        Particle shown = attaching == null ? particle : new FramedParticle(particle, attaching);
+        Minecraft.getInstance().particleEngine.add(beforeWater ? SceneryWaterParticles.wrap(shown) : shown);
     }
 
     /**
@@ -283,15 +288,15 @@ public final class SceneryParticles {
         return new Space(world, giant, origin, origin - ClientView.Y_SHIFT, origin, null, true, null);
     }
 
-    /** Native potion particle options retain their color, alpha and modded type. */
+    /** Native particle options and velocities, in the interpolated mob's moving frame. */
     static void mobParticle(LitRenderingWorld world, FramedParticle.Frame frame, ParticleOptions options,
-                            double x, double y, double z) {
+                            double x, double y, double z, double vx, double vy, double vz) {
         if (!allowed()) return;
         Space space = new Space(world, frame.scale(), FramedParticle.OFFSET, FramedParticle.OFFSET,
                 FramedParticle.OFFSET, null, true, null);
         int light = com.matthieu.planariumview.config.Config.realLighting()
                 ? rawLight(world, net.minecraft.core.BlockPos.containing(x, y, z)) : 0x00F000F0;
-        framed(frame, () -> spawn(space, options, x, y, z, 1.0, 1.0, 1.0, light));
+        framed(frame, () -> spawn(space, options, x, y, z, vx, vy, vz, light));
     }
 
     /** Vanilla's twenty poofs, simulated in captured coordinates and rendered in the mob's frame. */
@@ -364,6 +369,16 @@ public final class SceneryParticles {
                 ((box.minZ + box.maxZ) * 0.5 - space.oz()) / scale));
     }
 
+    /** Ink falls in air but floats in water; that decision also belongs to the captured world. */
+    public static net.minecraft.world.level.block.state.BlockState blockAt(Particle particle) {
+        Space space = SPACE.get(particle);
+        if (space == null || space.world() == null) return null;
+        AABB box = particle.getBoundingBox();
+        return space.world().getBlockState(net.minecraft.core.BlockPos.containing(
+                ((box.minX + box.maxX) * .5 - space.ox()) / space.scale(), (box.minY - space.oy()) / space.scale(),
+                ((box.minZ + box.maxZ) * .5 - space.oz()) / space.scale()));
+    }
+
     /** Lumiere d'une particule du decor, ou null pour une particule normale. */
     public static Integer lightOf(Particle particle) {
         if (LIGHT.isEmpty()) {
@@ -432,7 +447,8 @@ public final class SceneryParticles {
     private static Particle spawnAtRaw(Space space, ParticleOptions options, double x, double y, double z, double vx, double vy,
                                        double vz, int light) {
         Minecraft mc = Minecraft.getInstance();
-        if (attaching != null && LIGHT.size() >= 2048) return null;
+        boolean beforeWater = space.scale() > 1 && SceneryWaterParticles.supports(options);
+        if ((attaching != null || beforeWater) && LIGHT.size() >= 2048) return null;
         Particle particle;
         if (options instanceof Made made) {
             try {
@@ -471,7 +487,7 @@ public final class SceneryParticles {
         creating = added;
         // Miniature : rien n'entre dans le moteur pendant la creation. Une particule enlevee apres y etre entree restait
         // dessinee jusqu'au tick suivant (les flammes geantes clignotaient) : on n'ajoute que celle qu'on garde.
-        holding = mini || attaching != null;
+        holding = mini || attaching != null || beforeWater;
         try {
             particle = mc.particleEngine.createParticle(options, x, y, z, vx, vy, vz);
         } catch (Exception e) {
@@ -520,11 +536,11 @@ public final class SceneryParticles {
         if (particle == null || !adopt(particle, space, light)) {
             return null;
         }
-        if ((mini || attaching != null) && added.contains(particle)) {
+        if ((mini || attaching != null || beforeWater) && added.contains(particle)) {
             // Retenue pendant la creation : on l'ajoute maintenant, a la bonne taille.
             adding = true;
             try {
-                add(particle);
+                add(particle, beforeWater);
             } finally {
                 adding = false;
             }
@@ -1148,6 +1164,7 @@ public final class SceneryParticles {
     }
 
     public static void clear() {
+        SceneryWaterParticles.clear();
         ArsParticles.clear();
         com.matthieu.planariumview.compat.dynamic_surroundings.DsFirefliesCompat.clear();
         LIGHT.clear();

@@ -380,9 +380,11 @@ public final class OutsideMobs {
                     if (copy.livingAnimation.takePoof() && warmedUp && copy.ready && copy.rendered != null) {
                         ClientView.onMobDeath(copy.tickX, copy.tickY, copy.tickZ, entity.getBbWidth(), entity.getBbHeight());
                     }
+                    int inkBursts = copy.livingAnimation.takeInk(); // Consume even while hidden; no replay after warmup.
                     if (warmedUp && copy.ready && copy.rendered != null && !copy.livingAnimation.ended()
                             && Config.sceneryParticles() && !FlightView.active()) {
                         MobEffects.tick(living);
+                        AquaticEffects.tick(living, state.yRot(), state.xRot(), state.bodyRot(), inkBursts);
                     }
                 }
                 copy.animation.tick(entity, state.visual());

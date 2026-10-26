@@ -7,7 +7,7 @@ public final class MobAnimations {
 
     private MobAnimations() {}
 
-    public enum Kind { HURT, SWING, DEATH, POOF }
+    public enum Kind { HURT, SWING, DEATH, POOF, INK }
 
     public record Event(long sequence, int entityId, int tick, Kind kind, boolean offHand, int duration) {
         public Event {

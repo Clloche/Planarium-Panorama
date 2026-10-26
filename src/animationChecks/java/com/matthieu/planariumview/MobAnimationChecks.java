@@ -128,6 +128,28 @@ public final class MobAnimationChecks {
         require(first.drain().isEmpty() && !first.resetRequired(), "leaving view clears queue and recovery state");
     }
 
+    private static void ink() {
+        MobAnimationTimeline view = new MobAnimationTimeline();
+        var first = event(1, 100, MobAnimations.Kind.INK);
+        view.event(first);
+        view.advance(99);
+        require(view.takeInk() == 0, "ink waits for the delayed display clock");
+        view.advance(100);
+        require(view.takeInk() == 1 && view.takeInk() == 0, "ink is consumed once");
+        view.event(first);
+        view.event(event(2, 101, MobAnimations.Kind.INK));
+        view.event(event(3, 102, MobAnimations.Kind.INK));
+        view.advance(102);
+        require(view.takeInk() == 2, "distinct bursts survive batching; duplicate packets cannot replay them");
+        view.event(event(4, 103, MobAnimations.Kind.INK));
+        view.advance(113);
+        require(view.takeInk() == 0, "expired ink is not replayed after startup or a hitch");
+        view.event(event(5, 114, MobAnimations.Kind.INK));
+        view.advance(114);
+        view.resetPending();
+        require(view.takeInk() == 0, "resynchronization discards undrawn ink");
+    }
+
     private static void protocol() {
         var snapshot = new MobAnimations.Snapshot(7, 10, true, 3, true, true, -1, 12);
         var water = new MobEnvironment(true, true, true, false, .2F, -.1F, .3F, new MobEnvironment.SquidPose(20, 350, .7F));
@@ -136,7 +158,7 @@ public final class MobAnimationChecks {
         var dry = new OutsideMobsPayload.Entry(72, 1, 2, 3, 0, 0, 0, 0, -1, 0, null, null, new byte[0], new byte[0], snapshot, land);
         var vehicle = new OutsideMobsPayload.Entry(70, 1, 2, 3, 0, 0, 0, 0, -1, 0, null, null, new byte[0], new byte[0]);
         var events = List.of(event(300, 100, MobAnimations.Kind.HURT), event(301, 101, MobAnimations.Kind.DEATH),
-                new MobAnimations.Event(302, 71, 102, MobAnimations.Kind.SWING, true, 12));
+                new MobAnimations.Event(302, 71, 102, MobAnimations.Kind.SWING, true, 12), event(303, 102, MobAnimations.Kind.INK));
         var packet = new OutsideMobsPayload(ResourceLocation.parse("test:pocket"), 14, new BlockPos(-100, 64, 200), 102,
                 true, List.of(entry, dry, vehicle), new int[]{91}, events, true);
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
@@ -176,7 +198,7 @@ public final class MobAnimationChecks {
     }
 
     public static void main(String[] args) {
-        eventsBetweenSnapshots(); swingDurations(); resynchronization(); death(); observersAndOverflow(); protocol(); aquaticInterpolation();
+        eventsBetweenSnapshots(); swingDurations(); resynchronization(); death(); ink(); observersAndOverflow(); protocol(); aquaticInterpolation();
         System.out.println("PASS: delayed events, both hands/durations, resync, twenty-tick death, unique poof, observers, overflow, codec and aquatic interpolation");
     }
 }
