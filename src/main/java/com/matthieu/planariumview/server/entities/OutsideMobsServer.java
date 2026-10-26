@@ -2,6 +2,7 @@ package com.matthieu.planariumview.server.entities;
 
 import com.matthieu.planariumview.network.entities.OutsideMobsPayload;
 import com.matthieu.planariumview.network.entities.MobAnimations;
+import com.matthieu.planariumview.network.entities.MobEnvironment;
 import com.matthieu.planariumview.network.entities.ViewPrefsPayload;
 import com.matthieu.planariumview.mixin.entities.SynchedEntityDataAccessor;
 import com.matthieu.planariumview.mixin.entities.BoatAccessor;
@@ -27,6 +28,10 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.animal.Squid;
+import net.minecraft.world.entity.animal.WaterAnimal;
+import net.minecraft.world.entity.animal.Turtle;
+import net.minecraft.world.entity.animal.axolotl.Axolotl;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.AbstractMinecart;
@@ -96,6 +101,7 @@ public final class OutsideMobsServer {
         int vehicleId = -1;
         int seat;
         OutsideMobsPayload.VehicleState visual;
+        MobEnvironment environment;
         boolean dying;
         byte[] data = new byte[0];
         byte[] equipment = new byte[0];
@@ -310,12 +316,15 @@ public final class OutsideMobsServer {
         int vehicleId = vehicle != null && selected.contains(vehicle.getId()) ? vehicle.getId() : -1;
         int seat = vehicleId >= 0 ? vehicle.getPassengers().indexOf(mob) : 0;
         OutsideMobsPayload.VehicleState visual = visual(mob);
+        MobEnvironment environment = environment(mob);
         boolean dying = mob instanceof LivingEntity living && living.isDeadOrDying();
         MobAnimations.Snapshot animation = mob instanceof LivingEntity living && (create != null || full || dying != sent.dying)
                 ? snapshot(living) : null;
         byte[] data = new byte[0];
         byte[] equipment = new byte[0];
-        if (create != null || now - sent.checkedAt >= (mob instanceof VehicleEntity ? INTERVAL : APPEARANCE_INTERVAL)) {
+        // Puffing fish, playing-dead axolotls and darkened glow squids can change between appearance samples.
+        boolean quickAppearance = mob instanceof VehicleEntity || mob instanceof WaterAnimal || mob instanceof Turtle || mob instanceof Axolotl;
+        if (create != null || now - sent.checkedAt >= (quickAppearance ? INTERVAL : APPEARANCE_INTERVAL)) {
             sent.checkedAt = now;
             byte[] currentData = encodeData(mob);
             if (!Arrays.equals(currentData, sent.data)) {
@@ -334,7 +343,8 @@ public final class OutsideMobsServer {
         }
         boolean moved = Math.abs(x - sent.x) > 1.0F / 64 || Math.abs(y - sent.y) > 1.0F / 64 || Math.abs(z - sent.z) > 1.0F / 64
                 || yRot != sent.yRot || xRot != sent.xRot || headRot != sent.headRot || bodyRot != sent.bodyRot;
-        boolean changed = vehicleId != sent.vehicleId || seat != sent.seat || !Objects.equals(visual, sent.visual);
+        boolean changed = vehicleId != sent.vehicleId || seat != sent.seat || !Objects.equals(visual, sent.visual)
+                || !Objects.equals(environment, sent.environment);
         if (!full && create == null && !moved && !changed && data.length == 0 && equipment.length == 0 && animation == null) return null;
         sent.x = x;
         sent.y = y;
@@ -346,9 +356,19 @@ public final class OutsideMobsServer {
         sent.vehicleId = vehicleId;
         sent.seat = seat;
         sent.visual = visual;
+        sent.environment = environment;
         sent.dying = dying;
         return new OutsideMobsPayload.Entry(mob.getId(), x, y, z, yRot, xRot, headRot, bodyRot,
-                vehicleId, seat, visual, create, data, equipment, animation);
+                vehicleId, seat, visual, create, data, equipment, animation, environment);
+    }
+
+    private static MobEnvironment environment(Entity entity) {
+        if (!(entity instanceof LivingEntity)) return null;
+        var velocity = entity.getDeltaMovement();
+        MobEnvironment.SquidPose pose = entity instanceof Squid squid
+                ? new MobEnvironment.SquidPose(squid.xBodyRot, squid.zBodyRot, squid.tentacleAngle) : null;
+        return new MobEnvironment(entity.isInWater(), entity.isUnderWater(), entity.isInWaterOrBubble(), entity.onGround(),
+                (float) velocity.x, (float) velocity.y, (float) velocity.z, pose);
     }
 
     private static MobAnimations.Snapshot snapshot(LivingEntity entity) {

@@ -89,11 +89,11 @@ public class PlanariumView {
                 (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.FlightView.receive(payload)));
         // Facultatif : mobs du dehors (rayon detaille), et ce que le client veut voir en plus des blocs.
         // Les rotations sont en degres precis : ce flux a sa propre version, sans changer les anciens payloads.
-        event.registrar(NETWORK_VERSION + ".entities4").optional().playToClient(
+        event.registrar(NETWORK_VERSION + ".entities5").optional().playToClient(
                 com.matthieu.planariumview.network.entities.OutsideMobsPayload.TYPE,
                 com.matthieu.planariumview.network.entities.OutsideMobsPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.entities.OutsideMobs.receive(payload)));
-        event.registrar(NETWORK_VERSION + ".entities4").optional().playToServer(
+        event.registrar(NETWORK_VERSION + ".entities5").optional().playToServer(
                 com.matthieu.planariumview.network.entities.ViewPrefsPayload.TYPE,
                 com.matthieu.planariumview.network.entities.ViewPrefsPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {

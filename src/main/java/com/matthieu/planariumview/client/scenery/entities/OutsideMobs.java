@@ -7,6 +7,7 @@ import com.matthieu.planariumview.client.sound.entities.OutsideMinecartSound;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.entities.OutsideMobsPayload;
 import com.matthieu.planariumview.network.entities.MobAnimations;
+import com.matthieu.planariumview.network.entities.MobEnvironment;
 import com.matthieu.planariumview.mixin.entities.SceneryEntityAccessor;
 
 import com.google.common.collect.ImmutableList;
@@ -64,7 +65,7 @@ public final class OutsideMobs {
     private static final int STALE_TICKS = 100;
 
     private record State(int tick, double x, double y, double z, float yRot, float xRot, float headRot, float bodyRot,
-                         int vehicleId, int seat, OutsideMobsPayload.VehicleState visual) {
+                         int vehicleId, int seat, OutsideMobsPayload.VehicleState visual, MobEnvironment environment) {
     }
 
     private static final class Copy {
@@ -214,7 +215,7 @@ public final class OutsideMobs {
             if (entry.living() != null) copy.livingAnimation.snapshot(payload.tick(), entry.living());
             State state = new State(payload.tick(), origin.getX() + (double) entry.x(), origin.getY() + (double) entry.y(),
                     origin.getZ() + (double) entry.z(), entry.yRot(), entry.xRot(), entry.headRot(), entry.bodyRot(),
-                    entry.vehicleId(), entry.seat(), entry.visual());
+                    entry.vehicleId(), entry.seat(), entry.visual(), entry.environment());
             // Dans l'ordre des ticks (un envoi ne revient jamais en arriere, sauf redemarrage du serveur).
             if (!copy.states.isEmpty()) {
                 State previous = copy.states.peekLast();
@@ -224,7 +225,7 @@ public final class OutsideMobs {
                     // Sans delta, le mob etait immobile jusqu'au precedent passage du serveur.
                     copy.states.addLast(new State(state.tick() - OutsideMobsPayload.UPDATE_INTERVAL, previous.x(), previous.y(), previous.z(),
                             previous.yRot(), previous.xRot(), previous.headRot(), previous.bodyRot(),
-                            previous.vehicleId(), previous.seat(), previous.visual()));
+                            previous.vehicleId(), previous.seat(), previous.visual(), previous.environment()));
                 }
             }
             copy.states.addLast(state);
@@ -250,7 +251,7 @@ public final class OutsideMobs {
             if (updated.contains(item.getKey()) || copy.removeAt != Integer.MAX_VALUE || copy.states.isEmpty()) continue;
             State last = copy.states.peekLast();
             copy.states.addLast(new State(payload.tick(), last.x(), last.y(), last.z(), last.yRot(), last.xRot(),
-                    last.headRot(), last.bodyRot(), last.vehicleId(), last.seat(), last.visual()));
+                    last.headRot(), last.bodyRot(), last.vehicleId(), last.seat(), last.visual(), last.environment()));
             while (copy.states.size() > MAX_STATES) copy.states.pollFirst();
             copy.lastUpdate = clientTick;
         }
@@ -370,11 +371,12 @@ public final class OutsideMobs {
                 copy.tickY = state.y();
                 copy.tickZ = state.z();
                 copy.placed = true;
+                OutsideAquatic.apply(entity, state.environment());
                 if (entity instanceof LivingEntity living) {
                     copy.livingAnimation.advance((int) Math.floor(time));
                     applyAnimation(living, copy.livingAnimation);
                     if (state.vehicleId() >= 0) living.walkAnimation.update(0, 0.4F);
-                    else living.calculateEntityAnimation(false);
+                    else living.calculateEntityAnimation(state.environment() != null && state.environment().waterOrBubble());
                     if (copy.livingAnimation.takePoof() && warmedUp && copy.ready && copy.rendered != null) {
                         ClientView.onMobDeath(copy.tickX, copy.tickY, copy.tickZ, entity.getBbWidth(), entity.getBbHeight());
                     }
@@ -492,6 +494,7 @@ public final class OutsideMobs {
                 living.yHeadRotO = state.headRot();
             }
             copy.animation.prepare(entity, state.visual(), time, partialTick);
+            OutsideAquatic.apply(entity, state.environment());
             result.add(entity);
         }
         // Une copie de vehicule refusee par son renderer ne doit pas laisser flotter ses passagers.
@@ -573,7 +576,8 @@ public final class OutsideMobs {
                         Mth.lerp(f, before.z(), state.z()), Mth.rotLerp(f, before.yRot(), state.yRot()),
                         Mth.lerp(f, before.xRot(), state.xRot()), Mth.rotLerp(f, before.headRot(), state.headRot()),
                         Mth.rotLerp(f, before.bodyRot(), state.bodyRot()), before.vehicleId(), before.seat(),
-                        OutsideVehicles.interpolate(before.visual(), state.visual(), f));
+                        OutsideVehicles.interpolate(before.visual(), state.visual(), f),
+                        OutsideAquatic.interpolate(before.environment(), state.environment(), f));
             }
             before = state;
         }

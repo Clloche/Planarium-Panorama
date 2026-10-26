@@ -4,6 +4,7 @@ import com.matthieu.planariumview.client.scenery.FaceHueConsumer;
 import com.matthieu.planariumview.compat.contraption_lights.ClTag;
 import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
 import com.matthieu.planariumview.mixin.entities.EntityRenderDispatcherInvoker;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
@@ -17,6 +18,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.GlowSquid;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.decoration.HangingEntity;
 import net.minecraft.world.level.BlockAndTintGetter;
@@ -26,6 +28,7 @@ import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.joml.Quaternionf;
+import org.joml.Matrix4f;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -145,6 +148,24 @@ public final class GiantEntities {
     }
 
     /**
+     * Les entites en tampon prennent leur vue dans RenderSystem, contrairement aux maillages de blocs qui la
+     * recoivent directement. Avant l'eau (AFTER_SKY), LevelRenderer n'a pas encore installe la vue de la camera.
+     * Le tampon doit etre vide dans draw, avant de restaurer la matrice du reste du rendu.
+     */
+    public static void withCamera(Matrix4f view, Runnable draw) {
+        var modelView = RenderSystem.getModelViewStack();
+        modelView.pushMatrix();
+        try {
+            modelView.set(view);
+            RenderSystem.applyModelViewMatrix();
+            draw.run();
+        } finally {
+            modelView.popMatrix();
+            RenderSystem.applyModelViewMatrix();
+        }
+    }
+
+    /**
      * Dessine une entite du decor. La pose est deja agrandie et placee au coin de la photo (comme les blocs speciaux) :
      * il ne reste qu'a se placer a la position de l'entite.
      */
@@ -192,6 +213,10 @@ public final class GiantEntities {
         BlockPos pos = BlockPos.containing(entity.getLightProbePosition(partialTick));
         int light = LevelRenderer.getLightColor(fakeWorld, pos) & 0x00F000F0;
         if (entity.isOnFire()) light |= 0xF0; // EntityRenderer's normal full block light while burning.
+        if (entity instanceof GlowSquid squid) {
+            int block = OutsideAquatic.glowLight(squid.getDarkTicksRemaining(), (light >> 4) & 15);
+            light = (light & ~0xF0) | (block << 4);
+        }
         if (ColorCompat.building()) {
             light = ClTag.retag(light, fakeWorld, pos);
             if ((light & 0xF0) != 0 && (light & ~0x00F000F0) == 0) {

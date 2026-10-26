@@ -6,6 +6,7 @@
   "mixins": [
     "entities.SynchedEntityDataAccessor",
     "entities.RandomStrollGoalMixin",
+    "entities.SquidRandomMovementGoalMixin",
     "entities.MobAnimationBroadcastMixin",
     "entities.BoatAccessor",
     "compat.ars_nouveau.PlanariumTileSubLevelMixin",
@@ -20,6 +21,7 @@
   "client": [
     "FlameParticleLightMixin",
     "entities.SceneryEntityAccessor",
+    "entities.EntityEnvironmentMixin",
     "entities.LivingEffectParticlesMixin",
     "entities.EntityRenderDispatcherInvoker",
     "entities.EntityRendererShadowAccessor",

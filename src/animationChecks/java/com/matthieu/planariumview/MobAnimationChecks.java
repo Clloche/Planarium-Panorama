@@ -1,7 +1,9 @@
 package com.matthieu.planariumview;
 
 import com.matthieu.planariumview.client.scenery.entities.MobAnimationTimeline;
+import com.matthieu.planariumview.client.scenery.entities.OutsideAquatic;
 import com.matthieu.planariumview.network.entities.MobAnimations;
+import com.matthieu.planariumview.network.entities.MobEnvironment;
 import com.matthieu.planariumview.network.entities.OutsideMobsPayload;
 import com.matthieu.planariumview.server.entities.MobEventQueue;
 import io.netty.buffer.Unpooled;
@@ -128,16 +130,22 @@ public final class MobAnimationChecks {
 
     private static void protocol() {
         var snapshot = new MobAnimations.Snapshot(7, 10, true, 3, true, true, -1, 12);
-        var entry = new OutsideMobsPayload.Entry(71, 1, 2, 3, 170, 0, 20, 10, 70, 1, null, null, new byte[0], new byte[0], snapshot);
+        var water = new MobEnvironment(true, true, true, false, .2F, -.1F, .3F, new MobEnvironment.SquidPose(20, 350, .7F));
+        var land = new MobEnvironment(false, false, false, true, 0, 0, 0, null);
+        var entry = new OutsideMobsPayload.Entry(71, 1, 2, 3, 170, 0, 20, 10, 70, 1, null, null, new byte[0], new byte[0], snapshot, water);
+        var dry = new OutsideMobsPayload.Entry(72, 1, 2, 3, 0, 0, 0, 0, -1, 0, null, null, new byte[0], new byte[0], snapshot, land);
+        var vehicle = new OutsideMobsPayload.Entry(70, 1, 2, 3, 0, 0, 0, 0, -1, 0, null, null, new byte[0], new byte[0]);
         var events = List.of(event(300, 100, MobAnimations.Kind.HURT), event(301, 101, MobAnimations.Kind.DEATH),
                 new MobAnimations.Event(302, 71, 102, MobAnimations.Kind.SWING, true, 12));
         var packet = new OutsideMobsPayload(ResourceLocation.parse("test:pocket"), 14, new BlockPos(-100, 64, 200), 102,
-                true, List.of(entry), new int[]{91}, events, true);
+                true, List.of(entry, dry, vehicle), new int[]{91}, events, true);
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
         try {
             OutsideMobsPayload.STREAM_CODEC.encode(buffer, packet);
             var read = OutsideMobsPayload.STREAM_CODEC.decode(buffer);
             require(read.events().equals(events) && read.entries().getFirst().living().equals(snapshot), "events and snapshot round trip");
+            require(read.entries().getFirst().environment().equals(water) && read.entries().get(1).environment().equals(land)
+                    && read.entries().get(2).environment() == null, "water, land, squid poses and absent vehicle environment round trip together");
             require(read.resync() == 14 && read.resetAnimations() && read.entries().getFirst().vehicleId() == 70
                     && read.entries().getFirst().seat() == 1 && read.removed()[0] == 91 && !buffer.isReadable(), "epoch, mount links and removals coexist with events");
             buffer.clear();
@@ -150,8 +158,25 @@ public final class MobAnimationChecks {
         } finally { buffer.release(); }
     }
 
+    private static void aquaticInterpolation() {
+        var before = new MobEnvironment(true, true, true, false, .2F, -.1F, .3F, new MobEnvironment.SquidPose(350, 170, .4F));
+        var after = new MobEnvironment(false, false, false, true, 0, .1F, -.3F, new MobEnvironment.SquidPose(10, -170, .8F));
+        var middle = OutsideAquatic.interpolate(before, after, .5F);
+        near(.1F, middle.velocityX(), "swimming velocity interpolates");
+        near(0, middle.velocityY(), "vertical velocity interpolates");
+        near(0, middle.velocityZ(), "velocity reverses smoothly");
+        near(360, middle.squid().pitch(), "squid pitch takes the short path across zero");
+        near(180, middle.squid().roll(), "squid roll takes the short path across the half turn");
+        near(.6F, middle.squid().tentacleAngle(), "tentacles interpolate in radians");
+        require(middle.inWater() && middle.underwater() && middle.waterOrBubble() && !middle.onGround(), "water flags wait for their snapshot tick");
+        require(OutsideAquatic.interpolate(null, null, .5F) == null, "vehicles do not gain a living environment");
+        require(OutsideAquatic.glowLight(0, 0) == 15 && OutsideAquatic.glowLight(5, 0) == 7
+                && OutsideAquatic.glowLight(100, 0) == 0 && OutsideAquatic.glowLight(100, 11) == 11,
+                "glow squid light recovers after damage without darkening ambient light");
+    }
+
     public static void main(String[] args) {
-        eventsBetweenSnapshots(); swingDurations(); resynchronization(); death(); observersAndOverflow(); protocol();
-        System.out.println("PASS: delayed events, both hands/durations, resync, twenty-tick death, unique poof, observers, overflow and codec");
+        eventsBetweenSnapshots(); swingDurations(); resynchronization(); death(); observersAndOverflow(); protocol(); aquaticInterpolation();
+        System.out.println("PASS: delayed events, both hands/durations, resync, twenty-tick death, unique poof, observers, overflow, codec and aquatic interpolation");
     }
 }

@@ -2,14 +2,14 @@
 
 `gradlew.bat build` lance les deux contrôles suivants, également exécutables séparément :
 
-- `checkOutsideMobAnimations` : protocole, chronologie, mains et durées d'attaque, reprise en cours d'animation, mort, doublons et débordement.
-- `checkOutsideMobIntegration` : méthodes de production de capture et de lecture, deux observateurs, isolation des mondes, poses immobiles, retrait différé, liens de monture, particules de potion, orientation des flammes, placement et atténuation des ombres.
+- `checkOutsideMobAnimations` : protocole, chronologie, mains et durées d'attaque, reprise en cours d'animation, mort, doublons, débordement et interpolation des poses aquatiques.
+- `checkOutsideMobIntegration` : méthodes de production de capture et de lecture, deux observateurs, isolation des mondes, poses immobiles, retrait différé, liens de monture, transitions eau/terre, nage verticale, poses des calmars, particules de potion, orientation des flammes, placement et atténuation des ombres, alignement mobs/terrain et restauration de la caméra après rendu.
 
 Le second contrôle remplace les frontières du monde client et supprime l'initialisation statique de certaines classes Minecraft dans un processus de test. Les méthodes de production restent intactes. Ces fixtures ne sont pas incluses dans le JAR du mod et ne remplacent pas une validation visuelle en jeu.
 
 ## Scénarios visuels
 
-Utiliser cette version du mod côté client et serveur : le flux optionnel des entités utilise désormais `5.entities4`.
+Utiliser cette version du mod côté client et serveur : le flux optionnel des entités utilise désormais `5.entities5`.
 
 1. Observer un mob immobile depuis le bocal, avec l'affichage des mobs activé, puis lui infliger des dégâts depuis le monde source : flash rouge bref, mouvement cohérent, pas de répétition à chaque paquet.
 2. Observer les attaques d'un mob, puis celles d'un mob gaucher. Vérifier la progression complète du geste et la réaction de sa cible.
@@ -23,5 +23,10 @@ Utiliser cette version du mod côté client et serveur : le flux optionnel des e
 10. Observer un mob dans la neige poudreuse : tremblement une fois gelé et flash rouge lors des dégâts. Le faire dégeler et vérifier l'arrêt du tremblement. Comparer aussi les flashes de dégâts périodiques du feu avec ceux du monde source.
 11. Observer un adulte et un bébé sur un sol plein, puis un mob qui saute : taille d'ombre adaptée, position sur le terrain capturé et atténuation avec la hauteur. Incliner et déplacer le Planarium : les ombres restent sur ce même terrain, sans retard supplémentaire.
 12. Comparer les ombres de jour, de nuit et près d'une torche ; appliquer l'invisibilité et désactiver l'option Minecraft « Ombres des entités ». Vérifier leur disparition, puis leur retour après réactivation. S'éloigner jusqu'à 16 blocs du monde source pour vérifier leur disparition progressive.
+
+13. Observer des morues, saumons, poissons tropicaux, poissons-globes et dauphins dans l'eau, puis hors de l'eau : posture de nage dans l'eau, posture terrestre hors de l'eau, queue des dauphins animée pendant leur déplacement. Faire gonfler un poisson-globe et vérifier sa taille.
+14. Observer des calmars et calmars luisants : inclinaison du corps, rotation et tentacules fluides. Rester seul dans le bocal pendant plus de cinq secondes : les calmars observés continuent de nager. Blesser un calmar luisant dans l'obscurité et comparer son assombrissement puis sa récupération avec le monde source.
+15. Observer des tortues et axolotls qui passent de l'eau à la terre, puis nagent verticalement. Vérifier les pattes, la posture au sol et l'animation d'un axolotl qui fait le mort.
+16. Observer les animaux à travers l'eau et le verre : ils restent visibles par transparence, mais le terrain opaque les masque. Tourner la caméra et regarder vers le haut/bas : les animaux restent au même endroit dans le décor, sans glisser vers les bords de l'écran. Vérifier aussi les mobs terrestres, les bateaux et leurs passagers, puis incliner/déplacer le Planarium.
 
 Les animations spécifiques aux boss ou aux systèmes propres aux mods seront traitées séparément.

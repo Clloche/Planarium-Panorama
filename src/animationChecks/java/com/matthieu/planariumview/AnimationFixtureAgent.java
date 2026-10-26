@@ -12,6 +12,7 @@ public final class AnimationFixtureAgent {
         instrumentation.addTransformer(new ClassFileTransformer() {
             @Override public byte[] transform(ClassLoader loader, String name, Class<?> type, ProtectionDomain domain, byte[] bytes) {
                 if (!Set.of("net/minecraft/world/entity/Entity", "net/minecraft/world/entity/LivingEntity",
+                        "net/minecraft/world/entity/Mob",
                         "net/minecraft/client/multiplayer/ClientLevel", "net/minecraft/server/level/ServerLevel",
                         "net/minecraft/server/MinecraftServer", "net/minecraft/server/dedicated/DedicatedServer").contains(name)) return null;
                 ClassReader reader = new ClassReader(bytes);

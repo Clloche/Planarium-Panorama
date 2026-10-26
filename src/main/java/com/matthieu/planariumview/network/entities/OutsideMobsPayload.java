@@ -43,10 +43,17 @@ public record OutsideMobsPayload(ResourceLocation pocketDim, int resync, BlockPo
      * {@code vehicleId} : identifiant d'une autre copie, ou -1 ; {@code seat} conserve l'ordre des passagers.
      * {@code visual} : animation d'un bateau ou compte a rebours d'un wagonnet TNT, sinon null.
      * {@code living} : phase des animations communes a la creation, lors d'un envoi complet ou d'un changement de vie.
+     * {@code environment} : eau, sol, mouvement et pose des calmars, sur la meme horloge que la position.
      */
     public record Entry(int id, float x, float y, float z, float yRot, float xRot, float headRot, float bodyRot,
                         int vehicleId, int seat, VehicleState visual, CompoundTag create, byte[] data, byte[] equipment,
-                        MobAnimations.Snapshot living) {
+                        MobAnimations.Snapshot living, MobEnvironment environment) {
+        public Entry(int id, float x, float y, float z, float yRot, float xRot, float headRot, float bodyRot,
+                     int vehicleId, int seat, VehicleState visual, CompoundTag create, byte[] data, byte[] equipment,
+                     MobAnimations.Snapshot living) {
+            this(id, x, y, z, yRot, xRot, headRot, bodyRot, vehicleId, seat, visual, create, data, equipment, living, null);
+        }
+
         public Entry(int id, float x, float y, float z, float yRot, float xRot, float headRot, float bodyRot,
                      int vehicleId, int seat, VehicleState visual, CompoundTag create, byte[] data, byte[] equipment) {
             this(id, x, y, z, yRot, xRot, headRot, bodyRot, vehicleId, seat, visual, create, data, equipment, null);
@@ -101,6 +108,8 @@ public record OutsideMobsPayload(ResourceLocation pocketDim, int resync, BlockPo
             buf.writeByteArray(entry.equipment());
             buf.writeBoolean(entry.living() != null);
             if (entry.living() != null) writeLiving(buf, entry.living());
+            buf.writeBoolean(entry.environment() != null);
+            if (entry.environment() != null) entry.environment().write(buf);
         }
         buf.writeVarIntArray(removed);
         if (events.size() > MobAnimations.MAX_EVENTS) throw new IllegalArgumentException("Too many mob events");
@@ -137,7 +146,8 @@ public record OutsideMobsPayload(ResourceLocation pocketDim, int resync, BlockPo
             byte[] data = buf.readByteArray(MAX_BYTES);
             byte[] equipment = buf.readByteArray(MAX_BYTES);
             MobAnimations.Snapshot living = buf.readBoolean() ? readLiving(buf) : null;
-            entries.add(new Entry(id, x, y, z, yRot, xRot, headRot, bodyRot, vehicleId, seat, visual, create, data, equipment, living));
+            MobEnvironment environment = buf.readBoolean() ? MobEnvironment.read(buf) : null;
+            entries.add(new Entry(id, x, y, z, yRot, xRot, headRot, bodyRot, vehicleId, seat, visual, create, data, equipment, living, environment));
         }
         int[] removed = buf.readVarIntArray(MAX_ENTRIES);
         int eventCount = buf.readVarInt();

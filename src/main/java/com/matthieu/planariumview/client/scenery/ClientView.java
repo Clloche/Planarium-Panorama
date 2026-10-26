@@ -2230,11 +2230,15 @@ public final class ClientView {
             // Repere du bocal, sans le placement du terrain : les Planariums voisins y sont fixes (voir NeighborPockets).
             Matrix4f jarPose = new Matrix4f(poseStack.last().pose());
             poseStack.pushPose();
-            if (lastInfo != null) SubLevelView.terrain(poseStack,
+            PoseStack placement = new PoseStack();
+            if (lastInfo != null) SubLevelView.terrain(placement,
                     lastInfo.origin().offset(currentRadius, currentRadius, currentRadius));
+            Matrix4f terrain = new Matrix4f(placement.last().pose());
+            poseStack.mulPose(terrain);
             // Sections du decor detaille dans le champ de la camera, une fois pour toutes les couches. Meme matrice que
             // le dessin (placement Sable compris) : meme repere que les sommets. Le tri du verre et de l'eau est garde.
             NEAR_FRUSTUM.update(poseStack.last().pose(), projectionMatrix);
+            SPECIAL_FRUSTUM.update(poseStack.last().pose(), projectionMatrix);
             List<Map.Entry<SectionPos, SectionMesh>> visibleSections = new ArrayList<>();
             for (Map.Entry<SectionPos, SectionMesh> entry : sectionMeshes.entrySet()) {
                 if (NEAR_FRUSTUM.visible(entry.getValue().box)) visibleSections.add(entry);
@@ -2247,6 +2251,11 @@ public final class ClientView {
             translucentSections.sort(Comparator.comparingDouble(
                     (Map.Entry<SectionPos, SectionMesh> entry) -> entry.getValue().cameraDistanceSqr).reversed());
             for (RenderType renderType : DRAW_ORDER) {
+                if (!flight && renderType == RenderType.translucent()) {
+                    // Les mobs passent apres le terrain opaque, mais avant l'eau et le verre : leur profondeur
+                    // masquerait sinon les animaux sous l'eau. Le placement est celui des maillages de cette image.
+                    drawMobsBeforeWater(data, event, camera, terrain);
+                }
                 Iterable<Map.Entry<SectionPos, SectionMesh>> sections = renderType == RenderType.translucent()
                         ? translucentSections : visibleSections;
                 renderType.setupRenderState();
@@ -2542,6 +2551,36 @@ public final class ClientView {
             }
             poseStack.popPose();
         }
+    }
+
+    private static void drawMobsBeforeWater(StructureRenderData data, RenderLevelStageEvent event, Vec3 camera,
+                                          Matrix4f terrain) {
+        Minecraft client = Minecraft.getInstance();
+        // AFTER_SKY precede l'initialisation vanilla de l'eclairage des entites. La meme configuration sera
+        // reappliquee par LevelRenderer avant ses propres entites ; le terrain utilise sa lumiere precalculee.
+        if (client.level != null && client.level.effects().constantAmbientLight()) {
+            com.mojang.blaze3d.platform.Lighting.setupNetherLevel();
+        } else {
+            com.mojang.blaze3d.platform.Lighting.setupLevel();
+        }
+        if (blockEntityBuffers == null) {
+            blockEntityBuffers = MultiBufferSource.immediate(new ByteBufferBuilder(262144));
+        }
+        GiantEntities.withCamera(event.getModelViewMatrix(), () -> {
+            try {
+                drawMobs(data, event.getPartialTick().getGameTimeDeltaPartialTick(false), camera,
+                        new PoseStack(), currentRadius, terrain);
+            } finally {
+                blockEntityBuffers.endBatch();
+            }
+        });
+    }
+
+    private static void drawMobs(StructureRenderData data, float partialTick, Vec3 camera, PoseStack poseStack, int radius,
+                                 Matrix4f terrain) {
+        OutsideViewPayload info = lastInfo;
+        if (info == null || !(data.fakeRenderingWorld instanceof net.minecraft.world.level.Level fake)) return;
+        int view = viewRadius();
         // Mobs du dehors : places pour cette image, une pile de matrices neuve par mob (un rendu modde qui plante en
         // plein milieu ne laisse pas la pile decalee pour les suivants).
         var flameRotation = com.matthieu.planariumview.client.scenery.entities.MobEffects.flameRotation(terrain,
