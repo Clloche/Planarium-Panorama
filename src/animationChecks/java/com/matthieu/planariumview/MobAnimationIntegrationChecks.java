@@ -7,6 +7,9 @@ import com.matthieu.planariumview.server.entities.OutsideMobsServer;
 import com.google.common.collect.ImmutableList;
 import com.matthieu.planariumview.client.scenery.entities.OutsideMobs;
 import com.matthieu.planariumview.client.scenery.entities.MobEffects;
+import com.matthieu.planariumview.client.scenery.entities.MobShadows;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.mixin.entities.SceneryEntityAccessor;
 import com.matthieu.planariumview.network.*;
@@ -19,12 +22,15 @@ import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.network.protocol.game.*;
 import net.minecraft.resources.*;
 import net.minecraft.util.RandomSource;
+import net.minecraft.util.Mth;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.dedicated.DedicatedServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.BlockAndTintGetter;
+import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.entity.EntityInLevelCallback;
 import net.minecraft.world.phys.*;
@@ -32,6 +38,7 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 import sun.misc.Unsafe;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 import java.lang.reflect.*;
 import java.util.*;
 
@@ -236,8 +243,73 @@ public final class MobAnimationIntegrationChecks {
         }
     }
 
+    private static Method shadowMethod(String name, Class<?>... parameters) throws Exception {
+        Method method = MobShadows.class.getDeclaredMethod(name, parameters); method.setAccessible(true); return method;
+    }
+
+    private static final class ShadowVertices implements VertexConsumer {
+        final List<Vector3f> positions = new ArrayList<>();
+        final List<float[]> uv = new ArrayList<>();
+        final List<Integer> alphas = new ArrayList<>();
+        public VertexConsumer addVertex(float x, float y, float z) { positions.add(new Vector3f(x, y, z)); return this; }
+        public VertexConsumer setColor(int r, int g, int b, int alpha) { alphas.add(alpha); return this; }
+        public VertexConsumer setUv(float u, float v) { uv.add(new float[]{u, v}); return this; }
+        public VertexConsumer setUv1(int u, int v) { return this; }
+        public VertexConsumer setUv2(int u, int v) { return this; }
+        public VertexConsumer setNormal(float x, float y, float z) { return this; }
+    }
+
+    private static void shadows() throws Exception {
+        Method camera = shadowMethod("camera", Matrix4f.class);
+        Method strength = shadowMethod("strength", double.class, float.class);
+        Method darken = shadowMethod("skyDarken", float.class, float.class, float.class);
+        Method alpha = shadowMethod("alpha", float.class, double.class, float.class);
+        Method light = shadowMethod("light", BlockAndTintGetter.class, BlockPos.class, int.class);
+        Method quad = shadowMethod("quad", PoseStack.Pose.class, VertexConsumer.class, BlockPos.class, AABB.class,
+                double.class, double.class, double.class, float.class, int.class);
+
+        Vector3f eye = new Vector3f(40, 45, 40);
+        for (Quaternionf rotation : List.of(new Quaternionf(), new Quaternionf().rotationXYZ(.8F, -.4F, .3F))) {
+            Matrix4f terrain = new Matrix4f().rotate(rotation).scale(32).translate(-eye.x, -eye.y, -eye.z);
+            Matrix4f saved = new Matrix4f(terrain);
+            Vector3f actual = (Vector3f) camera.invoke(null, terrain);
+            require(actual.distance(eye) < .0001F && terrain.equals(saved), "shadow camera stays in captured coordinates despite giant scale and tilt");
+            double distance = actual.distanceSquared(new Vector3f(48, 45, 40));
+            require(Math.abs((float) strength.invoke(null, distance, .8F) - .6F) < .0001F,
+                    "a mob eight captured blocks away retains its shadow, even 256 rendered blocks away");
+        }
+        require((float) strength.invoke(null, 256D, 1F) == 0 && (float) strength.invoke(null, 400D, 1F) == 0, "shadows fade out at vanilla's sixteen-block distance");
+        require((int) darken.invoke(null, 0F, 0F, 0F) == 0 && (int) darken.invoke(null, .5F, 0F, 0F) == 11, "source day and night control shadow lighting");
+        require((int) darken.invoke(null, 0F, 1F, 1F) > 0, "source storms darken shadows");
+        BlockAndTintGetter capturedLight = (BlockAndTintGetter) Proxy.newProxyInstance(BlockAndTintGetter.class.getClassLoader(),
+                new Class<?>[]{BlockAndTintGetter.class}, (proxy, method, arguments) -> {
+                    if (method.getName().equals("getBrightness")) return arguments[0] == LightLayer.SKY ? 15 : 8;
+                    throw new AssertionError("Shadow lighting must read the captured light layers: " + method.getName());
+                });
+        require((int) light.invoke(null, capturedLight, BlockPos.ZERO, 0) == 15
+                && (int) light.invoke(null, capturedLight, BlockPos.ZERO, 11) == 8, "block light supports shadows after the captured sky darkens");
+        require((int) alpha.invoke(null, 1F, 0D, 1F) == 127 && (int) alpha.invoke(null, 1F, 2D, 1F) == 0,
+                "shadows soften with height instead of floating below airborne mobs");
+        require((int) alpha.invoke(null, 1F, 0D, .1F) < 20, "dark terrain receives faint shadows");
+
+        PoseStack pose = new PoseStack();
+        pose.translate(10, 20, 30); pose.mulPose(new Quaternionf().rotationZ(Mth.HALF_PI)); pose.scale(32, 32, 32);
+        pose.translate(2.5, 3, 4.5); // The model has finished rendering; there is no renderer-specific offset.
+        Matrix4f saved = new Matrix4f(pose.last().pose());
+        ShadowVertices vertices = new ShadowVertices();
+        quad.invoke(null, pose.last(), vertices, new BlockPos(2, 3, 4), new AABB(0, 0, 0, 1, 1, 1), 2.5, 3D, 4.5, .5F, 127);
+        List<Vector3f> expected = List.of(new Vector3f(-86, 84, 158), new Vector3f(-86, 84, 190),
+                new Vector3f(-86, 116, 190), new Vector3f(-86, 116, 158));
+        require(vertices.positions.size() == 4 && pose.last().pose().equals(saved), "shadow quad leaves the entity pose intact");
+        for (int i = 0; i < 4; i++) {
+            require(vertices.positions.get(i).distance(expected.get(i)) < .0001F, "shadow lies on the captured floor after scale and rotation");
+            require(vertices.alphas.get(i) == 127, "shadow opacity reaches every vertex");
+        }
+        require(Arrays.equals(vertices.uv.get(0), new float[]{1, 1}) && Arrays.equals(vertices.uv.get(2), new float[]{0, 0}), "shadow texture stays centered on the mob");
+    }
+
     public static void main(String[] args) throws Exception {
-        server(); client(); effects();
-        System.out.println("PASS: production capture, independent observers, world isolation, stationary readiness, delayed removals, mount links, hurt playback, potion particles and flame orientation");
+        server(); client(); effects(); shadows();
+        System.out.println("PASS: production capture, independent observers, world isolation, stationary readiness, delayed removals, mount links, hurt playback, potion particles, flame orientation and scenery shadows");
     }
 }

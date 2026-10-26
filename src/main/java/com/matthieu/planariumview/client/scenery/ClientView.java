@@ -1,6 +1,7 @@
 package com.matthieu.planariumview.client.scenery;
 
 import com.matthieu.planariumview.client.scenery.entities.GiantEntities;
+import com.matthieu.planariumview.client.scenery.entities.MobShadows;
 import com.matthieu.planariumview.client.scenery.entities.OutsideMobs;
 import com.matthieu.planariumview.client.scenery.entities.OutsideVehicles;
 import com.matthieu.planariumview.LogFilter;
@@ -2545,18 +2546,21 @@ public final class ClientView {
         // plein milieu ne laisse pas la pile decalee pour les suivants).
         var flameRotation = com.matthieu.planariumview.client.scenery.entities.MobEffects.flameRotation(terrain,
                 Minecraft.getInstance().gameRenderer.getMainCamera().rotation());
+        PoseStack mobFrame = new PoseStack();
+        mobFrame.mulPose(poseStack.last().pose());
+        mobFrame.translate(-camera.x, -camera.y, -camera.z);
+        mobFrame.mulPose(terrain);
+        mobFrame.translate(-ARS_OFFSET * GIANT, -ARS_OFFSET * GIANT - Y_SHIFT, -ARS_OFFSET * GIANT);
+        mobFrame.scale(GIANT, GIANT, GIANT);
+        mobFrame.translate(-radius, -radius, -radius);
+        MobShadows.Frame shadows = MobShadows.frame(mobFrame.last().pose());
         for (net.minecraft.world.entity.Entity mob : OutsideMobs.prepare(partialTick, info.origin())) {
             if (!liveArea(mob.getX() - radius - 0.5, mob.getZ() - radius - 0.5, view + 1.0)
                     || !specialVisible(mob.getBoundingBoxForCulling().inflate(1.0), radius)) {
                 continue;
             }
             PoseStack mobStack = new PoseStack();
-            mobStack.mulPose(poseStack.last().pose());
-            mobStack.translate(-camera.x, -camera.y, -camera.z);
-            mobStack.mulPose(terrain);
-            mobStack.translate(-ARS_OFFSET * GIANT, -ARS_OFFSET * GIANT - Y_SHIFT, -ARS_OFFSET * GIANT);
-            mobStack.scale(GIANT, GIANT, GIANT);
-            mobStack.translate(-radius, -radius, -radius);
+            mobStack.mulPose(mobFrame.last().pose());
             try {
                 int light;
                 ColorCompat.begin(fake);
@@ -2569,6 +2573,12 @@ public final class ClientView {
             } catch (Exception | LinkageError e) {
                 OutsideMobs.broken(mob);
                 LOGGER.debug("[Planarium Panorama] Mob du dehors ignore", e);
+                continue;
+            }
+            try {
+                MobShadows.render(shadows, mob, fake, mobStack, blockEntityBuffers);
+            } catch (Exception | LinkageError e) {
+                LOGGER.debug("[Planarium Panorama] Ombre d'un mob du dehors ignoree", e);
             }
         }
     }

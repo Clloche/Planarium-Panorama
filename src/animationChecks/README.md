@@ -3,7 +3,7 @@
 `gradlew.bat build` lance les deux contrôles suivants, également exécutables séparément :
 
 - `checkOutsideMobAnimations` : protocole, chronologie, mains et durées d'attaque, reprise en cours d'animation, mort, doublons et débordement.
-- `checkOutsideMobIntegration` : méthodes de production de capture et de lecture, deux observateurs, isolation des mondes, poses immobiles, retrait différé, liens de monture, particules de potion et orientation des flammes.
+- `checkOutsideMobIntegration` : méthodes de production de capture et de lecture, deux observateurs, isolation des mondes, poses immobiles, retrait différé, liens de monture, particules de potion, orientation des flammes, placement et atténuation des ombres.
 
 Le second contrôle remplace les frontières du monde client et supprime l'initialisation statique de certaines classes Minecraft dans un processus de test. Les méthodes de production restent intactes. Ces fixtures ne sont pas incluses dans le JAR du mod et ne remplacent pas une validation visuelle en jeu.
 
@@ -21,5 +21,7 @@ Utiliser cette version du mod côté client et serveur : le flux optionnel des e
 8. Appliquer puis retirer des potions : particules de la bonne couleur à l'échelle du décor, arrêt des nouvelles particules après retrait. Vérifier les effets ambiants, l'invisibilité et les effets dont les particules sont masquées.
 9. Observer un mob qui brûle, puis l'éteindre dans l'eau. Répéter en entrant dans le bocal alors qu'il brûle déjà : les flammes doivent disparaître après extinction. Incliner le Planarium et vérifier que les flammes restent tournées vers la caméra autour de la verticale du décor.
 10. Observer un mob dans la neige poudreuse : tremblement une fois gelé et flash rouge lors des dégâts. Le faire dégeler et vérifier l'arrêt du tremblement. Comparer aussi les flashes de dégâts périodiques du feu avec ceux du monde source.
+11. Observer un adulte et un bébé sur un sol plein, puis un mob qui saute : taille d'ombre adaptée, position sur le terrain capturé et atténuation avec la hauteur. Incliner et déplacer le Planarium : les ombres restent sur ce même terrain, sans retard supplémentaire.
+12. Comparer les ombres de jour, de nuit et près d'une torche ; appliquer l'invisibilité et désactiver l'option Minecraft « Ombres des entités ». Vérifier leur disparition, puis leur retour après réactivation. S'éloigner jusqu'à 16 blocs du monde source pour vérifier leur disparition progressive.
 
 Les animations spécifiques aux boss ou aux systèmes propres aux mods seront traitées séparément.

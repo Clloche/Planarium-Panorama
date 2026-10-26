@@ -22,6 +22,7 @@
     "entities.SceneryEntityAccessor",
     "entities.LivingEffectParticlesMixin",
     "entities.EntityRenderDispatcherInvoker",
+    "entities.EntityRendererShadowAccessor",
     "entities.BoatSceneryMixin",
     "entities.TntMinecartAccessor",
     "ClientLevelMixin",
