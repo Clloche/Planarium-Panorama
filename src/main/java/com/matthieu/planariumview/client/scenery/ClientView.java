@@ -78,6 +78,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 
+import static com.matthieu.planariumview.client.scenery.SceneryState.currentDim;
+import static com.matthieu.planariumview.client.scenery.SceneryState.currentRadius;
+import static com.matthieu.planariumview.client.scenery.SceneryState.lastInfo;
+import static com.matthieu.planariumview.client.scenery.SceneryState.latestInfo;
+import static com.matthieu.planariumview.client.scenery.SceneryState.renderData;
+
 /**
  * Cote client : dessine la "photo" des alentours du Planarium, agrandie 32 fois,
  * autour de la dimension de poche.
@@ -102,13 +108,9 @@ public final class ClientView {
             RenderType.translucent(), RenderType.tripwire());
     private static final int SECTION_SIZE = 16;
 
-    private static ResourceLocation currentDim;
-    private static int currentRadius;
     private static StructureTemplate pendingTemplate;
     private static byte[] pendingLight;
     private static OutsideViewPayload pendingInfo;
-    private static OutsideViewPayload lastInfo;
-    private static OutsideViewPayload latestInfo;
     /** Derniere photo recue, gardee pour reconstruire le rendu quand une option change. */
     private static StructureTemplate lastTemplate;
     /** Photo brute (NBT) de la derniere reception : sert a trouver les blocs qui ont change, sans tout relire. */
@@ -148,7 +150,6 @@ public final class ClientView {
     /** Nouvel etat d'un bloc ({@code state} null : le bloc a disparu de la photo). */
     private record BlockChange(BlockState state, net.minecraft.nbt.CompoundTag nbt) {
     }
-    private static StructureRenderData renderData;
     private static final Map<SectionPos, SectionMesh> sectionMeshes = new HashMap<>();
     private static Map<SectionPos, List<CulledStatePos>> pendingSectionStates = Map.of();
     private static final ArrayDeque<SectionPos> pendingSections = new ArrayDeque<>();
