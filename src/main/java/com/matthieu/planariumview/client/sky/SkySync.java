@@ -537,7 +537,7 @@ public final class SkySync {
      * Vrai si le Planarium est sous terre : plafond au-dessus, peu de lumiere du ciel, presque pas de colonnes a ciel ouvert
      * autour de lui, et presque aucune vue vers dehors depuis lui (une entree de caverne ou un surplomb garde son ciel).
      * Le bocal ne montre alors pas le ciel : le bord du decor est ferme par la couleur du brouillard, ou par
-     * l'obscurite si l'option le demande (voir blackCave et ClientView.drawCaveDome).
+     * l'obscurite si l'option le demande (voir blackCave et SceneryFog.drawCaveDome).
      */
     public static boolean underground(ClientLevel level) {
         Minecraft mc = Minecraft.getInstance();
