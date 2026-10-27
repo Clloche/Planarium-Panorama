@@ -34,6 +34,11 @@ Utiliser cette version du mod côté client et serveur : le flux optionnel des e
 19. Désactiver les particules, quitter puis rejoindre le bocal : aucune ancienne bulle ni ancien jet d'encre ne réapparaît. Répéter avec deux observateurs et après une saccade.
 20. Comparer un Drygmy et un Whirlisprig dehors et dans le décor : éclairage directionnel comparable. Tourner/incliner le Planarium et vérifier que les modèles vanilla gardent également leur éclairage.
 
-Les contrôles automatiques couvrent aussi les jets d'encre différés et uniques, la traînée des dauphins, les particules des calmars, les coordonnées de l'eau capturée, la durée de vie des particules et les normales d'éclairage des modèles agrandis.
+21. Observer l'eau à travers sa surface et sous l'eau : les petites particules bleues d'ambiance restent visibles. Comparer les deltas de basalte, vallées des âmes, forêts carmin et biscornues : cendres/spores du biome source, y compris dans l'air, avec leur densité habituelle. Traverser une frontière de biome et désactiver/réactiver les particules du décor.
+22. Observer un perroquet en vol puis posé, un poulet qui tombe puis atterrit et une chauve-souris qui quitte puis rejoint son repos : ailes animées en vol, transition vers le repos, reprise au décollage. Vérifier aussi un perroquet passager et comparer les abeilles, allays, vexes et phantoms, dont les ailes suivent déjà l'âge de rendu.
+
+Les contrôles automatiques couvrent aussi les jets d'encre différés et uniques, la traînée des dauphins, les particules des calmars, les coordonnées de l'eau capturée, la durée de vie des particules, les densités d'ambiance des biomes, le passage de rendu sous-marin, les transitions des ailes et les normales d'éclairage des modèles agrandis.
+
+Pour l'ambiance sous-marine, refaire le scénario 21 avec Sable installé : les particules doivent aussi être émises dans le faux monde du décor, qui n'a pas de conteneur d'occlusion Sable. Comparer l'eau source et l'eau qui tombe, puis vérifier que l'eau courante conserve ses sons. Le contrôle automatique couvre l'émission jusqu'au collecteur du décor, sa densité native et la délégation aux fluides des mods.
 
 Les animations spécifiques aux boss ou aux systèmes propres aux mods seront traitées séparément.

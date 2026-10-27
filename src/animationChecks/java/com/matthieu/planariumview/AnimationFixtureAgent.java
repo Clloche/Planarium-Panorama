@@ -13,9 +13,14 @@ public final class AnimationFixtureAgent {
             @Override public byte[] transform(ClassLoader loader, String name, Class<?> type, ProtectionDomain domain, byte[] bytes) {
                 if (!Set.of("net/minecraft/world/entity/Entity", "net/minecraft/world/entity/LivingEntity",
                         "net/minecraft/world/entity/Mob",
+                        "net/minecraft/world/entity/AgeableMob", "net/minecraft/world/entity/TamableAnimal",
                         "net/minecraft/world/entity/animal/Dolphin", "net/minecraft/world/entity/GlowSquid",
+                        "net/minecraft/world/entity/animal/Chicken", "net/minecraft/world/entity/animal/Parrot",
+                        "net/minecraft/world/entity/ambient/Bat", "net/minecraft/world/level/biome/AmbientParticleSettings",
                         "net/minecraft/core/particles/ParticleTypes",
                         "net/minecraft/world/level/material/FluidState", "net/minecraft/world/level/block/state/BlockState",
+                        "net/minecraft/world/level/material/Fluids", "net/minecraft/world/level/block/Block",
+                        "net/minecraft/sounds/SoundEvents", "com/matthieu/planariumview/client/scenery/ClientView",
                         "net/minecraft/client/multiplayer/ClientLevel", "net/minecraft/server/level/ServerLevel",
                         "net/minecraft/server/MinecraftServer", "net/minecraft/server/dedicated/DedicatedServer").contains(name)) return null;
                 ClassReader reader = new ClassReader(bytes);

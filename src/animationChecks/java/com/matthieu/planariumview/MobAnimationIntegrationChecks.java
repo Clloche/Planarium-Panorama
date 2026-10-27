@@ -12,6 +12,9 @@ import com.matthieu.planariumview.client.scenery.entities.MobEffects;
 import com.matthieu.planariumview.client.scenery.entities.MobShadows;
 import com.matthieu.planariumview.client.scenery.entities.GiantEntities;
 import com.matthieu.planariumview.client.scenery.entities.AquaticEffects;
+import com.matthieu.planariumview.client.scenery.entities.OutsideWings;
+import com.matthieu.planariumview.client.scenery.SceneryAmbientParticles;
+import com.matthieu.planariumview.client.scenery.ClientView;
 import com.matthieu.planariumview.client.scenery.SceneryParticles;
 import com.matthieu.planariumview.client.scenery.SceneryWaterParticles;
 import com.matthieu.planariumview.client.scenery.LitRenderingWorld;
@@ -45,12 +48,24 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.animal.Squid;
 import net.minecraft.world.entity.animal.Dolphin;
+import net.minecraft.world.entity.animal.Chicken;
+import net.minecraft.world.entity.animal.Parrot;
+import net.minecraft.world.entity.ambient.Bat;
+import net.minecraft.world.level.biome.AmbientParticleSettings;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.block.state.StateHolder;
+import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.level.material.Fluids;
+import net.minecraft.world.level.material.FlowingFluid;
+import net.minecraft.world.level.material.WaterFluid;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectArrayMap;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.entity.EntityInLevelCallback;
 import net.minecraft.world.phys.*;
@@ -366,7 +381,7 @@ public final class MobAnimationIntegrationChecks {
     private static void aquaticParticles() throws Exception {
         // Particle identifiers only; no registries, providers or graphics context are needed by the sampler.
         Class.forName(ParticleTypes.class.getName());
-        for (String name : List.of("DOLPHIN", "GLOW", "SQUID_INK", "GLOW_SQUID_INK")) {
+        for (String name : List.of("DOLPHIN", "GLOW", "SQUID_INK", "GLOW_SQUID_INK", "UNDERWATER")) {
             Field target = field(ParticleTypes.class, name);
             UNSAFE.putObject(UNSAFE.staticFieldBase(target), UNSAFE.staticFieldOffset(target), new SimpleParticleType(false));
         }
@@ -455,6 +470,10 @@ public final class MobAnimationIntegrationChecks {
     }
 
     private static void waterParticleLifecycle() throws Exception {
+        Method supports = SceneryWaterParticles.class.getDeclaredMethod("supports", ParticleOptions.class); supports.setAccessible(true);
+        require((boolean) supports.invoke(null, ParticleTypes.UNDERWATER)
+                && !(boolean) supports.invoke(null, new SimpleParticleType(false)),
+                "underwater ambience renders before the water surface, without moving unrelated particles to that pass");
         config(Config.SCENERY_PARTICLES, true);
         Minecraft.getInstance().level = fixture(ClientLevel.class);
         Method wrap = SceneryWaterParticles.class.getDeclaredMethod("wrap", Particle.class); wrap.setAccessible(true);
@@ -612,8 +631,162 @@ public final class MobAnimationIntegrationChecks {
         }
     }
 
+    public static class AmbientWater extends WaterFluid.Source {
+        boolean source;
+        int nativeCalls;
+        @Override public boolean isSource(FluidState state) { return source; }
+        // Simulate a mod such as Sable suppressing emissions in a snapshot world.
+        @Override public void animateTick(Level level, BlockPos at, FluidState state, RandomSource random) { nativeCalls++; }
+    }
+
+    public static class AmbientBlock extends Block {
+        public AmbientBlock() { super(null); }
+        @Override public boolean isAir(BlockState state) { return false; }
+    }
+
+    private static void underwaterEmission() throws Exception {
+        // Skip the renderer bootstrap, but exercise the complete production animateBlock -> particle sink path.
+        Class.forName(ClientView.class.getName());
+        for (var entry : Map.of("AMBIENT_RANDOM", RandomSource.create(827), "AMBIENT_BROKEN", new HashSet<>(),
+                "LOGGER", com.mojang.logging.LogUtils.getLogger()).entrySet()) {
+            Field target = field(ClientView.class, entry.getKey());
+            UNSAFE.putObject(UNSAFE.staticFieldBase(target), UNSAFE.staticFieldOffset(target), entry.getValue());
+        }
+        AmbientWater source = fixture(AmbientWater.class), flowing = fixture(AmbientWater.class), other = fixture(AmbientWater.class);
+        source.source = true; other.source = true;
+        Class.forName(Fluids.class.getName());
+        for (var entry : Map.of("WATER", source, "FLOWING_WATER", flowing).entrySet()) {
+            Field target = field(Fluids.class, entry.getKey());
+            UNSAFE.putObject(UNSAFE.staticFieldBase(target), UNSAFE.staticFieldOffset(target), entry.getValue());
+        }
+        LitRenderingWorld world = fixture(LitRenderingWorld.class);
+        BlockState block = fixture(BlockState.class);
+        field(StateHolder.class, "owner").set(block, fixture(AmbientBlock.class));
+        BlockPos at = new BlockPos(12, 8, -4);
+        List<Emission> emitted = new ArrayList<>();
+        for (AmbientWater water : List.of(source, flowing, other)) {
+            for (boolean falling : new boolean[]{false, true}) {
+                var properties = new Reference2ObjectArrayMap<Property<?>, Comparable<?>>();
+                properties.put(FlowingFluid.FALLING, falling);
+                field(BlockBehaviour.BlockStateBase.class, "fluidState").set(block, new FluidState(water, properties, null));
+                emitted.clear(); water.nativeCalls = 0;
+                ((RandomSource) field(ClientView.class, "AMBIENT_RANDOM").get(null)).setSeed(827);
+                LitRenderingWorld.withSceneryParticles((level, options, x, y, z, vx, vy, vz) ->
+                        emitted.add(new Emission(options, new Vec3(x, y, z), new Vec3(vx, vy, vz))), () -> {
+                    for (int i = 0; i < 10_000; i++) ClientView.animateBlock(world, at, block);
+                });
+                if (water != other && (water.source || falling)) {
+                    require(water.nativeCalls == 0 && Math.abs(emitted.size() - 1000) < 160,
+                            "source and falling water emit underwater ambience at the native density even when a mod suppresses native emission");
+                    for (Emission particle : emitted) require(particle.type == ParticleTypes.UNDERWATER
+                                    && BlockPos.containing(particle.at).equals(at) && particle.velocity.equals(Vec3.ZERO),
+                            "underwater ambience starts motionless inside the sampled water block");
+                } else {
+                    require(water.nativeCalls == 10_000 && emitted.isEmpty(),
+                            "horizontal flowing water retains native sounds and modded fluids retain native animation without duplicate emissions");
+                }
+            }
+        }
+    }
+
+    private static void biomeParticles() {
+        BlockPos at = new BlockPos(-15, 84, 11);
+        // The four native Nether densities, plus an arbitrary modded biome setting: no hard-coded biome whitelist.
+        for (float probability : new float[]{.00625F, .118093334F, .025F, .01428F, .45F}) {
+            ParticleOptions type = new SimpleParticleType(false);
+            AmbientParticleSettings settings = new AmbientParticleSettings(type, probability);
+            RandomSource random = RandomSource.create(827);
+            int count = 0, samples = 100_000;
+            for (int i = 0; i < samples; i++) {
+                var particle = SceneryAmbientParticles.sample(settings, at, random);
+                if (particle == null) continue;
+                count++;
+                require(particle.options() == type && BlockPos.containing(particle.x(), particle.y(), particle.z()).equals(at),
+                        "ambient emission retains the source biome's particle options and sampled block, including negative coordinates");
+            }
+            double expected = samples * probability, deviation = Math.sqrt(expected * (1 - probability));
+            require(Math.abs(count - expected) < 5 * deviation, "biome ambience retains its native density");
+        }
+        AmbientParticleSettings quiet = new AmbientParticleSettings(new SimpleParticleType(false), 0);
+        RandomSource random = RandomSource.create(927);
+        for (int i = 0; i < 1000; i++) require(SceneryAmbientParticles.sample(quiet, at, random) == null,
+                "biomes with disabled ambient particles remain quiet");
+    }
+
+    @SuppressWarnings("unchecked") private static void particleBudget() throws Exception {
+        Map<Particle, Integer> lights = (Map<Particle, Integer>) field(SceneryParticles.class, "LIGHT").get(null);
+        Map<Particle, Boolean> wrapped = (Map<Particle, Boolean>) field(SceneryParticles.class, "WRAPPED").get(null);
+        Method capacity = SceneryParticles.class.getDeclaredMethod("hasWrappedCapacity"); capacity.setAccessible(true);
+        List<ProbeParticle> particles = new ArrayList<>();
+        ClientLevel level = fixture(ClientLevel.class);
+        try {
+            for (int i = 0; i < 4096; i++) {
+                ProbeParticle particle = new ProbeParticle(level);
+                particles.add(particle); lights.put(particle, 0x00F000F0);
+            }
+            require((boolean) capacity.invoke(null), "dense biome ambience cannot exhaust the budget for mob and underwater effects");
+            for (int i = 0; i < 2048; i++) wrapped.put(particles.get(i), true);
+            require(!(boolean) capacity.invoke(null), "wrapped particles retain their own safety limit");
+            particles.getFirst().remove(); SceneryParticles.tick();
+            require((boolean) capacity.invoke(null) && !wrapped.containsKey(particles.getFirst()),
+                    "expired effects release their slots on the next tick without waiting for garbage collection");
+        } finally {
+            for (Particle particle : particles) { lights.remove(particle); wrapped.remove(particle); }
+        }
+    }
+
+    public static class VisualBat extends Bat {
+        boolean resting;
+        public VisualBat() { super(null, null); }
+        @Override public boolean isResting() { return resting; }
+    }
+
+    private static void wings() throws Exception {
+        Chicken chicken = fixture(Chicken.class);
+        Parrot parrot = fixture(Parrot.class);
+        Vec3 velocity = new Vec3(.2, -.3, .1), position = new Vec3(4, 70, -2);
+        for (Entity bird : List.of(chicken, parrot)) {
+            bird.setDeltaMovement(velocity);
+            field(Entity.class, "position").set(bird, position);
+        }
+        OutsideWings chickenWings = new OutsideWings(), parrotWings = new OutsideWings();
+        for (int tick = 0; tick < 20; tick++) {
+            chickenWings.tick(chicken); parrotWings.tick(parrot);
+            require(chicken.flap > chicken.oFlap && parrot.flap > parrot.oFlap
+                    && chicken.flapSpeed == 1 && parrot.flapSpeed == 1,
+                    "airborne birds animate every client tick and retain the previous wing pose for interpolation");
+        }
+        require(chicken.getDeltaMovement().equals(velocity) && parrot.getDeltaMovement().equals(velocity)
+                && chicken.position().equals(position) && parrot.position().equals(position),
+                "visual wing updates preserve captured movement and do not apply vanilla falling physics");
+        field(Entity.class, "onGround").setBoolean(chicken, true);
+        field(Entity.class, "vehicle").set(parrot, chicken);
+        for (int tick = 0; tick < 4; tick++) { chickenWings.tick(chicken); parrotWings.tick(parrot); }
+        require(chicken.flapSpeed == 0 && parrot.flapSpeed == 0,
+                "landing and perching gradually stop wing movement, including an airborne passenger");
+        field(Entity.class, "onGround").setBoolean(chicken, false);
+        field(Entity.class, "vehicle").set(parrot, null);
+        chickenWings.tick(chicken); parrotWings.tick(parrot);
+        require(chicken.flapSpeed == 1 && parrot.flapSpeed == 1, "taking off resumes flapping immediately");
+
+        VisualBat bat = fixture(VisualBat.class);
+        field(Bat.class, "flyAnimationState").set(bat, new AnimationState());
+        field(Bat.class, "restAnimationState").set(bat, new AnimationState());
+        OutsideWings batWings = new OutsideWings();
+        bat.tickCount = 20; batWings.tick(bat);
+        bat.tickCount = 26; batWings.tick(bat); bat.flyAnimationState.updateTime(26, 1);
+        require(bat.flyAnimationState.isStarted() && !bat.restAnimationState.isStarted()
+                && bat.flyAnimationState.getAccumulatedTime() == 300,
+                "bat flight starts once and keeps progressing instead of restarting on each update");
+        bat.resting = true; bat.tickCount++; batWings.tick(bat);
+        require(!bat.flyAnimationState.isStarted() && bat.restAnimationState.isStarted(), "resting bat stops its wings");
+        bat.resting = false; bat.tickCount++; batWings.tick(bat);
+        require(bat.flyAnimationState.isStarted() && !bat.restAnimationState.isStarted()
+                && bat.flyAnimationState.getAccumulatedTime() == 0, "bat starts a new flight after leaving its perch");
+    }
+
     public static void main(String[] args) throws Exception {
-        server(); client(); aquatic(); effects(); aquaticParticles(); waterParticleLifecycle(); capturedWater(); shadows(); modelLighting(); camera();
-        System.out.println("PASS: production capture, independent observers, world isolation, stationary readiness, delayed removals, mount links, hurt playback, aquatic poses/particles, ink, captured water, particle lifecycle, potion particles, flame orientation, scenery shadows, scaled model lighting and camera alignment");
+        server(); client(); aquatic(); effects(); aquaticParticles(); underwaterEmission(); biomeParticles(); particleBudget(); wings(); waterParticleLifecycle(); capturedWater(); shadows(); modelLighting(); camera();
+        System.out.println("PASS: production capture, independent observers, world isolation, stationary readiness, delayed removals, mount links, hurt playback, aquatic poses/particles, ink, biome ambience, wings, captured water, particle lifecycle, potion particles, flame orientation, scenery shadows, scaled model lighting and camera alignment");
     }
 }

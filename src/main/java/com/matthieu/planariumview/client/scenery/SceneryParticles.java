@@ -35,6 +35,8 @@ public final class SceneryParticles {
     /** Particules du decor ou d'une miniature, avec leur lumiere (format de la lightmap) et leur espace. */
     private static final Map<Particle, Integer> LIGHT = Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<Particle, Space> SPACE = Collections.synchronizedMap(new WeakHashMap<>());
+    /** Only particles with an extra render wrapper share this budget; dense biome ambience must not exhaust it. */
+    private static final Map<Particle, Boolean> WRAPPED = Collections.synchronizedMap(new WeakHashMap<>());
     /** Particules qui traversent deja les blocs en vanilla (notamment SPORE_BLOSSOM_AIR). */
     private static final Map<Particle, Boolean> NO_COLLISION = Collections.synchronizedMap(new WeakHashMap<>());
     private static boolean collisionWarned;
@@ -66,7 +68,10 @@ public final class SceneryParticles {
     private static void add(Particle particle, boolean beforeWater) {
         Particle shown = attaching == null ? particle : new FramedParticle(particle, attaching);
         Minecraft.getInstance().particleEngine.add(beforeWater ? SceneryWaterParticles.wrap(shown) : shown);
+        if (attaching != null || beforeWater) WRAPPED.put(particle, true);
     }
+
+    private static boolean hasWrappedCapacity() { return WRAPPED.size() < 2048; }
 
     /**
      * Ou un faux monde est dessine : un point du gabarit (x, y, z) apparait en (x * scale + ox, y * scale + oy,
@@ -448,7 +453,7 @@ public final class SceneryParticles {
                                        double vz, int light) {
         Minecraft mc = Minecraft.getInstance();
         boolean beforeWater = space.scale() > 1 && SceneryWaterParticles.supports(options);
-        if ((attaching != null || beforeWater) && LIGHT.size() >= 2048) return null;
+        if ((attaching != null || beforeWater) && !hasWrappedCapacity()) return null;
         Particle particle;
         if (options instanceof Made made) {
             try {
@@ -1139,6 +1144,8 @@ public final class SceneryParticles {
 
     /** Chaque tick client (hors pause). */
     public static void tick() {
+        // Release expired slots each tick, without waiting for a garbage collection.
+        synchronized (WRAPPED) { WRAPPED.keySet().removeIf(particle -> !particle.isAlive()); }
         ArsParticles.beginTick();
         if (EMITTERS.isEmpty()) {
             return;
@@ -1169,6 +1176,7 @@ public final class SceneryParticles {
         com.matthieu.planariumview.compat.dynamic_surroundings.DsFirefliesCompat.clear();
         LIGHT.clear();
         SPACE.clear();
+        WRAPPED.clear();
         NO_COLLISION.clear();
         HUE.clear();
         HUES.clear();

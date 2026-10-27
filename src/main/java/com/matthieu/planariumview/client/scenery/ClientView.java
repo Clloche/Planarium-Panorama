@@ -753,8 +753,9 @@ public final class ClientView {
         }
         pos.set(x, y, z);
         BlockState state = lit.getBlockState(pos);
-        // Rafales de Windy, comme Minecraft le lui permet autour du joueur : sur les blocs pas pleins (souvent de l'air).
+        // Ambiance du biome et rafales de Windy, y compris dans l'air : ne pas passer par animateBlock.
         if (windChecks && !state.isCollisionShapeFullBlock(lit, pos)) {
+            SceneryAmbientParticles.tick(lit, pos, AMBIENT_RANDOM);
             OutsideViewPayload info = lastInfo;
             com.matthieu.planariumview.compat.windy.WindyCompat.tryWind(lit, pos.immutable(), radius,
                     info != null ? info.origin() : null, AMBIENT_RANDOM);
@@ -772,7 +773,7 @@ public final class ClientView {
         animateBlock(lit, pos.immutable(), state);
     }
 
-    /** Vrai pendant le tirage des blocs du decor si les particules du decor sont actives (vent de Windy). */
+    /** Vrai pendant le tirage des blocs du decor si les particules du decor sont actives (biomes et vent). */
     private static boolean windChecks;
 
     /**
@@ -790,7 +791,20 @@ public final class ClientView {
             state.getBlock().animateTick(state, lit, at, AMBIENT_RANDOM);
             FluidState fluid = state.getFluidState();
             if (!fluid.isEmpty()) {
-                fluid.animateTick(lit, at, AMBIENT_RANDOM);
+                // Sable annule les particules de WaterFluid quand le monde n'a pas son conteneur d'occlusion.
+                // Le decor n'en a pas : reproduire la branche de particules vanilla directement dans ce monde.
+                // L'eau courante conserve ses sons natifs ; les fluides des mods gardent leur animateTick.
+                boolean vanillaWater = fluid.getType() == net.minecraft.world.level.material.Fluids.WATER
+                        || fluid.getType() == net.minecraft.world.level.material.Fluids.FLOWING_WATER;
+                if (vanillaWater && (fluid.isSource() || fluid.getValue(net.minecraft.world.level.material.FlowingFluid.FALLING))) {
+                    if (AMBIENT_RANDOM.nextInt(10) == 0) {
+                        lit.addParticle(net.minecraft.core.particles.ParticleTypes.UNDERWATER,
+                                at.getX() + AMBIENT_RANDOM.nextDouble(), at.getY() + AMBIENT_RANDOM.nextDouble(),
+                                at.getZ() + AMBIENT_RANDOM.nextDouble(), 0, 0, 0);
+                    }
+                } else {
+                    fluid.animateTick(lit, at, AMBIENT_RANDOM);
+                }
                 // Gouttes sous un plafond de lave ou d'eau (ClientLevel.doAnimateTick, pas le bloc lui-meme).
                 net.minecraft.core.particles.ParticleOptions drip = fluid.getDripParticle();
                 if (drip != null && AMBIENT_RANDOM.nextInt(10) == 0) {

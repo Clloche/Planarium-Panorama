@@ -27,7 +27,8 @@ public final class SceneryWaterParticles {
     static boolean supports(ParticleOptions options) {
         var type = options.getType();
         return type == ParticleTypes.BUBBLE || type == ParticleTypes.BUBBLE_COLUMN_UP || type == ParticleTypes.CURRENT_DOWN
-                || type == ParticleTypes.BUBBLE_POP || type == ParticleTypes.DOLPHIN || type == ParticleTypes.GLOW
+                || type == ParticleTypes.BUBBLE_POP || type == ParticleTypes.UNDERWATER
+                || type == ParticleTypes.DOLPHIN || type == ParticleTypes.GLOW
                 || type == ParticleTypes.SQUID_INK || type == ParticleTypes.GLOW_SQUID_INK;
     }
 

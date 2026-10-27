@@ -82,6 +82,7 @@ public final class OutsideMobs {
         boolean linked;
         State rendered;
         final OutsideVehicles.Animation animation = new OutsideVehicles.Animation();
+        final OutsideWings wings = new OutsideWings();
         double soundSpeed;
         OutsideMinecartSound sound;
         int soundStarted;
@@ -388,8 +389,9 @@ public final class OutsideMobs {
                     }
                 }
                 copy.animation.tick(entity, state.visual());
-                // LivingEntityRenderer uses this clock for the shaking caused by synchronized TicksFrozen.
+                // Render age drives freezing shakes and the wings of bees, allays, vexes and phantoms.
                 entity.tickCount++;
+                copy.wings.tick(entity);
                 if (time >= copy.removeAt || copy.livingAnimation.ended()) {
                     unlinkAll();
                     copy.stopSound();
