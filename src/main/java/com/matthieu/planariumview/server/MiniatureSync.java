@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static com.matthieu.planariumview.server.ServerView.captureLight;
-import static com.matthieu.planariumview.server.ServerView.relightPocket;
+import static com.matthieu.planariumview.server.PocketLighting.relightPocket;
 
 /** Lumiere et entites des miniatures : captures partagees et synchronisation des joueurs. */
 final class MiniatureSync {
