@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import static com.matthieu.planariumview.server.ServerView.prefsOf;
+import static com.matthieu.planariumview.server.OutsideSounds.prefsOf;
 
 /** Chargement des chunks du decor et maintien en activite des dimensions visitees depuis un bocal. */
 final class ViewTickets {
