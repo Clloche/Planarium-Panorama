@@ -758,100 +758,33 @@ public final class ClientView {
      */
     public static void onSceneryParticle(net.minecraft.core.particles.ParticleOptions options, double x, double y, double z,
                                   double vx, double vy, double vz) {
-        if (options == null || !SceneryParticles.allowed()) {
-            return;
-        }
-        int radius = currentRadius;
-        int view = viewRadius();
-        double dx = x - radius;
-        double dy = y - radius;
-        double dz = z - radius;
-        if (!liveArea(dx - 0.5, dz - 0.5, view + 0.5)) {
-            return;
-        }
-        int light = net.minecraft.client.renderer.LightTexture.pack(15, 15);
-        if (renderData != null && renderData.fakeRenderingWorld instanceof LitRenderingWorld lit) {
-            BlockPos at = BlockPos.containing(x, y, z);
-            light = net.minecraft.client.renderer.LightTexture.pack(
-                    lit.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, at),
-                    lit.getBrightness(net.minecraft.world.level.LightLayer.SKY, at));
-        }
-        LitRenderingWorld world = sceneryWorld();
-        if (world != null) {
-            SceneryParticles.spawn(SceneryParticles.giantSpace(world, radius), options, x, y, z, vx, vy, vz, light);
-        }
+        SceneryHooks.onSceneryParticle(options, x, y, z, vx, vy, vz);
     }
 
     /** Death particles follow the same captured origin and moving frame as the rendered mob. */
     public static void onMobDeath(double sourceX, double sourceY, double sourceZ, float width, float height) {
-        LitRenderingWorld world = sceneryWorld();
-        if (!Config.sceneryParticles() || lastInfo == null || world == null || FlightView.active()) return;
-        BlockPos origin = lastInfo.origin();
-        int radius = currentRadius;
-        double x = sourceX - origin.getX(), y = sourceY - origin.getY(), z = sourceZ - origin.getZ();
-        if (!liveArea(x - radius - 0.5, z - radius - 0.5, viewRadius() + 1.0)) return;
-        SceneryParticles.mobDeath(world, mobFrame(origin, radius), x, y, z, width, height);
+        SceneryHooks.onMobDeath(sourceX, sourceY, sourceZ, width, height);
     }
 
     /** Potion particles start at the interpolated mob, in source-world coordinates, just like its death puff. */
     public static void onMobParticle(net.minecraft.core.particles.ParticleOptions options,
                                      double sourceX, double sourceY, double sourceZ) {
-        onMobParticle(options, sourceX, sourceY, sourceZ, 1, 1, 1);
+        SceneryHooks.onMobParticle(options, sourceX, sourceY, sourceZ);
     }
 
     public static void onMobParticle(net.minecraft.core.particles.ParticleOptions options,
                                     double sourceX, double sourceY, double sourceZ, double vx, double vy, double vz) {
-        LitRenderingWorld world = sceneryWorld();
-        if (!Config.sceneryParticles() || lastInfo == null || world == null || FlightView.active()) return;
-        BlockPos origin = lastInfo.origin();
-        int radius = currentRadius;
-        double x = sourceX - origin.getX(), y = sourceY - origin.getY(), z = sourceZ - origin.getZ();
-        if (!liveArea(x - radius - 0.5, z - radius - 0.5, viewRadius() + 1.0)) return;
-        SceneryParticles.mobParticle(world, mobFrame(origin, radius), options, x, y, z, vx, vy, vz);
-    }
-
-    private static FramedParticle.Frame mobFrame(BlockPos origin, int radius) {
-        var level = Minecraft.getInstance().level;
-        return new FramedParticle.Frame(() -> {
-            PoseStack pose = new PoseStack();
-            SubLevelView.terrain(pose, origin.offset(radius, radius, radius));
-            pose.translate(-ARS_OFFSET * GIANT, -ARS_OFFSET * GIANT - Y_SHIFT, -ARS_OFFSET * GIANT);
-            pose.scale(GIANT, GIANT, GIANT);
-            pose.translate(-radius, -radius, -radius);
-            return new org.joml.Matrix4d(pose.last().pose());
-        }, () -> Minecraft.getInstance().level == level && currentDim != null && Config.outsideMobs()
-                && Config.sceneryParticles() && !FlightView.active(), GIANT);
+        SceneryHooks.onMobParticle(options, sourceX, sourceY, sourceZ, vx, vy, vz);
     }
 
     /** Explosion du dehors (position par rapport au Planarium) : ses particules, si elle est dans le rayon de vue. */
     public static void onOutsideExplosion(double dx, double dy, double dz) {
-        int view = viewRadius();
-        if (!Config.sceneryParticles() || !liveArea(dx - 0.5, dz - 0.5, view + 2.0)) {
-            return;
-        }
-        LitRenderingWorld world = sceneryWorld();
-        if (world != null) {
-            int radius = currentRadius;
-            SceneryParticles.explosion(SceneryParticles.giantSpace(world, radius), dx + radius, dy + radius, dz + radius);
-        }
+        SceneryHooks.onOutsideExplosion(dx, dy, dz);
     }
 
     static void onSceneryAmbientSound(double x, double y, double z, net.minecraft.sounds.SoundEvent sound,
                                       net.minecraft.sounds.SoundSource source, float volume, float pitch) {
-        if (sound == null || volume <= 0.0F) {
-            return;
-        }
-        int radius = currentRadius;
-        double dx = x - radius;
-        double dy = y - radius;
-        double dz = z - radius;
-        double distance = Math.sqrt((dx - 0.5) * (dx - 0.5) + (dy - 0.5) * (dy - 0.5) + (dz - 0.5) * (dz - 0.5));
-        double range = sound.getRange(volume);
-        if (!(range > 0.0) || distance >= range) {
-            return;
-        }
-        OutsideSoundClient.play(sound, source, (float) (volume * (1.0 - distance / range)) * OutsideSoundClient.AMBIENCE_VOLUME,
-                pitch, dx, dy, dz, true);
+        SceneryHooks.onSceneryAmbientSound(x, y, z, sound, source, volume, pitch);
     }
 
     private static void sendToggle(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
