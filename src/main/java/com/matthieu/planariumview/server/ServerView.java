@@ -27,7 +27,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.level.TicketType;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -158,7 +157,7 @@ public final class ServerView {
     /** Options des sons du monde exterieur de chaque joueur (SoundPrefsPayload ; sans message : tout permis). */
     private static final Map<UUID, SoundPrefsPayload> SOUND_PREFS = new java.util.concurrent.ConcurrentHashMap<>();
 
-    private static SoundPrefsPayload prefsOf(UUID id) {
+    static SoundPrefsPayload prefsOf(UUID id) {
         return SOUND_PREFS.getOrDefault(id, SoundPrefsPayload.DEFAULT);
     }
 
@@ -312,7 +311,7 @@ public final class ServerView {
         if (track == null || DISABLED.contains(id) || !track.pocket.equals(player.serverLevel().dimension())) {
             return;
         }
-        keepLoaded(player.server, id, track, Config.RADIUS.get());
+        ViewTickets.keepLoaded(player.server, id, track, Config.RADIUS.get());
     }
 
     /** Options des sons du client ; la zone autour du Planarium passe en pause ou tourne a la prochaine mise a jour. */
@@ -331,7 +330,7 @@ public final class ServerView {
         }
         track.jukeboxSyncPending = prefs.world();
         int radius = Config.RADIUS.get();
-        keepLoaded(player.server, id, track, radius);
+        ViewTickets.keepLoaded(player.server, id, track, radius);
         if (prefs.world() && track.hasFull) {
             trySendPendingJukeboxes(player, track, radius);
         }
@@ -708,27 +707,7 @@ public final class ServerView {
         } catch (Exception e) {
             LOGGER.error("[Planarium Panorama] Erreur lors de la capture des entites des miniatures", e);
         }
-        keepSourcesAwake(server);
-    }
-
-    /**
-     * Option "Sons du monde exterieur" ON.
-     * Minecraft arrete de faire tourner les entites et les blocs speciaux d'une dimension 15 s apres que le dernier
-     * joueur l'a quittee (pistons figes en plein mouvement, fours, entonnoirs et mobs arretes). Un joueur qui regarde
-     * cette dimension depuis un bocal la garde donc "occupee", comme s'il y etait. Les chunks qui tournent restent ceux
-     * que le Planarium garde charges, plus ceux que Minecraft garde deja.
-     */
-    private static void keepSourcesAwake(MinecraftServer server) {
-        for (Map.Entry<UUID, Track> entry : TRACKS.entrySet()) {
-            // Seulement pour les joueurs qui veulent les sons du monde exterieur ou les mobs (zone active, voir keepLoaded).
-            if (DISABLED.contains(entry.getKey()) || !entry.getValue().ticketActive) {
-                continue;
-            }
-            ServerLevel source = server.getLevel(entry.getValue().source.dimension());
-            if (source != null && source.players().isEmpty()) {
-                source.resetEmptyTime();
-            }
-        }
+        ViewTickets.keepSourcesAwake(server, TRACKS, DISABLED);
     }
 
     private static boolean isPocket(ServerLevel level) {
@@ -817,7 +796,7 @@ public final class ServerView {
         if (radius != track.lastRadius) {
             force = true;
         }
-        keepLoaded(player.server, player.getUUID(), track, radius);
+        ViewTickets.keepLoaded(player.server, player.getUUID(), track, radius);
         if (track.hasFull) {
             trySendPendingJukeboxes(player, track, radius);
         }
@@ -1287,7 +1266,7 @@ public final class ServerView {
             ServerLevel source = server.getLevel(track.source.dimension());
             if (source == null || !updateAnchor(track, source)) continue;
             int radius = Config.RADIUS.get();
-            keepLoaded(server, player.getUUID(), track, radius);
+            ViewTickets.keepLoaded(server, player.getUUID(), track, radius);
             // Avec l'anneau lointain, les structures qui volent plus loin restent visibles (blocs et mouvement).
             int far = Config.FAR_RADIUS.get();
             net.minecraft.world.phys.AABB area = far > radius
@@ -1404,82 +1383,6 @@ public final class ServerView {
         TRACKS.clear();
     }
 
-    /** Ticket de chargement : garde la zone autour du Planarium chargee tant qu'un joueur est dans le bocal. */
-    private static final TicketType<UUID> VIEW_TICKET =
-            TicketType.create("planariumview", UUID::compareTo);
-
-    /**
-     * Sans joueur a proximite, les chunks autour du Planarium se dechargent et les rafraichissements
-     * ne peuvent plus lire les blocs. On les garde charges (sans les faire "tourner") pendant la visite.
-     */
-    /**
-     * Garde la zone du decor chargee. Option "Sons du monde exterieur" ON : un seul ticket qui fait aussi tourner la zone
-     * (redstone, machines, mobs), comme si le joueur y etait. OFF : un ticket par chunk, au niveau juste suffisant pour que
-     * le chunk soit charge et lisible, sans rien y faire tourner (comme quand un joueur s'en va).
-     */
-    private static void keepLoaded(MinecraftServer server, UUID player, Track track, int radius) {
-        // Zone active pour les sons du monde exterieur, ou pour que les mobs affiches bougent.
-        boolean mobs = OutsideMobsServer.wants(player);
-        boolean active = prefsOf(player).world() || mobs;
-        int chunks = active
-                ? activeTicketDistance(track.center, radius + (mobs ? OutsideMobsServer.SIMULATION_MARGIN : 0))
-                : Math.floorDiv(radius + 15, 16) + 1;
-        ChunkPos center = new ChunkPos(track.center);
-        if (chunks == track.ticketChunks && active == track.ticketActive && center.equals(track.ticketCenter)) {
-            return;
-        }
-        ServerLevel source = server.getLevel(track.source.dimension());
-        if (source == null) {
-            return;
-        }
-        releaseTickets(source, track);
-        if (active) {
-            source.getChunkSource().addRegionTicket(VIEW_TICKET, center, chunks, track.owner);
-        } else {
-            for (int dx = -chunks; dx <= chunks; dx++) {
-                for (int dz = -chunks; dz <= chunks; dz++) {
-                    ChunkPos chunk = new ChunkPos(center.x + dx, center.z + dz);
-                    source.getChunkSource().addRegionTicket(VIEW_TICKET, chunk, 0, track.owner);
-                }
-            }
-        }
-        track.ticketChunks = chunks;
-        track.ticketActive = active;
-        track.ticketCenter = center;
-    }
-
-    /**
-     * addRegionTicket part du niveau FULL (33). Il faut deux niveaux de plus pour que tous les chunks vises tournent
-     * aussi leurs entites (niveau 31), en tenant compte du decalage du Planarium dans son chunk.
-     */
-    private static int activeTicketDistance(BlockPos pos, int radius) {
-        ChunkPos center = new ChunkPos(pos);
-        int x = Math.max(center.x - Math.floorDiv(pos.getX() - radius, 16),
-                Math.floorDiv(pos.getX() + radius, 16) - center.x);
-        int z = Math.max(center.z - Math.floorDiv(pos.getZ() - radius, 16),
-                Math.floorDiv(pos.getZ() + radius, 16) - center.z);
-        return Math.max(x, z) + 2;
-    }
-
-    /** Retire les tickets de chargement de ce suivi, selon le mode avec lequel ils ont ete poses. */
-    private static void releaseTickets(ServerLevel source, Track track) {
-        if (track.ticketChunks < 0) {
-            return;
-        }
-        ChunkPos center = track.ticketCenter;
-        if (track.ticketActive) {
-            source.getChunkSource().removeRegionTicket(VIEW_TICKET, center, track.ticketChunks, track.owner);
-        } else {
-            for (int dx = -track.ticketChunks; dx <= track.ticketChunks; dx++) {
-                for (int dz = -track.ticketChunks; dz <= track.ticketChunks; dz++) {
-                    ChunkPos chunk = new ChunkPos(center.x + dx, center.z + dz);
-                    source.getChunkSource().removeRegionTicket(VIEW_TICKET, chunk, 0, track.owner);
-                }
-            }
-        }
-        track.ticketChunks = -1;
-    }
-
     private static void removeTrack(MinecraftServer server, UUID id) {
         SubLevelServer.forgetOutside(id);
         LunarServer.forget(id);
@@ -1494,7 +1397,7 @@ public final class ServerView {
         ServerLevel source = server.getLevel(track.source.dimension());
         if (source != null) {
             com.matthieu.planariumview.compat.sable.SubLevelCompat.releaseAnchor(source, id, track.anchorBody);
-            releaseTickets(source, track);
+            ViewTickets.releaseTickets(source, track);
         }
         track.ticketChunks = -1;
     }
