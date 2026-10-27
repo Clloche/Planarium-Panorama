@@ -647,9 +647,10 @@ public final class MobAnimationIntegrationChecks {
     private static void underwaterEmission() throws Exception {
         // Skip the renderer bootstrap, but exercise the complete production animateBlock -> particle sink path.
         Class.forName(ClientView.class.getName());
+        Class<?> ambience = Class.forName("com.matthieu.planariumview.client.scenery.SceneryAmbience");
         for (var entry : Map.of("AMBIENT_RANDOM", RandomSource.create(827), "AMBIENT_BROKEN", new HashSet<>(),
                 "LOGGER", com.mojang.logging.LogUtils.getLogger()).entrySet()) {
-            Field target = field(ClientView.class, entry.getKey());
+            Field target = field(ambience, entry.getKey());
             UNSAFE.putObject(UNSAFE.staticFieldBase(target), UNSAFE.staticFieldOffset(target), entry.getValue());
         }
         AmbientWater source = fixture(AmbientWater.class), flowing = fixture(AmbientWater.class), other = fixture(AmbientWater.class);
@@ -670,7 +671,7 @@ public final class MobAnimationIntegrationChecks {
                 properties.put(FlowingFluid.FALLING, falling);
                 field(BlockBehaviour.BlockStateBase.class, "fluidState").set(block, new FluidState(water, properties, null));
                 emitted.clear(); water.nativeCalls = 0;
-                ((RandomSource) field(ClientView.class, "AMBIENT_RANDOM").get(null)).setSeed(827);
+                ((RandomSource) field(ambience, "AMBIENT_RANDOM").get(null)).setSeed(827);
                 LitRenderingWorld.withSceneryParticles((level, options, x, y, z, vx, vy, vz) ->
                         emitted.add(new Emission(options, new Vec3(x, y, z), new Vec3(vx, vy, vz))), () -> {
                     for (int i = 0; i < 10_000; i++) ClientView.animateBlock(world, at, block);
