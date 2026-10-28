@@ -52,8 +52,79 @@ final class SceneryHooks {
         }
         LitRenderingWorld world = sceneryWorld();
         if (world != null) {
-            SceneryParticles.spawn(SceneryParticles.giantSpace(world, radius), options, x, y, z, vx, vy, vz, light);
+            int spawnLight = light;
+            SceneryParticles.inScenery(world, radius, sceneryFrame(),
+                    space -> SceneryParticles.spawn(space, options, x, y, z, vx, vy, vz, spawnLight));
         }
+    }
+
+    /** Repere des particules des blocs du decor quand le bocal est sur une structure Sable (voir sceneryFrame). */
+    private static FramedParticle.Frame sceneryFrame;
+    private static BlockPos sceneryFrameOrigin;
+    private static int sceneryFrameRadius = -1;
+    private static Object sceneryFrameLevel;
+    private static long sceneryFrameEpoch;
+
+    /**
+     * Bocal sur une structure Sable : le decor suit son inclinaison et ses mouvements (SubLevelView.terrain). Les particules
+     * des blocs (eau, feux de camp, pluie...) sont alors simulees dans le gabarit et dessinees dans ce repere, comme celles
+     * des mobs. Null sur le terrain normal : elles restent a leur place, sans le cout du repere.
+     */
+    static FramedParticle.Frame sceneryFrame() {
+        if (lastInfo == null || !SubLevelView.hasAnchor()) {
+            return null;
+        }
+        BlockPos origin = lastInfo.origin();
+        int radius = currentRadius;
+        var level = Minecraft.getInstance().level;
+        if (sceneryFrame == null || radius != sceneryFrameRadius || !origin.equals(sceneryFrameOrigin)
+                || level != sceneryFrameLevel) {
+            long epoch = sceneryFrameEpoch;
+            sceneryFrame = new FramedParticle.Frame(cachedTerrain(origin, radius),
+                    () -> sceneryFrameEpoch == epoch && Minecraft.getInstance().level == level
+                            && currentDim != null && Config.sceneryParticles()
+                            && !FlightView.active(), GIANT);
+            sceneryFrameOrigin = origin;
+            sceneryFrameRadius = radius;
+            sceneryFrameLevel = level;
+        }
+        return sceneryFrame;
+    }
+
+    /** Ne pas retenir le monde client apres une sortie, et invalider les anciens reperes. */
+    static void clearSceneryFrame() {
+        sceneryFrameEpoch++;
+        sceneryFrame = null;
+        sceneryFrameOrigin = null;
+        sceneryFrameRadius = -1;
+        sceneryFrameLevel = null;
+    }
+
+    /**
+     * Matrice du repere du decor, recalculee au plus une fois par milliseconde : toutes les particules d'une meme image
+     * la partagent (Frame.matrix en fait une copie).
+     */
+    private static java.util.function.Supplier<org.joml.Matrix4d> cachedTerrain(BlockPos origin, int radius) {
+        long[] computedAt = {0L};
+        org.joml.Matrix4d[] cached = {null};
+        return () -> {
+            long now = System.nanoTime();
+            if (cached[0] == null || now - computedAt[0] > 1_000_000L) {
+                cached[0] = terrainMatrix(origin, radius);
+                computedAt[0] = now;
+            }
+            return cached[0];
+        };
+    }
+
+    /** Positions du gabarit -> decor geant dessine, avec le repere mobile d'un bocal sur une structure Sable. */
+    private static org.joml.Matrix4d terrainMatrix(BlockPos origin, int radius) {
+        PoseStack pose = new PoseStack();
+        SubLevelView.terrain(pose, origin.offset(radius, radius, radius));
+        pose.translate(-ARS_OFFSET * GIANT, -ARS_OFFSET * GIANT - Y_SHIFT, -ARS_OFFSET * GIANT);
+        pose.scale(GIANT, GIANT, GIANT);
+        pose.translate(-radius, -radius, -radius);
+        return new org.joml.Matrix4d(pose.last().pose());
     }
 
     /** Death particles follow the same captured origin and moving frame as the rendered mob. */
@@ -86,14 +157,7 @@ final class SceneryHooks {
 
     private static FramedParticle.Frame mobFrame(BlockPos origin, int radius) {
         var level = Minecraft.getInstance().level;
-        return new FramedParticle.Frame(() -> {
-            PoseStack pose = new PoseStack();
-            SubLevelView.terrain(pose, origin.offset(radius, radius, radius));
-            pose.translate(-ARS_OFFSET * GIANT, -ARS_OFFSET * GIANT - Y_SHIFT, -ARS_OFFSET * GIANT);
-            pose.scale(GIANT, GIANT, GIANT);
-            pose.translate(-radius, -radius, -radius);
-            return new org.joml.Matrix4d(pose.last().pose());
-        }, () -> Minecraft.getInstance().level == level && currentDim != null && Config.outsideMobs()
+        return new FramedParticle.Frame(() -> terrainMatrix(origin, radius), () -> Minecraft.getInstance().level == level && currentDim != null && Config.outsideMobs()
                 && Config.sceneryParticles() && !FlightView.active(), GIANT);
     }
 
@@ -106,7 +170,8 @@ final class SceneryHooks {
         LitRenderingWorld world = sceneryWorld();
         if (world != null) {
             int radius = currentRadius;
-            SceneryParticles.explosion(SceneryParticles.giantSpace(world, radius), dx + radius, dy + radius, dz + radius);
+            SceneryParticles.inScenery(world, radius, sceneryFrame(),
+                    space -> SceneryParticles.explosion(space, dx + radius, dy + radius, dz + radius));
         }
     }
 

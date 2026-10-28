@@ -1,5 +1,6 @@
 package com.matthieu.planariumview.mixin;
 
+import com.matthieu.planariumview.diagnostics.ExpectIn;
 import com.matthieu.planariumview.client.scenery.SceneryParticles;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.BubbleParticle;
@@ -27,11 +28,13 @@ public abstract class BubbleParticleMixin {
     }
 
     // Each constant occurs in only one of the three targets. Other particles keep their native acceleration.
+    @ExpectIn("BubbleParticle")
     @ModifyConstant(method = "tick", constant = @Constant(doubleValue = 0.002), require = 0)
     private double planariumview$bubbleRise(double acceleration) {
         return acceleration * SceneryParticles.motionScale((Particle) (Object) this);
     }
 
+    @ExpectIn("WaterCurrentDownParticle")
     @ModifyConstant(method = "tick", constant = @Constant(floatValue = 0.6F), require = 0)
     private float planariumview$whirlpool(float acceleration) {
         return acceleration * SceneryParticles.motionScale((Particle) (Object) this);

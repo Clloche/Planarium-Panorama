@@ -37,6 +37,10 @@ public final class SceneryParticles {
     private static final Map<Particle, Space> SPACE = Collections.synchronizedMap(new WeakHashMap<>());
     /** Only particles with an extra render wrapper share this budget; dense biome ambience must not exhaust it. */
     private static final Map<Particle, Boolean> WRAPPED = Collections.synchronizedMap(new WeakHashMap<>());
+    /** Same limit for block particles drawn in a moving Sable frame, so they never starve mob and aquatic effects. */
+    private static final Map<Particle, Boolean> SCENERY_WRAPPED = Collections.synchronizedMap(new WeakHashMap<>());
+    /** True while spawning or ticking in the scenery's own Sable frame (see inScenery). */
+    private static boolean sceneryFramed;
     /** Particules qui traversent deja les blocs en vanilla (notamment SPORE_BLOSSOM_AIR). */
     private static final Map<Particle, Boolean> NO_COLLISION = Collections.synchronizedMap(new WeakHashMap<>());
     private static boolean collisionWarned;
@@ -54,11 +58,17 @@ public final class SceneryParticles {
     }
 
     static void tickFramed(Particle particle, FramedParticle.Frame frame) {
-        framed(frame, () -> {
-            beginTick(particle);
-            try { particle.tick(); }
-            finally { endTick(particle); }
-        });
+        boolean previous = sceneryFramed;
+        sceneryFramed = SCENERY_WRAPPED.containsKey(particle);
+        try {
+            framed(frame, () -> {
+                beginTick(particle);
+                try { particle.tick(); }
+                finally { endTick(particle); }
+            });
+        } finally {
+            sceneryFramed = previous;
+        }
     }
 
     private static void add(Particle particle) {
@@ -68,10 +78,14 @@ public final class SceneryParticles {
     private static void add(Particle particle, boolean beforeWater) {
         Particle shown = attaching == null ? particle : new FramedParticle(particle, attaching);
         Minecraft.getInstance().particleEngine.add(beforeWater ? SceneryWaterParticles.wrap(shown) : shown);
-        if (attaching != null || beforeWater) WRAPPED.put(particle, true);
+        if (attaching != null || beforeWater) wrappedBudget().put(particle, true);
     }
 
-    private static boolean hasWrappedCapacity() { return WRAPPED.size() < 2048; }
+    private static Map<Particle, Boolean> wrappedBudget() {
+        return sceneryFramed && attaching != null ? SCENERY_WRAPPED : WRAPPED;
+    }
+
+    private static boolean hasWrappedCapacity() { return wrappedBudget().size() < 2048; }
 
     /**
      * Ou un faux monde est dessine : un point du gabarit (x, y, z) apparait en (x * scale + ox, y * scale + oy,
@@ -293,6 +307,28 @@ public final class SceneryParticles {
         return new Space(world, giant, origin, origin - ClientView.Y_SHIFT, origin, null, true, null);
     }
 
+    /**
+     * Particules des blocs du decor geant. Sans repere ({@code frame} null), a leur place comme avec giantSpace. Avec le
+     * repere d'un bocal sur une structure Sable, simulees dans le gabarit et dessinees dans ce repere : elles suivent
+     * l'inclinaison du decor, comme celles des mobs.
+     */
+    static void inScenery(LitRenderingWorld world, int radius, FramedParticle.Frame frame,
+                          java.util.function.Consumer<Space> action) {
+        if (frame == null) {
+            action.accept(giantSpace(world, radius));
+            return;
+        }
+        Space space = new Space(world, frame.scale(), FramedParticle.OFFSET, FramedParticle.OFFSET,
+                FramedParticle.OFFSET, null, true, null);
+        boolean previous = sceneryFramed;
+        sceneryFramed = true;
+        try {
+            framed(frame, () -> action.accept(space));
+        } finally {
+            sceneryFramed = previous;
+        }
+    }
+
     /** Native particle options and velocities, in the interpolated mob's moving frame. */
     static void mobParticle(LitRenderingWorld world, FramedParticle.Frame frame, ParticleOptions options,
                             double x, double y, double z, double vx, double vy, double vz) {
@@ -342,14 +378,15 @@ public final class SceneryParticles {
         if (world.getBlockState(at).isSolidRender(world, at)) {
             return;
         }
-        Space giant = giantSpace(world, radius);
-        Particle particle = spawnAt(new Space(world, giant.scale(), giant.ox(), giant.oy(), giant.oz(), null, false, null),
-                options, x * giant.scale() + giant.ox(), y * giant.scale() + giant.oy(), z * giant.scale() + giant.oz(),
-                0.0, 0.0, 0.0, light);
-        if (particle != null) {
-            // Un peu plus large : vues de loin dans le decor, les rafales paraissaient fines.
-            particle.scale(FAR_SIZE);
-        }
+        inScenery(world, radius, SceneryHooks.sceneryFrame(), giant -> {
+            Particle particle = spawnAt(new Space(world, giant.scale(), giant.ox(), giant.oy(), giant.oz(), null, false, null),
+                    options, x * giant.scale() + giant.ox(), y * giant.scale() + giant.oy(), z * giant.scale() + giant.oz(),
+                    0.0, 0.0, 0.0, light);
+            if (particle != null) {
+                // Un peu plus large : vues de loin dans le decor, les rafales paraissaient fines.
+                particle.scale(FAR_SIZE);
+            }
+        });
     }
 
     /** Agrandissement des particules lointaines (voir spawnFar). */
@@ -1119,6 +1156,9 @@ public final class SceneryParticles {
 
     private static final class Emitter {
         final Space space;
+        /** Repere ou l'explosion est nee (bocal sur une structure Sable), ou null. */
+        final FramedParticle.Frame frame = attaching;
+        final boolean scenery = sceneryFramed;
         public final double x;
         public final double y;
         public final double z;
@@ -1146,6 +1186,7 @@ public final class SceneryParticles {
     public static void tick() {
         // Release expired slots each tick, without waiting for a garbage collection.
         synchronized (WRAPPED) { WRAPPED.keySet().removeIf(particle -> !particle.isAlive()); }
+        synchronized (SCENERY_WRAPPED) { SCENERY_WRAPPED.keySet().removeIf(particle -> !particle.isAlive()); }
         ArsParticles.beginTick();
         if (EMITTERS.isEmpty()) {
             return;
@@ -1155,13 +1196,26 @@ public final class SceneryParticles {
         while (it.hasNext()) {
             Emitter emitter = it.next();
             double size = emitter.age / 8.0;
-            for (int i = 0; i < 6; i++) {
-                if (allowed()) {
-                    spawn(emitter.space, ParticleTypes.EXPLOSION,
-                            emitter.x + (RANDOM.nextDouble() - RANDOM.nextDouble()) * 4.0,
-                            emitter.y + (RANDOM.nextDouble() - RANDOM.nextDouble()) * 4.0,
-                            emitter.z + (RANDOM.nextDouble() - RANDOM.nextDouble()) * 4.0, size, 0.0, 0.0, light);
+            Runnable puffs = () -> {
+                for (int i = 0; i < 6; i++) {
+                    if (allowed()) {
+                        spawn(emitter.space, ParticleTypes.EXPLOSION,
+                                emitter.x + (RANDOM.nextDouble() - RANDOM.nextDouble()) * 4.0,
+                                emitter.y + (RANDOM.nextDouble() - RANDOM.nextDouble()) * 4.0,
+                                emitter.z + (RANDOM.nextDouble() - RANDOM.nextDouble()) * 4.0, size, 0.0, 0.0, light);
+                    }
                 }
+            };
+            if (emitter.frame != null) {
+                boolean previous = sceneryFramed;
+                sceneryFramed = emitter.scenery;
+                try {
+                    framed(emitter.frame, puffs);
+                } finally {
+                    sceneryFramed = previous;
+                }
+            } else {
+                puffs.run();
             }
             emitter.age++;
             if (emitter.age >= 8) {
@@ -1171,12 +1225,14 @@ public final class SceneryParticles {
     }
 
     public static void clear() {
+        SceneryHooks.clearSceneryFrame();
         SceneryWaterParticles.clear();
         ArsParticles.clear();
         com.matthieu.planariumview.compat.dynamic_surroundings.DsFirefliesCompat.clear();
         LIGHT.clear();
         SPACE.clear();
         WRAPPED.clear();
+        SCENERY_WRAPPED.clear();
         NO_COLLISION.clear();
         HUE.clear();
         HUES.clear();
@@ -1189,5 +1245,6 @@ public final class SceneryParticles {
         holding = false;
         adding = false;
         attaching = null;
+        sceneryFramed = false;
     }
 }

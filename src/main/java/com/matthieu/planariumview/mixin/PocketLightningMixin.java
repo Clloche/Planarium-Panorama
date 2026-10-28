@@ -1,6 +1,7 @@
 package com.matthieu.planariumview.mixin;
 
 import com.hollingsworth.arsnouveau.ArsNouveau;
+import com.matthieu.planariumview.diagnostics.Alternative;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
@@ -20,12 +21,14 @@ public abstract class PocketLightningMixin {
         return level.dimensionTypeRegistration().is(ArsNouveau.DIMENSION_TYPE_KEY);
     }
 
+    @Alternative("pocket_natural_thunder")
     @Redirect(method = "tickChunk", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;isThundering()Z"),
             require = 0)
     private boolean planariumview$thunderServerLevel(ServerLevel level) {
         return !planariumview$noThunder(level) && level.isThundering();
     }
 
+    @Alternative("pocket_natural_thunder")
     @Redirect(method = "tickChunk", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;isThundering()Z"),
             require = 0)
     private boolean planariumview$thunderLevel(Level level) {

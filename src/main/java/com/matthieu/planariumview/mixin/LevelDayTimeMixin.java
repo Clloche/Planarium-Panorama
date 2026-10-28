@@ -1,6 +1,7 @@
 package com.matthieu.planariumview.mixin;
 
 import com.matthieu.planariumview.client.sky.SkySync;
+import com.matthieu.planariumview.diagnostics.Alternative;
 
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.level.Level;
@@ -16,6 +17,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(Level.class)
 public abstract class LevelDayTimeMixin {
 
+    @Alternative("level_day_time")
     @Inject(method = "getDayTime", at = @At("HEAD"), cancellable = true)
     private void planariumview$dayTime(CallbackInfoReturnable<Long> cir) {
         if ((Object) this instanceof ClientLevel level && SkySync.skyActive(level)) {
@@ -24,6 +26,7 @@ public abstract class LevelDayTimeMixin {
     }
 
     /** Meme heure par l'autre methode (Enhanced Celestials lit celle-ci). */
+    @Alternative("level_day_time")
     @Inject(method = "dayTime", at = @At("HEAD"), cancellable = true, require = 0)
     private void planariumview$dayTimeShort(CallbackInfoReturnable<Long> cir) {
         if ((Object) this instanceof ClientLevel level && SkySync.skyActive(level)) {

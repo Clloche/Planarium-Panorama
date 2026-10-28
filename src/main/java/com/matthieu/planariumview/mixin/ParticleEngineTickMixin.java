@@ -32,6 +32,8 @@ public abstract class ParticleEngineTickMixin {
     private static float planariumview$fogEnd;
     @org.spongepowered.asm.mixin.Unique
     private static com.mojang.blaze3d.shaders.FogShape planariumview$fogShape;
+    @org.spongepowered.asm.mixin.Unique
+    private static float[] planariumview$fogColor;
     /** Appels imbriques (une version de render peut en appeler une autre). */
     @org.spongepowered.asm.mixin.Unique
     private static int planariumview$fogDepth;
@@ -53,10 +55,13 @@ public abstract class ParticleEngineTickMixin {
         float start = com.mojang.blaze3d.systems.RenderSystem.getShaderFogStart();
         float end = com.mojang.blaze3d.systems.RenderSystem.getShaderFogEnd();
         com.mojang.blaze3d.shaders.FogShape shape = com.mojang.blaze3d.systems.RenderSystem.getShaderFogShape();
+        // Copie : RenderSystem renvoie son propre tableau, que particleFog peut changer (couleur de la caverne).
+        float[] color = com.mojang.blaze3d.systems.RenderSystem.getShaderFogColor().clone();
         if (com.matthieu.planariumview.client.scenery.ClientView.particleFog()) {
             planariumview$fogStart = start;
             planariumview$fogEnd = end;
             planariumview$fogShape = shape;
+            planariumview$fogColor = color;
         } else {
             planariumview$fogShape = null;
         }
@@ -75,6 +80,8 @@ public abstract class ParticleEngineTickMixin {
             com.mojang.blaze3d.systems.RenderSystem.setShaderFogStart(planariumview$fogStart);
             com.mojang.blaze3d.systems.RenderSystem.setShaderFogEnd(planariumview$fogEnd);
             com.mojang.blaze3d.systems.RenderSystem.setShaderFogShape(planariumview$fogShape);
+            float[] color = planariumview$fogColor;
+            com.mojang.blaze3d.systems.RenderSystem.setShaderFogColor(color[0], color[1], color[2], color[3]);
             planariumview$fogShape = null;
         }
     }

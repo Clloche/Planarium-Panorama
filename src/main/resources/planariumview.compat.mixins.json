@@ -2,6 +2,7 @@
   "required": false,
   "minVersion": "0.8",
   "package": "com.matthieu.planariumview.mixin.compat",
+  "plugin": "com.matthieu.planariumview.diagnostics.PlanariumMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "alexs_caves.AcAmbersolLightMixin"

@@ -70,6 +70,9 @@ public final class ClientView {
                 (modContainer, parent) -> ConfigScreen.create(parent));
         NeoForge.EVENT_BUS.addListener(ClientView::onRenderStage);
         NeoForge.EVENT_BUS.addListener(ClientView::onLoggingOut);
+        // Bilan des mixins a la premiere connexion (aussi a un serveur distant, sans ServerStartedEvent).
+        NeoForge.EVENT_BUS.addListener(ClientPlayerNetworkEvent.LoggingIn.class,
+                event -> com.matthieu.planariumview.diagnostics.MixinHealthReport.summary());
         NeoForge.EVENT_BUS.addListener(ClientView::sendToggle);
         NeoForge.EVENT_BUS.addListener(ClientView::tickSceneryAmbience);
         JarInteriorBiome.init();

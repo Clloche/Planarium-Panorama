@@ -386,6 +386,7 @@ public final class OutsideMobs {
                             && Config.sceneryParticles() && !FlightView.active()) {
                         MobEffects.tick(living);
                         AquaticEffects.tick(living, state.yRot(), state.xRot(), state.bodyRot(), inkBursts);
+                        AmbientEffects.tick(living);
                     }
                 }
                 copy.animation.tick(entity, state.visual());

@@ -56,6 +56,7 @@ public class PlanariumView {
         modBus.addListener(PlanariumView::registerPayloads);
         modBus.addListener(PlanariumView::addPacks);
         NeoForge.EVENT_BUS.register(ServerView.class);
+        com.matthieu.planariumview.diagnostics.MixinHealthReport.init(modBus);
         com.matthieu.planariumview.compat.sable.SubLevelCompat.available();
         if (FMLEnvironment.dist == Dist.CLIENT) {
             ClientView.init(container);

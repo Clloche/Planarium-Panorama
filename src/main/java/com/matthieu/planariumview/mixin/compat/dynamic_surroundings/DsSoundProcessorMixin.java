@@ -1,5 +1,6 @@
 package com.matthieu.planariumview.mixin.compat.dynamic_surroundings;
 
+import com.matthieu.planariumview.diagnostics.Alternative;
 import com.matthieu.planariumview.client.scenery.SceneryReverb;
 
 import net.minecraft.client.resources.sounds.SoundInstance;
@@ -19,6 +20,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
         "org.orecruncher.dsurround.runtime.audio.EnhancedSoundProcessor"}, remap = false)
 public abstract class DsSoundProcessorMixin {
 
+    @Alternative("ds_ignore_sound")
     @Inject(method = "shouldIgnoreSound", at = @At("HEAD"), cancellable = true, require = 0)
     private static void planariumview$processScenery(SoundInstance sound, CallbackInfoReturnable<Boolean> cir) {
         if (SceneryReverb.handles(sound)) {

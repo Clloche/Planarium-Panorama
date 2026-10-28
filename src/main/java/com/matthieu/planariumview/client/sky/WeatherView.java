@@ -69,6 +69,9 @@ public final class WeatherView {
     private static int originY;
     private static int[] tops;
     private static byte[] precip;
+    /** Abris des structures Sable au-dessus de chaque colonne (voir SubLevelView.rainShelter), ou null. */
+    private static float[] shelter;
+    private static int shelterAge;
 
     /** Hauteur du terrain autour du Planarium (moyenne, min, max), en y du monde d'origine, ou null. */
     public static double[] terrainHeights() {
@@ -146,12 +149,48 @@ public final class WeatherView {
         planarium = payload.origin().offset(radius, radius, radius);
         tops = payload.rainTops();
         precip = payload.precip();
+        if (shelter != null && shelter.length != s * s) shelter = null;
     }
 
     public static void clear() {
         dim = null;
         tops = null;
         precip = null;
+        shelter = null;
+    }
+
+    /**
+     * Hauteur (Y du monde) ou la pluie s'arrete dans une colonne : le sol du decor, ou plus haut, le toit ou le pont d'une
+     * structure Sable (un vaisseau n'est pas dans la carte des hauteurs du monde).
+     */
+    private static float stopY(int index) {
+        float ground = tops[index];
+        float[] roofs = shelter;
+        if (roofs == null || roofs.length != tops.length || Float.isNaN(roofs[index])) return ground;
+        return Math.max(ground, planarium.getY() + roofs[index]);
+    }
+
+    /** Vrai si un abri Sable arrete la pluie au-dessus du sol du decor dans cette colonne. */
+    private static boolean sheltered(int index) {
+        return stopY(index) > tops[index] + 0.01F;
+    }
+
+    /** Abris Sable relus quatre fois par seconde : un vaisseau qui bouge les deplace par rapport aux colonnes. */
+    private static void updateShelter() {
+        int cells = size * size;
+        if (shelter == null || shelter.length != cells) {
+            shelter = new float[cells];
+            java.util.Arrays.fill(shelter, Float.NaN);
+            shelterAge = 0;
+        }
+        if (--shelterAge > 0) return;
+        shelterAge = 5;
+        try {
+            // Jusqu'a quelques blocs au-dessus du bocal : la pluie dessinee commence a peu pres la.
+            com.matthieu.planariumview.client.scenery.SubLevelView.rainShelter(planarium, radius, 8.0, -radius, shelter);
+        } catch (RuntimeException e) {
+            java.util.Arrays.fill(shelter, Float.NaN);
+        }
     }
 
     private static boolean active(ClientLevel level) {
@@ -223,6 +262,10 @@ public final class WeatherView {
     }
 
     private static float giantY(int worldY) {
+        return giantY((float) worldY);
+    }
+
+    private static float giantY(float worldY) {
         return (worldY - planarium.getY() - ClientView.ARS_OFFSET) * ClientView.GIANT - ClientView.Y_SHIFT;
     }
 
@@ -255,7 +298,7 @@ public final class WeatherView {
                 if (!ClientView.liveArea(i - radius, j - radius, view)) {
                     continue;
                 }
-                float bottom = Math.max(Math.max(giantY(tops[index]), captureBottom), floor);
+                float bottom = Math.max(Math.max(giantY(stopY(index)), captureBottom), floor);
                 if (bottom >= top) {
                     continue;
                 }
@@ -356,7 +399,7 @@ public final class WeatherView {
             int x = minX + random.nextInt(maxX - minX + 1);
             int z = minZ + random.nextInt(maxZ - minZ + 1);
             int index = x * size + z;
-            if (precip[index] != 1 || (x == radius && z == radius)
+            if (precip[index] != 1 || (x == radius && z == radius) || sheltered(index)
                     || !ClientView.liveArea(x - radius, z - radius, view)) continue;
             int y = tops[index] - originY - 1;
             if (y < 0 || y >= size) continue;
@@ -431,10 +474,12 @@ public final class WeatherView {
             return;
         }
         RandomSource random = level.getRandom();
+        updateShelter();
         rainImpacts(mc, rain, random);
         // Le Planarium est a l'abri dehors (un toit au-dessus de lui) : comme un joueur a sa place, on entend la pluie
         // tomber autour de l'abri, dans le decor.
-        if (tops[radius * size + radius] > planarium.getY() + 1) {
+        // (Plus d'un bloc et demi : sur un vaisseau, la colonne du Planarium s'arrete d'abord sur son propre bloc.)
+        if (stopY(radius * size + radius) > planarium.getY() + 1.5F) {
             outsideRain(random);
             return;
         }
@@ -443,7 +488,7 @@ public final class WeatherView {
         for (int i = Math.max(0, radius - 2); i <= Math.min(size - 1, radius + 2) && !nearby; i++) {
             for (int j = Math.max(0, radius - 2); j <= Math.min(size - 1, radius + 2); j++) {
                 int index = i * size + j;
-                if (precip[index] == 1 && tops[index] <= planarium.getY() + 3) {
+                if (precip[index] == 1 && stopY(index) <= planarium.getY() + 3) {
                     nearby = true;
                     break;
                 }
@@ -498,7 +543,7 @@ public final class WeatherView {
                 continue;
             }
             int index = i * size + j;
-            int ground = tops[index];
+            int ground = Mth.ceil(stopY(index));
             if (precip[index] != 1 || ground <= camY - 10 || ground > camY + 10) {
                 continue;
             }

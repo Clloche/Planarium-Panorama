@@ -494,6 +494,78 @@ public final class SubLevelView {
         }
     }
 
+    /**
+     * Abris des structures Sable du decor pour la pluie : pour chaque colonne du decor ({@code x * taille + z}, Planarium
+     * en (radius, radius)), la hauteur juste au-dessus du plus haut bloc Sable qui arrete la pluie dans cette colonne,
+     * en blocs depuis le coin du Planarium (memes coordonnees que les colonnes de WeatherView). NaN : rien au-dessus.
+     * Cherche seulement entre {@code fromY} et {@code toY}. Les colonnes sont verticales dans le repere du bocal, comme
+     * la pluie dessinee.
+     */
+    public static void rainShelter(BlockPos captureCenter, int radius, double fromY, double toY, float[] out) {
+        Arrays.fill(out, Float.NaN);
+        Scene scene = outside();
+        if (scene == null || captureCenter == null || !Config.subLevelViews() || fromY <= toY) return;
+        long now = System.nanoTime();
+        Matrix4d inverse = scene.anchor.to == null
+                ? new Matrix4d().translation(-captureCenter.getX(), -captureCenter.getY(), -captureCenter.getZ())
+                : scene.anchor.current(now).invert();
+        int size = radius * 2 + 1;
+        if (out.length != size * size) return;
+        Vector3d corner = new Vector3d();
+        Vector3d a = new Vector3d();
+        Vector3d b = new Vector3d();
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+        for (Part part : scene.parts.values()) {
+            if (part.pose.to == null || part.mesh == null
+                    || !(part.mesh.data.fakeRenderingWorld instanceof LitRenderingWorld world)) continue;
+            Matrix4d toJar = new Matrix4d(inverse).mul(part.pose.current(now));
+            // Boite de la section (16 blocs) dans le repere du bocal : seules les colonnes qui la traversent comptent.
+            double minX = Double.MAX_VALUE, minY = Double.MAX_VALUE, minZ = Double.MAX_VALUE;
+            double maxX = -Double.MAX_VALUE, maxY = -Double.MAX_VALUE, maxZ = -Double.MAX_VALUE;
+            for (int c = 0; c < 8; c++) {
+                toJar.transformPosition(corner.set((c & 1) * 16, (c >> 1 & 1) * 16, (c >> 2 & 1) * 16));
+                minX = Math.min(minX, corner.x); maxX = Math.max(maxX, corner.x);
+                minY = Math.min(minY, corner.y); maxY = Math.max(maxY, corner.y);
+                minZ = Math.min(minZ, corner.z); maxZ = Math.max(maxZ, corner.z);
+            }
+            double top = Math.min(fromY, maxY);
+            double bottom = Math.max(toY, minY);
+            if (top <= bottom) continue;
+            Matrix4d toLocal = new Matrix4d(toJar).invert();
+            int i0 = Math.max(0, (int) Math.floor(minX - 0.5) + radius);
+            int i1 = Math.min(size - 1, (int) Math.ceil(maxX - 0.5) + radius);
+            int j0 = Math.max(0, (int) Math.floor(minZ - 0.5) + radius);
+            int j1 = Math.min(size - 1, (int) Math.ceil(maxZ - 0.5) + radius);
+            for (int i = i0; i <= i1; i++) {
+                for (int j = j0; j <= j1; j++) {
+                    int index = i * size + j;
+                    float known = out[index];
+                    if (!Float.isNaN(known) && known >= top) continue;
+                    double x = i - radius + 0.5;
+                    double z = j - radius + 0.5;
+                    toLocal.transformPosition(a.set(x, top, z));
+                    toLocal.transformPosition(b.set(x, bottom, z));
+                    // Un pas d'un quart de bloc, du haut vers le bas : le premier bloc qui arrete la pluie.
+                    int steps = Math.max(1, (int) Math.ceil((top - bottom) * 4.0));
+                    for (int s = 0; s <= steps; s++) {
+                        double t = (double) s / steps;
+                        double lx = a.x + (b.x - a.x) * t;
+                        double ly = a.y + (b.y - a.y) * t;
+                        double lz = a.z + (b.z - a.z) * t;
+                        if (lx < 0 || ly < 0 || lz < 0 || lx >= 16 || ly >= 16 || lz >= 16) continue;
+                        at.set(Math.floor(lx), Math.floor(ly), Math.floor(lz));
+                        var state = world.getBlockState(at);
+                        if (state.blocksMotion() || !state.getFluidState().isEmpty()) {
+                            float hit = (float) Math.min(top, top - (top - bottom) * t + 0.25);
+                            if (Float.isNaN(out[index]) || hit > out[index]) out[index] = hit;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     public static void drawOutside(RenderLevelStageEvent event, BlockPos captureCenter, boolean special) {
         Scene scene = outside();
         if (scene == null || !Config.subLevelViews()) return;

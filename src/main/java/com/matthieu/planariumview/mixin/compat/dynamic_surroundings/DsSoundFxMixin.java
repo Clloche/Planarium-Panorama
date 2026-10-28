@@ -1,5 +1,7 @@
 package com.matthieu.planariumview.mixin.compat.dynamic_surroundings;
 
+import com.matthieu.planariumview.diagnostics.Alternative;
+import com.matthieu.planariumview.diagnostics.ExpectIn;
 import com.matthieu.planariumview.client.scenery.SceneryReverb;
 
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
@@ -23,6 +25,7 @@ import org.spongepowered.asm.mixin.injection.At;
         "org.orecruncher.dsurround.runtime.audio.SourceAcoustics"}, remap = false)
 public abstract class DsSoundFxMixin {
 
+    @Alternative("ds_fx_world")
     @ModifyExpressionValue(method = {"calculate", "traceReverb", "calculateOcclusion"}, at = @At(value = "FIELD",
             target = "Lorg/orecruncher/dsurround/runtime/audio/WorldContext;world:Lnet/minecraft/world/level/Level;"),
             require = 0)
@@ -31,6 +34,7 @@ public abstract class DsSoundFxMixin {
         return context != null ? context.world() : original;
     }
 
+    @ExpectIn("org.orecruncher.dsurround.runtime.audio.SourceAcoustics")
     @ModifyExpressionValue(method = {"calculate", "traceReverb", "calculateOcclusion"}, at = @At(value = "FIELD",
             target = "Lorg/orecruncher/dsurround/runtime/audio/WorldContext;blocks:Lnet/minecraft/world/level/BlockGetter;"),
             require = 0)
@@ -39,6 +43,7 @@ public abstract class DsSoundFxMixin {
         return context != null ? context.world() : original;
     }
 
+    @Alternative("ds_fx_listener")
     @ModifyExpressionValue(method = {"calculate", "traceReverb"}, at = @At(value = "FIELD",
             target = "Lorg/orecruncher/dsurround/runtime/audio/WorldContext;playerEyePosition:Lnet/minecraft/world/phys/Vec3;"),
             require = 0)
@@ -47,6 +52,7 @@ public abstract class DsSoundFxMixin {
         return context != null ? context.listener() : original;
     }
 
+    @Alternative("ds_fx_source")
     @ModifyExpressionValue(method = "calculate", at = @At(value = "INVOKE",
             target = "Lorg/orecruncher/dsurround/runtime/audio/SourceContext;getPosition()Lnet/minecraft/world/phys/Vec3;"),
             require = 0)

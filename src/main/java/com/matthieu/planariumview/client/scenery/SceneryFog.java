@@ -38,6 +38,14 @@ final class SceneryFog {
             return false;
         }
         applySceneryFog();
+        // Sous terre, la meme couleur que le decor (voir SceneryRenderer) : le noir de l'option Sombre, ou le brouillard
+        // du biome. Sans elle, les particules prenaient la couleur du brouillard de vanilla (ParticleEngineTickMixin la
+        // remet ensuite).
+        float[] cave = caveColor(Minecraft.getInstance().level);
+        if (cave != null) {
+            float[] fog = RenderSystem.getShaderFogColor();
+            RenderSystem.setShaderFogColor(cave[0], cave[1], cave[2], fog[3]);
+        }
         return true;
     }
 

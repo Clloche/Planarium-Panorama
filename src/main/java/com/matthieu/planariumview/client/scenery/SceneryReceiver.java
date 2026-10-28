@@ -323,6 +323,7 @@ final class SceneryReceiver {
     }
 
     private static void disposeRender() {
+        SceneryHooks.clearSceneryFrame();
         SceneryParticles.cancelHues();
         PuddlesCompat.clear();
         GiantEntities.clear();

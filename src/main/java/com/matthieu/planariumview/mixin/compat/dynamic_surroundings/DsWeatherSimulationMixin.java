@@ -1,5 +1,6 @@
 package com.matthieu.planariumview.mixin.compat.dynamic_surroundings;
 
+import com.matthieu.planariumview.diagnostics.ExpectIn;
 import com.matthieu.planariumview.client.sky.SkySync;
 import com.matthieu.planariumview.client.sound.OutsideAmbience;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -25,6 +26,7 @@ public abstract class DsWeatherSimulationMixin {
         return planariumview$outside(level) ? SkySync.rainLevel(level) : level.getRainLevel(partialTick);
     }
 
+    @ExpectIn("org.orecruncher.dsurround.runtime.weather.WindService")
     @Redirect(method = "tick", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/multiplayer/ClientLevel;isThundering()Z"), require = 0)
     private boolean planariumview$thunder(ClientLevel level) {

@@ -78,20 +78,21 @@ final class SceneryBubbles {
             JETS.clear();
             return;
         }
-        SceneryParticles.Space space = SceneryParticles.giantSpace(world, radius);
-        Iterator<Jet> it = JETS.iterator();
-        while (it.hasNext()) {
-            Jet jet = it.next();
-            if (jet.age % FREQUENCY == 0 && SceneryParticles.allowed()) {
-                int light = LightTexture.pack(world.getBrightness(LightLayer.BLOCK, jet.pos),
-                        world.getBrightness(LightLayer.SKY, jet.pos));
-                SceneryParticles.spawn(space, ParticleTypes.BUBBLE, jet.pos.getX() + 0.5, jet.pos.getY() + 0.1,
-                        jet.pos.getZ() + 0.5, 0.0, 0.5 + jet.strength / 10.0, 0.0, light);
+        SceneryParticles.inScenery(world, radius, SceneryHooks.sceneryFrame(), space -> {
+            Iterator<Jet> it = JETS.iterator();
+            while (it.hasNext()) {
+                Jet jet = it.next();
+                if (jet.age % FREQUENCY == 0 && SceneryParticles.allowed()) {
+                    int light = LightTexture.pack(world.getBrightness(LightLayer.BLOCK, jet.pos),
+                            world.getBrightness(LightLayer.SKY, jet.pos));
+                    SceneryParticles.spawn(space, ParticleTypes.BUBBLE, jet.pos.getX() + 0.5, jet.pos.getY() + 0.1,
+                            jet.pos.getZ() + 0.5, 0.0, 0.5 + jet.strength / 10.0, 0.0, light);
+                }
+                if (++jet.age >= jet.ageLimit) {
+                    it.remove();
+                }
             }
-            if (++jet.age >= jet.ageLimit) {
-                it.remove();
-            }
-        }
+        });
     }
 
     static void clear() {
