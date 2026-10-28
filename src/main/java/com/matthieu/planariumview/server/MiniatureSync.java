@@ -74,15 +74,19 @@ final class MiniatureSync {
             if (pocket == null) {
                 continue;
             }
-            MINI_VERSION.put(key, dimEntry.lastUpdated());
-            MINI_ENTITIES_DUE.add(key);
-            relightPocket(pocket);
             // Charge les chunks du bocal (comme Ars le fait pour son gabarit) avant de lire la lumiere.
             for (int cx = -1; cx <= 2; cx++) {
                 for (int cz = -1; cz <= 2; cz++) {
                     pocket.getChunk(cx, cz);
                 }
             }
+            // Le recalcul a besoin de ces chunks aussi. Ne pas memoriser la version si leur promotion
+            // en chunks complets n'est pas encore terminee : on reessaiera au prochain passage.
+            if (!relightPocket(pocket)) {
+                continue;
+            }
+            MINI_VERSION.put(key, dimEntry.lastUpdated());
+            MINI_ENTITIES_DUE.add(key);
             byte[] light = captureLight(pocket, new BlockPos(-1, 0, -1),
                     MiniLightPayload.SIZE_X, MiniLightPayload.SIZE_Y, MiniLightPayload.SIZE_Z);
             if (Arrays.equals(light, MINI_LIGHT.get(key))) {

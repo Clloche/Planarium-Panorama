@@ -4,6 +4,8 @@ import com.matthieu.planariumview.client.jar.JarWalls;
 import com.matthieu.planariumview.network.WallPayload;
 import com.matthieu.planariumview.server.ServerView.Track;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.SectionPos;
 import net.minecraft.network.protocol.game.ClientboundLightUpdatePacket;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
@@ -13,6 +15,8 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.DataLayer;
+import net.minecraft.world.level.lighting.LayerLightEventListener;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.Arrays;
@@ -132,6 +136,7 @@ final class PocketLighting {
         ThreadedLevelLightEngine engine = pocket.getChunkSource().getLightEngine();
         for (LevelChunk chunk : chunks) {
             ChunkPos chunkPos = chunk.getPos();
+            recheckBlockLight(engine, chunkPos);
             // Recalcule d'ou part la lumiere du ciel (les parois du bocal la laissent passer).
             chunk.initializeLightSources();
             engine.lightChunk(chunk, false).thenRunAsync(() -> {
@@ -145,6 +150,40 @@ final class PocketLighting {
         }
         LOGGER.debug("[Planarium Panorama] Lumiere du ciel du bocal recalculee ({})", pocket.dimension().location());
         return true;
+    }
+
+    /**
+     * lightChunk propage les sources presentes, mais n'efface pas une ancienne source disparue de la sauvegarde.
+     * On fait reverifier les maxima de lumiere des blocs par le moteur vanilla : une vraie source reste,
+     * un maximum sans source lance la diminution vers ses voisins. Les autres cases suivent cette propagation.
+     */
+    private static void recheckBlockLight(ThreadedLevelLightEngine engine, ChunkPos chunk) {
+        LayerLightEventListener light = engine.getLayerListener(LightLayer.BLOCK);
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        BlockPos.MutableBlockPos neighbor = new BlockPos.MutableBlockPos();
+        Direction[] directions = Direction.values();
+        for (int sy = engine.getMinLightSection(); sy < engine.getMaxLightSection(); sy++) {
+            DataLayer values = light.getDataLayerData(SectionPos.of(chunk, sy));
+            if (values == null || values.isEmpty()) continue;
+            for (int y = 0; y < 16; y++) {
+                for (int z = 0; z < 16; z++) {
+                    for (int x = 0; x < 16; x++) {
+                        int value = values.get(x, y, z);
+                        if (value == 0) continue;
+                        pos.set(chunk.getMinBlockX() + x, (sy << 4) + y, chunk.getMinBlockZ() + z);
+                        boolean maximum = true;
+                        for (Direction direction : directions) {
+                            neighbor.setWithOffset(pos, direction);
+                            if (light.getLightValue(neighbor) > value) {
+                                maximum = false;
+                                break;
+                            }
+                        }
+                        if (maximum) engine.checkBlock(pos);
+                    }
+                }
+            }
+        }
     }
 
     /**
