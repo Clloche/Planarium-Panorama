@@ -63,6 +63,8 @@
   "planariumview.config.outside_vehicles": "Outside vehicles",
   "planariumview.config.outside_vehicles.tooltip": "Show boats, rafts and minecarts moving in the detail radius of the giant scenery. Independent of %s: mob passengers appear when both options are ON.\n\nUp to 64 mobs and vehicles combined, nearest first.",
   "planariumview.config.outside_vehicles.warning": "ON: keeps the area within the %s and a small surrounding margin active so vehicles move, even with outside world sounds OFF. Server load depends on the mobs and machines present.",
+  "planariumview.config.miniature_mobs": "Miniature mobs",
+  "planariumview.config.miniature_mobs.tooltip": "Shows the mobs of the jar in its miniature, 32 times smaller like its blocks, with small idle animations (breathing, wings, looking around). Up to 4 miniatures within 8 blocks, with at most 64 mobs each.\n\nThe mobs stay at their last known positions. These copies do not keep the pocket running.",
   "planariumview.config.outside_mobs": "Outside mobs",
   "planariumview.config.outside_mobs.tooltip": "Show mobs moving in the detail radius of the giant scenery (up to 64 mobs and vehicles combined, nearest first). Mob passengers in boats or minecarts also require Outside vehicles.\n\nOFF: mobs are not shown or heard, even with %s ON.",
   "planariumview.config.outside_mobs.warning": "ON: keeps the area within the %s and a small surrounding margin simulated so mobs move, even with outside world sounds OFF. Server load depends on the mobs and machines there.",

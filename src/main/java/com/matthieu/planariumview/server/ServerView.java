@@ -228,6 +228,13 @@ public final class ServerView {
     public static void onChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             ServerLevel previous = player.server.getLevel(event.getFrom());
+            if (previous != null && isPocket(previous)) {
+                try {
+                    MiniatureSync.captureOnExit(previous);
+                } catch (Exception e) {
+                    logOnce("capture de miniature a la sortie", e);
+                }
+            }
             if (previous != null && (isPocket(previous) || isPocket(player.serverLevel()))) {
                 // The client has already discarded that dimension. Do not let Sable send its removals to the new one.
                 com.matthieu.planariumview.compat.sable.SubLevelCompat.forgetTracking(previous, player.getUUID());
@@ -300,6 +307,18 @@ public final class ServerView {
 
     /** Distance (en blocs) a laquelle on entend le tonnerre d'un eclair du monde d'origine. */
     private static final double THUNDER_RANGE = 512.0;
+
+    /** Fin du suivi d'une entite : derniere position pour la miniature, ou retrait si elle a disparu. */
+    @SubscribeEvent
+    public static void onEntityLeave(net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent event) {
+        if (event.getLevel() instanceof ServerLevel level && isPocket(level)) {
+            try {
+                MiniatureSync.entityLeft(level, event.getEntity());
+            } catch (Exception e) {
+                logOnce("mob de miniature", e);
+            }
+        }
+    }
 
     /** Un eclair tombe dans un monde ou se trouve le Planarium d'un joueur dans son bocal : on le lui envoie. */
     @SubscribeEvent
@@ -469,6 +488,8 @@ public final class ServerView {
     @SubscribeEvent
     public static void onServerStopped(net.neoforged.neoforge.event.server.ServerStoppedEvent event) {
         SubLevelServer.clear();
+        // Un autre monde solo peut s'ouvrir ensuite : ne pas lui montrer les miniatures de celui-ci.
+        MiniatureSync.clear();
         com.matthieu.planariumview.compat.sable.SubLevelCompat.clearRestoreFailures();
         TRACKS.clear();
     }

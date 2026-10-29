@@ -70,6 +70,7 @@ public final class ClientView {
                 (modContainer, parent) -> ConfigScreen.create(parent));
         NeoForge.EVENT_BUS.addListener(ClientView::onRenderStage);
         NeoForge.EVENT_BUS.addListener(ClientView::onLoggingOut);
+        com.matthieu.planariumview.client.mini.entities.MiniEntities.init();
         // Bilan des mixins a la premiere connexion (aussi a un serveur distant, sans ServerStartedEvent).
         NeoForge.EVENT_BUS.addListener(ClientPlayerNetworkEvent.LoggingIn.class,
                 event -> com.matthieu.planariumview.diagnostics.MixinHealthReport.summary());

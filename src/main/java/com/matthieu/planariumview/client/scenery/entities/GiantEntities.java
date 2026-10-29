@@ -96,6 +96,39 @@ public final class GiantEntities {
         return entities;
     }
 
+    /** Copie de l'entite sauvegardee, positions ramenees a celles du faux monde (moins {@code origin}). */
+    public static CompoundTag shifted(CompoundTag source, BlockPos origin) {
+        CompoundTag tag = source.copy();
+        ListTag pos = tag.getList("Pos", Tag.TAG_DOUBLE);
+        if (pos.size() == 3) {
+            ListTag shifted = new ListTag();
+            shifted.add(DoubleTag.valueOf(pos.getDouble(0) - origin.getX()));
+            shifted.add(DoubleTag.valueOf(pos.getDouble(1) - origin.getY()));
+            shifted.add(DoubleTag.valueOf(pos.getDouble(2) - origin.getZ()));
+            tag.put("Pos", shifted);
+        }
+        if (tag.contains("TileX")) {
+            tag.putInt("TileX", tag.getInt("TileX") - origin.getX());
+            tag.putInt("TileY", tag.getInt("TileY") - origin.getY());
+            tag.putInt("TileZ", tag.getInt("TileZ") - origin.getZ());
+        }
+        return tag;
+    }
+
+    /**
+     * Copie qui ne tourne pas (pas de tick) : corps et tete dans la direction sauvegardee, anciennes valeurs comprises
+     * (le rendu passe des unes aux autres a chaque image).
+     */
+    public static void faceSaved(net.minecraft.world.entity.LivingEntity living) {
+        float yaw = living.getYRot();
+        living.yRotO = yaw;
+        living.yBodyRot = yaw;
+        living.yBodyRotO = yaw;
+        living.yHeadRot = yaw;
+        living.yHeadRotO = yaw;
+        living.xRotO = living.getXRot();
+    }
+
     /** Recree les entites de la photo dans un faux monde (positions moins {@code origin}). */
     public static List<Entity> create(Level fakeWorld, CompoundTag templateTag, BlockPos origin) {
         List<Entity> entities = new ArrayList<>();
@@ -104,21 +137,8 @@ public final class GiantEntities {
         }
         ListTag list = templateTag.getList(KEY, Tag.TAG_COMPOUND);
         for (int i = 0; i < list.size(); i++) {
-            CompoundTag tag = list.getCompound(i).copy();
+            CompoundTag tag = shifted(list.getCompound(i), origin);
             try {
-                ListTag pos = tag.getList("Pos", Tag.TAG_DOUBLE);
-                if (pos.size() == 3) {
-                    ListTag shifted = new ListTag();
-                    shifted.add(DoubleTag.valueOf(pos.getDouble(0) - origin.getX()));
-                    shifted.add(DoubleTag.valueOf(pos.getDouble(1) - origin.getY()));
-                    shifted.add(DoubleTag.valueOf(pos.getDouble(2) - origin.getZ()));
-                    tag.put("Pos", shifted);
-                }
-                if (tag.contains("TileX")) {
-                    tag.putInt("TileX", tag.getInt("TileX") - origin.getX());
-                    tag.putInt("TileY", tag.getInt("TileY") - origin.getY());
-                    tag.putInt("TileZ", tag.getInt("TileZ") - origin.getZ());
-                }
                 EntityType.create(tag, fakeWorld).ifPresent(entity -> {
                     if (entity instanceof ArmorStand stand) {
                         // Pas de tick dans le faux monde : on fixe nous-memes l'orientation du corps et de la tete,

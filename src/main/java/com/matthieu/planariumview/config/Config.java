@@ -29,6 +29,7 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue WORLD_SOUNDS;
     public static final ModConfigSpec.BooleanValue OUTSIDE_MOBS;
     public static final ModConfigSpec.BooleanValue OUTSIDE_VEHICLES;
+    public static final ModConfigSpec.BooleanValue MINIATURE_MOBS;
     public static final ModConfigSpec.BooleanValue OUTSIDE_AMBIENCE;
     public static final ModConfigSpec.BooleanValue AMBIENT_SOUNDS;
     public static final ModConfigSpec.BooleanValue LUNAR_EVENTS;
@@ -128,6 +129,11 @@ public final class Config {
                         "While ON, the detail radius and a small surrounding margin keep running, even with outside world sounds OFF.",
                         "Up to 64 mobs and vehicles combined, the closest.")
                 .define("outsideVehicles", false);
+        MINIATURE_MOBS = client
+                .comment("Mobs inside the miniature of the jar, 32 times smaller like its blocks, with small idle animations",
+                        "(breathing, wings, looking around). They stay at their last known positions; these copies do not",
+                        "keep the pocket running. Up to 4 miniatures within 8 blocks, with at most 64 mobs each.")
+                .define("miniatureMobs", true);
         OUTSIDE_AMBIENCE = client
                 .comment("Dynamic Surroundings plays the ambience of the Planarium's surroundings inside the jar (biome sounds,",
                         "or silence if the Planarium is sheltered, or cave sounds if it is underground), and its biome fog colors show in the jar.",
@@ -257,6 +263,11 @@ public final class Config {
 
     public static boolean outsideVehicles() {
         return enabled() && OUTSIDE_VEHICLES.get();
+    }
+
+    /** Mobs dans la miniature du bocal (voir MiniEntities). */
+    public static boolean miniatureMobs() {
+        return enabled() && MINIATURE_MOBS.get();
     }
 
     public static boolean outsideEntities() {

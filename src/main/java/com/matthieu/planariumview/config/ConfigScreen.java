@@ -117,6 +117,12 @@ public final class ConfigScreen {
                 .binding(Config.OUTSIDE_VEHICLES.getDefault(), Config.OUTSIDE_VEHICLES::get, Config.OUTSIDE_VEHICLES::set)
                 .controller(opt -> BooleanControllerBuilder.create(opt).onOffFormatter().coloured(true))
                 .build();
+        Option<Boolean> miniatureMobs = Option.<Boolean>createBuilder()
+                .name(Component.translatable(KEY + "miniature_mobs"))
+                .description(describe("miniature_mobs", onOff(Config.MINIATURE_MOBS.getDefault())))
+                .binding(Config.MINIATURE_MOBS.getDefault(), Config.MINIATURE_MOBS::get, Config.MINIATURE_MOBS::set)
+                .controller(opt -> BooleanControllerBuilder.create(opt).onOffFormatter().coloured(true))
+                .build();
         // Better Clouds actif ou Simple Clouds installe : leurs nuages remplacent ceux de Minecraft dehors, mais le bocal
         // dessine des nuages vanilla. On laisse le choix, avec un avertissement dans la description.
         String cloudsMod = SimpleCloudsCompat.installed() ? "Simple Clouds" : BetterCloudsCompat.active() ? "Better Clouds" : null;
@@ -171,6 +177,7 @@ public final class ConfigScreen {
         gated.add(new Gated(worldSounds, () -> true));
         gated.add(new Gated(outsideMobs, () -> true));
         gated.add(new Gated(outsideVehicles, () -> true));
+        gated.add(new Gated(miniatureMobs, () -> true));
         gated.add(new Gated(clouds, () -> true));
         gated.add(new Gated(fog, () -> true));
         gated.add(new Gated(caveFog, () -> true));
@@ -228,7 +235,7 @@ public final class ConfigScreen {
 
         dirty = false;
         for (Option<?> option : List.of(master, lighting, radius, farRadius, biome, weather, sceneryAmbience, sceneryParticles, worldSounds,
-                outsideMobs, outsideVehicles, clouds, fog, blockUpdates, refresh, ambience, ambientSounds, lunar, subLevels, caveFog, neighbors)) {
+                outsideMobs, outsideVehicles, miniatureMobs, clouds, fog, blockUpdates, refresh, ambience, ambientSounds, lunar, subLevels, caveFog, neighbors)) {
             autoSave(option);
         }
 
@@ -273,6 +280,7 @@ public final class ConfigScreen {
                                 .collapsed(false)
                                 .option(outsideMobs)
                                 .option(outsideVehicles)
+                                .option(miniatureMobs)
                                 .build())
                         .group(OptionGroup.createBuilder()
                                 .name(Component.translatable(KEY + "group.sounds"))
