@@ -264,6 +264,7 @@ public final class ServerView {
             DISABLED.remove(player.getUUID());
             OutsideSounds.logout(player.getUUID());
             OutsideMobsServer.logout(player.getUUID());
+            MiniLive.logout(player.getUUID());
         }
     }
 
@@ -386,6 +387,11 @@ public final class ServerView {
         } catch (Exception e) {
             logOnce("anneau lointain", e);
         }
+        try {
+            MiniLive.tick(server);
+        } catch (Exception e) {
+            logOnce("miniature vivante", e);
+        }
         if (server.getTickCount() % 20 != 0) {
             return;
         }
@@ -490,6 +496,7 @@ public final class ServerView {
         SubLevelServer.clear();
         // Un autre monde solo peut s'ouvrir ensuite : ne pas lui montrer les miniatures de celui-ci.
         MiniatureSync.clear();
+        MiniLive.clear();
         com.matthieu.planariumview.compat.sable.SubLevelCompat.clearRestoreFailures();
         TRACKS.clear();
     }

@@ -143,11 +143,58 @@ public final class ConfigScreen {
                 .controller(opt -> BooleanControllerBuilder.create(opt).coloured(false)
                         .formatValue(v -> outsideLive.pendingValue() ? coloredOnOff(v) : greyOnOff(v)))
                 .build();
-        Option<Boolean> miniatureMobs = Option.<Boolean>createBuilder()
-                .name(Component.translatable(KEY + "miniature_mobs"))
-                .description(describe("miniature_mobs", onOff(Config.MINIATURE_MOBS.getDefault())))
-                .binding(Config.MINIATURE_MOBS.getDefault(), Config.MINIATURE_MOBS::get, Config.MINIATURE_MOBS::set)
+        // Faire vivre les miniatures : autre autorisation du monde (config SERVER), comme "Faire vivre le dehors".
+        Option<Boolean> miniatureRunning = Option.<Boolean>createBuilder()
+                .name(Component.translatable(KEY + "miniature_live"))
+                .description(OptionDescription.of(Component.translatable(KEY + "miniature_live.tooltip"), Component.empty(),
+                        Component.translatable(KEY + "default", onOff(Config.MINIATURE_LIVE.getDefault())).withStyle(ChatFormatting.GRAY),
+                        Component.empty(),
+                        Component.translatable(KEY + (serverSide ? "server_controlled" : worldOpen ? "world_setting" : "world_closed"))
+                                .withStyle(ChatFormatting.YELLOW)))
+                .binding(Config.MINIATURE_LIVE.getDefault(),
+                        () -> Config.SERVER_SPEC.isLoaded() ? Config.MINIATURE_LIVE.get() : Config.MINIATURE_LIVE.getDefault(),
+                        value -> {
+                            if (Config.SERVER_SPEC.isLoaded()) {
+                                Config.MINIATURE_LIVE.set(value);
+                            }
+                        })
                 .controller(opt -> BooleanControllerBuilder.create(opt).onOffFormatter().coloured(true))
+                .available(!serverSide && worldOpen)
+                .build();
+        MutableComponent miniatureMobsName = Component.translatable(KEY + "miniature_mobs");
+        MutableComponent miniatureVehiclesName = Component.translatable(KEY + "miniature_vehicles");
+        MutableComponent miniatureMobsNote = Component.empty();
+        MutableComponent miniatureVehiclesNote = Component.empty();
+        Option<Integer> miniatureMobs = Option.<Integer>createBuilder()
+                .name(miniatureMobsName)
+                .description(OptionDescription.of(Component.translatable(KEY + "miniature_mobs.tooltip"), Component.empty(),
+                        Component.translatable(KEY + "default", mobLimitLabel(Config.MINIATURE_MOBS.getDefault())).withStyle(ChatFormatting.GRAY),
+                        miniatureMobsNote))
+                .binding(Config.MINIATURE_MOBS.getDefault(), Config.MINIATURE_MOBS::get, Config.MINIATURE_MOBS::set)
+                .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(0, 64).step(8)
+                        .formatValue(v -> miniatureRunning.pendingValue() ? mobLimitLabel(v)
+                                : mobLimitLabel(v).copy().withStyle(ChatFormatting.GRAY)))
+                .build();
+        Option<Boolean> miniatureVehicles = Option.<Boolean>createBuilder()
+                .name(miniatureVehiclesName)
+                .description(OptionDescription.of(Component.translatable(KEY + "miniature_vehicles.tooltip"), Component.empty(),
+                        Component.translatable(KEY + "default", onOff(Config.MINIATURE_VEHICLES.getDefault())).withStyle(ChatFormatting.GRAY),
+                        miniatureVehiclesNote))
+                .binding(Config.MINIATURE_VEHICLES.getDefault(), Config.MINIATURE_VEHICLES::get, Config.MINIATURE_VEHICLES::set)
+                .controller(opt -> BooleanControllerBuilder.create(opt).coloured(false)
+                        .formatValue(v -> miniatureRunning.pendingValue() ? coloredOnOff(v) : greyOnOff(false)))
+                .build();
+        MutableComponent liveViewNote = Component.empty();
+        MutableComponent liveViewName = Component.translatable(KEY + "miniature_live_view");
+        Option<Boolean> miniatureLiveView = Option.<Boolean>createBuilder()
+                .name(liveViewName)
+                .description(OptionDescription.of(Component.translatable(KEY + "miniature_live_view.tooltip"), Component.empty(),
+                        Component.translatable(KEY + "default", onOff(Config.MINIATURE_LIVE_VIEW.getDefault())).withStyle(ChatFormatting.GRAY),
+                        liveViewNote))
+                .binding(Config.MINIATURE_LIVE_VIEW.getDefault(), Config.MINIATURE_LIVE_VIEW::get, Config.MINIATURE_LIVE_VIEW::set)
+                .controller(opt -> BooleanControllerBuilder.create(opt).coloured(false)
+                        .formatValue(v -> miniatureRunning.pendingValue() && miniatureMobs.pendingValue() > 0
+                                ? coloredOnOff(v) : greyOnOff(false)))
                 .build();
         // Better Clouds actif ou Simple Clouds installe : leurs nuages remplacent ceux de Minecraft dehors, mais le bocal
         // dessine des nuages vanilla. On laisse le choix, avec un avertissement dans la description.
@@ -204,7 +251,10 @@ public final class ConfigScreen {
         // Grisees sans l'autorisation du monde (leurs valeurs sont gardees).
         gated.add(new Gated(outsideMobs, outsideLive::pendingValue));
         gated.add(new Gated(outsideVehicles, outsideLive::pendingValue));
-        gated.add(new Gated(miniatureMobs, () -> true));
+        gated.add(new Gated(miniatureMobs, miniatureRunning::pendingValue));
+        gated.add(new Gated(miniatureVehicles, miniatureRunning::pendingValue));
+        gated.add(new Gated(miniatureLiveView, () -> miniatureRunning.pendingValue()
+                && miniatureMobs.pendingValue() > 0));
         gated.add(new Gated(clouds, () -> true));
         gated.add(new Gated(fog, () -> true));
         gated.add(new Gated(caveFog, () -> true));
@@ -217,6 +267,29 @@ public final class ConfigScreen {
         Runnable dependents = () -> refreshDependents(outsideLive.pendingValue(),
                 worldSoundsNote, mobsNote, vehiclesNote, mobsName, vehiclesName);
         dependents.run();
+        Runnable miniatureDependents = () -> {
+            boolean running = miniatureRunning.pendingValue();
+            boolean shown = miniatureMobs.pendingValue() > 0;
+            note(miniatureMobsNote, running ? null : optionOff("miniature_live"));
+            note(miniatureVehiclesNote, running ? null : optionOff("miniature_live"));
+            strike(miniatureMobsName, !running);
+            strike(miniatureVehiclesName, !running);
+            note(liveViewNote, !running ? optionOff("miniature_live") : shown ? null : optionOff("miniature_mobs"));
+            strike(liveViewName, !running || !shown);
+        };
+        miniatureDependents.run();
+        miniatureRunning.addListener((opt, value) -> {
+            refreshGated(gated, master.pendingValue());
+            miniatureDependents.run();
+        });
+        miniatureMobs.addListener((opt, value) -> {
+            refreshGated(gated, master.pendingValue());
+            miniatureDependents.run();
+        });
+        miniatureVehicles.addListener((opt, value) -> {
+            refreshGated(gated, master.pendingValue());
+            miniatureDependents.run();
+        });
         // Changer l'autorisation met a jour les options qui en dependent, tout de suite.
         outsideLive.addListener((opt, value) -> {
             refreshGated(gated, master.pendingValue());
@@ -267,7 +340,7 @@ public final class ConfigScreen {
 
         dirty = false;
         for (Option<?> option : List.of(master, lighting, radius, farRadius, biome, weather, sceneryAmbience, sceneryParticles, worldSounds,
-                outsideLive, outsideMobs, outsideVehicles, miniatureMobs, clouds, fog, blockUpdates, refresh, ambience, ambientSounds, lunar, subLevels, caveFog, neighbors)) {
+                outsideLive, outsideMobs, outsideVehicles, miniatureMobs, miniatureVehicles, miniatureRunning, miniatureLiveView, clouds, fog, blockUpdates, refresh, ambience, ambientSounds, lunar, subLevels, caveFog, neighbors)) {
             autoSave(option);
         }
 
@@ -328,7 +401,10 @@ public final class ConfigScreen {
                         .group(OptionGroup.createBuilder()
                                 .name(Component.translatable(KEY + "group.miniature_entities"))
                                 .collapsed(false)
+                                .option(miniatureRunning)
                                 .option(miniatureMobs)
+                                .option(miniatureVehicles)
+                                .option(miniatureLiveView)
                                 .build())
                         .build())
                 .category(ConfigCategory.createBuilder()

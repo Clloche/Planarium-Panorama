@@ -1,11 +1,31 @@
 # Vérification des animations de mobs extérieurs
 
-`gradlew.bat build` lance les deux contrôles suivants, également exécutables séparément :
+`gradlew.bat build` lance les contrôles suivants, également exécutables séparément :
 
 - `checkOutsideMobAnimations` : protocole, chronologie, mains et durées d'attaque, reprise en cours d'animation, mort, doublons, débordement et interpolation des poses aquatiques.
 - `checkOutsideMobIntegration` : méthodes de production de capture et de lecture, deux observateurs, isolation des mondes, poses immobiles, retrait différé, liens de monture, transitions eau/terre, nage verticale, poses des calmars, particules de potion, orientation des flammes, placement et atténuation des ombres, alignement mobs/terrain et restauration de la caméra après rendu.
 
-Le second contrôle remplace les frontières du monde client et supprime l'initialisation statique de certaines classes Minecraft dans un processus de test. Les méthodes de production restent intactes. Ces fixtures ne sont pas incluses dans le JAR du mod et ne remplacent pas une validation visuelle en jeu.
+- `checkMiniatureLive` : protocole léger, limites des paquets, comparaison des instantanés sans les déplacements, options, interpolation, nage, marche et propagation des tickets dans Minecraft (4 chunks au niveau 31, 12 au niveau 32 et 20 au niveau 33).
+
+Les contrôles d'intégration et de miniatures remplacent les frontières du monde client et suppriment l'initialisation statique de certaines classes Minecraft dans un processus de test. Les méthodes de production restent intactes. Ces fixtures ne sont pas incluses dans le JAR du mod et ne remplacent pas une validation visuelle en jeu.
+
+## Miniatures vivantes
+
+Le flux optionnel `5.mini2` nécessite cette version côté client et serveur. Il transmet aussi la limite de mobs du joueur et son choix d'afficher les véhicules. Activer « Faire vivre les miniatures » dans le monde, puis vérifier :
+
+1. Les mobs se déplacent dans la miniature proche ; marche, ailes et nage suivent leurs déplacements.
+2. S'éloigner au-delà de 8 blocs, regarder ailleurs, désactiver le direct ou changer de dimension : retour aux animations de repos, puis reprise sans ancien déplacement.
+3. Ajouter ou retirer un mob pendant le direct : apparition ou disparition dans la seconde. Vérifier aussi un bocal initialement vide, avec un four allumé.
+4. Deux joueurs regardent le même bocal : un seul jeu de tickets ; le départ du premier ne l'arrête pas. Le départ du dernier retire les tickets, sauf si une autre source garde le bocal actif.
+5. Atteindre la limite du serveur : les Planariums déjà actifs gardent leur place. Désactiver « Faire vivre les miniatures » : tous les tickets sont retirés, les mobs et véhicules sont masqués, et les trois options du joueur sont grisées et barrées. Le curseur des mobs affiche toujours sa valeur mémorisée (par exemple « 32 max »), tandis que les véhicules et le direct affichent OFF. Réactiver : les valeurs mémorisées reviennent.
+6. Tester un Planarium sur un vaisseau Sable en mouvement : distance calculée dans le monde, arrêt à l'éloignement ou à la destruction du Planarium.
+7. Placer plusieurs blocs liés au même intérieur : leurs miniatures proches partagent le direct et comptent pour un seul Planarium actif.
+8. Régler les mobs sur 0, 8, 32 puis 64 : la limite change immédiatement. À 0, le direct affiche OFF, grisé et barré, même si les véhicules restent activés. Avec l'autorisation du monde, ces derniers restent visibles à leur dernière position. Vérifier un bateau occupé, un radeau, un wagonnet sur rails et leur dernière position après l'arrêt du direct.
+9. Dépasser la limite de mobs puis en faire apparaître d'autres : les mobs déjà affichés gardent leur place. Le retrait d'un mob affiché libère une seule place. Répéter avec plusieurs copies du même Planarium.
+
+Les instantanés complets restent disponibles pour les connexions et la capture finale. Pendant le direct, les changements de position, de rotation et de sol ne déclenchent plus leur diffusion ; les changements de liste ou d'apparence la déclenchent toujours.
+
+Les quatre tickets de distance 2 donnent le niveau 31. Leur propagation couvre 4 chunks avec ticks d'entités, 12 voisins avec ticks de blocs et 20 autres chunks complets sans simulation : 36 au total, sur 6 × 6 chunks. Dans Minecraft 1.21.1, les constantes de `ChunkLevel` ajoutent 11 chunks de dépendances de génération autour du niveau FULL, jusqu'au niveau 44 : une emprise théorique de 28 × 28, soit 784 positions de chunks, dont 748 demandées à des stades de génération incomplets. Ce nombre décrit les niveaux demandés par les tickets, pas une mesure de mémoire en jeu ; d'autres tickets peuvent étendre la zone.
 
 ## Scénarios visuels
 
@@ -42,3 +62,5 @@ Les contrôles automatiques couvrent aussi les jets d'encre différés et unique
 Pour l'ambiance sous-marine, refaire le scénario 21 avec Sable installé : les particules doivent aussi être émises dans le faux monde du décor, qui n'a pas de conteneur d'occlusion Sable. Comparer l'eau source et l'eau qui tombe, puis vérifier que l'eau courante conserve ses sons. Le contrôle automatique couvre l'émission jusqu'au collecteur du décor, sa densité native et la délégation aux fluides des mods.
 
 Les animations spécifiques aux boss ou aux systèmes propres aux mods seront traitées séparément.
+
+Pour la sélection du décor extérieur, faire apparaître plus de mobs que la limite avant d'entrer dans le Planarium : leurs déplacements à l'intérieur de la zone ne doivent plus les remplacer. Seuls les départs de la zone et les disparitions libèrent des places, attribuées aux plus proches. Vérifier aussi les changements de limite, les resynchronisations et les groupes monture/passagers ; ces cas sont couverts par les contrôles automatiques.

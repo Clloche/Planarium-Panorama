@@ -204,7 +204,58 @@ public final class MobAnimationIntegrationChecks {
         require(chosen.equals(List.of(independent)), "over-budget passenger groups are skipped whole without blocking smaller groups");
         chosen = (List<Entity>) select.invoke(null, mounted, area, BlockPos.ZERO, 16);
         require(chosen.size() == 11, "passenger group returns intact when the limit is raised");
-        System.out.println("PASS: mob count steps, nearest selection, independent vehicles, shared cap and whole passenger groups");
+        Method stable = OutsideMobsServer.class.getDeclaredMethod("select", List.class, AABB.class, BlockPos.class, int.class, Set.class);
+        stable.setAccessible(true);
+        List<Entity> crowd = new ArrayList<>();
+        for (int i = 0; i < 40; i++) {
+            VisualMob mob = mob(4000 + i); mob.setPos(i + 1, 0, 0); crowd.add(mob);
+        }
+        List<Entity> admitted = (List<Entity>) stable.invoke(null, crowd, area, BlockPos.ZERO, 8, Set.of());
+        Set<Integer> retained = new LinkedHashSet<>();
+        admitted.forEach(entity -> retained.add(entity.getId()));
+        Random movement = new Random(13);
+        for (int update = 0; update < 100; update++) {
+            for (Entity entity : crowd) entity.setPos(1 + movement.nextDouble() * 90, 0, 0);
+            Collections.shuffle(crowd, movement);
+            chosen = (List<Entity>) stable.invoke(null, crowd, area, BlockPos.ZERO, 8, retained);
+            require(chosen.equals(admitted), "crowded moving mobs keep identical identities and order over repeated updates");
+        }
+        VisualMob newcomer = mob(9000); newcomer.setPos(.5, 0, .5); crowd.add(newcomer);
+        chosen = (List<Entity>) stable.invoke(null, crowd, area, BlockPos.ZERO, 8, retained);
+        require(chosen.equals(admitted), "a newly spawned nearer mob cannot evict a visible mob");
+        crowd.remove(admitted.getFirst());
+        chosen = (List<Entity>) stable.invoke(null, crowd, area, BlockPos.ZERO, 8, retained);
+        require(chosen.size() == 8 && chosen.containsAll(admitted.subList(1, 8)) && chosen.contains(newcomer),
+                "only the departed mob is replaced, by the nearest waiting mob");
+        retained.clear(); chosen.forEach(entity -> retained.add(entity.getId()));
+        List<Entity> beforeExit = List.copyOf(chosen);
+        beforeExit.getFirst().setPos(110, 0, 0);
+        chosen = (List<Entity>) stable.invoke(null, crowd, area, BlockPos.ZERO, 8, retained);
+        require(chosen.size() == 8 && !chosen.contains(beforeExit.getFirst()) && chosen.containsAll(beforeExit.subList(1, 8)),
+                "leaving the visible area frees one slot even while the mob remains in the simulation margin");
+        retained.clear(); chosen.forEach(entity -> retained.add(entity.getId()));
+        List<Entity> smaller = (List<Entity>) stable.invoke(null, crowd, area, BlockPos.ZERO, 4, retained);
+        require(smaller.equals(chosen.subList(0, 4)), "lowering limit retains the oldest admissions");
+        List<Entity> larger = (List<Entity>) stable.invoke(null, crowd, area, BlockPos.ZERO, 16, retained);
+        require(larger.size() == 16 && larger.subList(0, 8).equals(chosen), "raising limit fills slots without replacing existing mobs");
+        chosen = (List<Entity>) stable.invoke(null, mounted, area, BlockPos.ZERO, 8, Set.of(vehicle.getId()));
+        require(chosen.equals(List.of(independent)), "retention cannot split passenger groups or exceed quota");
+
+        UUID viewer = UUID.randomUUID();
+        OutsideMobsServer.setPrefs(viewer, new com.matthieu.planariumview.network.entities.ViewPrefsPayload(32, false, 1));
+        Class<?> stateType = Class.forName(OutsideMobsServer.class.getName() + "$State");
+        Object state = construct(stateType);
+        Map<UUID, Object> states = (Map<UUID, Object>) field(OutsideMobsServer.class, "STATES").get(null);
+        Set<Integer> stateRetained = (Set<Integer>) field(stateType, "retained").get(state);
+        stateRetained.addAll(retained); states.put(viewer, state);
+        OutsideMobsServer.setPrefs(viewer, new com.matthieu.planariumview.network.entities.ViewPrefsPayload(32, false, 2));
+        require(states.get(viewer) == state && stateRetained.equals(retained), "network resync preserves the admission list");
+        OutsideMobsServer.setPrefs(viewer, new com.matthieu.planariumview.network.entities.ViewPrefsPayload(8, true, 2));
+        require(states.get(viewer) == state && stateRetained.equals(retained), "preference changes preserve incumbents for the next selection");
+        OutsideMobsServer.setPrefs(viewer, new com.matthieu.planariumview.network.entities.ViewPrefsPayload(0, false, 2));
+        require(!states.containsKey(viewer), "turning the whole stream OFF releases the selection");
+        OutsideMobsServer.logout(viewer);
+        System.out.println("PASS: stable crowded selections, nearest replacements, resync, limit changes and whole passenger groups");
     }
 
     @SuppressWarnings("unchecked") private static void server() throws Exception {

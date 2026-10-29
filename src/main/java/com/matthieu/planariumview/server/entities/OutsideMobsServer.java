@@ -48,6 +48,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -72,7 +73,7 @@ public final class OutsideMobsServer {
     private static final int FULL_INTERVAL = 40;
     /** Apparence verifiee au plus toutes les 10 ticks par mob. */
     private static final int APPEARANCE_INTERVAL = 10;
-    /** Les plus proches seulement (fermes de mobs). */
+    /** Limite commune aux mobs et vehicules (fermes de mobs). */
     private static final int MAX_MOBS = 64;
     /** Marge hors champ : les mobs terminent leurs trajets avant de quitter la zone simulee. */
     public static final int SIMULATION_MARGIN = 16;
@@ -91,6 +92,8 @@ public final class OutsideMobsServer {
         ResourceKey<Level> source;
         BlockPos origin;
         final Map<Integer, Sent> sent = new HashMap<>();
+        /** Ordre d'admission : un nouvel arrivant ne chasse pas un mob encore visible. */
+        final Set<Integer> retained = new LinkedHashSet<>();
         final MobEventQueue events = new MobEventQueue();
         int lastFull = Integer.MIN_VALUE / 2;
     }
@@ -123,8 +126,15 @@ public final class OutsideMobsServer {
         boolean changed = previous == null ? prefs.mobs() || prefs.vehicles()
                 : previous.mobLimit() != prefs.mobLimit() || previous.vehicles() != prefs.vehicles();
         if (previous == null || changed || previous.resync() != prefs.resync()) {
-            // Tout renvoyer, avec de quoi recreer chaque mob.
-            STATES.remove(player);
+            // Tout renvoyer sans refaire la selection a chaque resynchronisation ou changement de limite.
+            State state = STATES.get(player);
+            if (previous == null || !prefs.mobs() && !prefs.vehicles()) {
+                STATES.remove(player);
+            } else if (state != null) {
+                state.sent.clear();
+                state.events.clear();
+                state.lastFull = Integer.MIN_VALUE / 2;
+            }
         }
         return changed;
     }
@@ -197,7 +207,10 @@ public final class OutsideMobsServer {
         if ((now + (id.hashCode() & 3)) % INTERVAL != 0) return;
         State state = STATES.computeIfAbsent(id, ignored -> new State());
         BlockPos origin = capturedCenter.offset(-radius, -radius, -radius);
-        if (!pocket.equals(state.pocket) || !source.dimension().equals(state.source)) state.events.clear();
+        if (!pocket.equals(state.pocket) || !source.dimension().equals(state.source)) {
+            state.events.clear();
+            state.retained.clear();
+        }
         if (!pocket.equals(state.pocket) || !source.dimension().equals(state.source) || !origin.equals(state.origin)) {
             state.sent.clear();
             state.lastFull = Integer.MIN_VALUE / 2;
@@ -221,7 +234,7 @@ public final class OutsideMobsServer {
             candidates.addAll(source.getEntitiesOfClass(VehicleEntity.class, simulated, entity -> entity.isAlive() && enabled(entity, prefs)));
         }
         candidates.removeIf(entity -> entity.isInvisible() || entity.isSpectator());
-        List<Entity> mobs = select(candidates, box, capturedCenter, prefs.mobLimit());
+        List<Entity> mobs = select(candidates, box, capturedCenter, prefs.mobLimit(), state.retained);
         Set<Integer> selected = new HashSet<>();
         for (Entity entity : mobs) selected.add(entity.getId());
         boolean resetAnimations = state.events.resetRequired();
@@ -238,6 +251,8 @@ public final class OutsideMobsServer {
                 LOGGER.debug("[Planarium Panorama] Mob du dehors ignore : {}", EntityType.getKey(mob.getType()), e);
             }
         }
+        state.retained.clear();
+        for (Entity mob : mobs) if (present.contains(mob.getId())) state.retained.add(mob.getId());
         List<Integer> gone = new ArrayList<>();
         state.sent.keySet().removeIf(mobId -> {
             if (present.contains(mobId)) return false;
@@ -260,6 +275,11 @@ public final class OutsideMobsServer {
 
     /** Garde les groupes monture/passagers ensemble, dans la limite de mobs du joueur et de 64 entites au total. */
     private static List<Entity> select(List<Entity> candidates, AABB box, BlockPos center, int mobLimit) {
+        return select(candidates, box, center, mobLimit, Set.of());
+    }
+
+    /** Les groupes deja affiches gardent leur place ; seuls les nouveaux sont classes par proximite. */
+    private static List<Entity> select(List<Entity> candidates, AABB box, BlockPos center, int mobLimit, Set<Integer> retained) {
         Set<Entity> available = new HashSet<>(candidates);
         Map<Entity, List<Entity>> groups = new HashMap<>();
         for (Entity entity : candidates) {
@@ -268,8 +288,14 @@ public final class OutsideMobsServer {
             groups.computeIfAbsent(root, ignored -> new ArrayList<>()).add(entity);
         }
         List<Entity> roots = new ArrayList<>(groups.keySet());
+        Map<Integer, Integer> priority = new HashMap<>();
+        for (int id : retained) priority.put(id, priority.size());
+        Map<Entity, Integer> groupPriority = new HashMap<>();
+        groups.forEach((root, group) -> groupPriority.put(root, group.stream()
+                .mapToInt(entity -> priority.getOrDefault(entity.getId(), Integer.MAX_VALUE)).min().orElse(Integer.MAX_VALUE)));
         double cx = center.getX() + 0.5, cy = center.getY() + 0.5, cz = center.getZ() + 0.5;
-        roots.sort(java.util.Comparator.comparingDouble((Entity entity) -> entity.distanceToSqr(cx, cy, cz))
+        roots.sort(java.util.Comparator.comparingInt((Entity entity) -> groupPriority.get(entity))
+                .thenComparingDouble(entity -> entity.distanceToSqr(cx, cy, cz))
                 .thenComparingInt(Entity::getId));
         List<Entity> selected = new ArrayList<>();
         int selectedMobs = 0;
@@ -278,6 +304,8 @@ public final class OutsideMobsServer {
             if (selected.size() + group.size() > MAX_MOBS || group.stream().noneMatch(entity -> entity.getBoundingBox().intersects(box))) continue;
             int groupMobs = (int) group.stream().filter(entity -> entity instanceof LivingEntity).count();
             if (selectedMobs + groupMobs > mobLimit) continue;
+            group.sort(java.util.Comparator.comparingInt((Entity entity) -> priority.getOrDefault(entity.getId(), Integer.MAX_VALUE))
+                    .thenComparingInt(Entity::getId));
             selected.addAll(group);
             selectedMobs += groupMobs;
         }
@@ -297,6 +325,11 @@ public final class OutsideMobsServer {
 
     private static void observe(List<? extends Entity> mobs, int now) {
         for (Entity mob : mobs) if (mob instanceof LivingEntity) OBSERVED.put(mob, now);
+    }
+
+    /** Mobs d'un bocal qui tourne pour sa miniature (voir MiniLive) : meme levee du refus de promenade. */
+    public static void observeMiniature(List<? extends Entity> mobs, int now) {
+        observe(mobs, now);
     }
 
     /** Vrai si ce mob est regarde depuis un bocal en ce moment (voir RandomStrollGoalMixin). Fil du serveur. */

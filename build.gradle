@@ -120,10 +120,24 @@ tasks.register('checkOutsideMobIntegration', JavaExec) {
     doFirst { jvmArgs '-javaagent:' + tasks.named('mobAnimationFixtureAgent').get().archiveFile.get().asFile.absolutePath }
 }
 
+tasks.register('checkMiniatureLive', JavaExec) {
+    group = 'verification'
+    description = 'Checks live miniature packets, snapshots, interpolation, options and chunk tickets.'
+    dependsOn tasks.named('mobAnimationFixtureAgent')
+    classpath = sourceSets.animationChecks.runtimeClasspath
+    mainClass = 'com.matthieu.planariumview.server.MiniatureLiveChecks'
+    workingDir = layout.buildDirectory.dir('miniature-live-checks').get().asFile
+    doFirst {
+        workingDir.mkdirs()
+        jvmArgs '-javaagent:' + tasks.named('mobAnimationFixtureAgent').get().archiveFile.get().asFile.absolutePath
+    }
+}
+
 tasks.named('check') {
     dependsOn tasks.named('checkSubLevels')
     dependsOn tasks.named('checkOutsideMobAnimations')
     dependsOn tasks.named('checkOutsideMobIntegration')
+    dependsOn tasks.named('checkMiniatureLive')
 }
 
 // La version affichee dans la liste des mods vient de gradle.properties (mod_version).

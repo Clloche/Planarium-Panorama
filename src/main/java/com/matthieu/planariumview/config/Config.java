@@ -21,6 +21,8 @@ public final class Config {
     // --- Serveur (par monde, synchronise aux joueurs) ---
     public static final ModConfigSpec SERVER_SPEC;
     public static final ModConfigSpec.BooleanValue OUTSIDE_LIVE;
+    public static final ModConfigSpec.BooleanValue MINIATURE_LIVE;
+    public static final ModConfigSpec.IntValue MINIATURE_LIVE_MAX;
 
     // --- Client ---
     public static final ModConfigSpec CLIENT_SPEC;
@@ -35,7 +37,9 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue WORLD_SOUNDS;
     public static final ModConfigSpec.IntValue OUTSIDE_MOBS;
     public static final ModConfigSpec.BooleanValue OUTSIDE_VEHICLES;
-    public static final ModConfigSpec.BooleanValue MINIATURE_MOBS;
+    public static final ModConfigSpec.IntValue MINIATURE_MOBS;
+    public static final ModConfigSpec.BooleanValue MINIATURE_VEHICLES;
+    public static final ModConfigSpec.BooleanValue MINIATURE_LIVE_VIEW;
     public static final ModConfigSpec.BooleanValue OUTSIDE_AMBIENCE;
     public static final ModConfigSpec.BooleanValue AMBIENT_SOUNDS;
     public static final ModConfigSpec.BooleanValue LUNAR_EVENTS;
@@ -55,7 +59,7 @@ public final class Config {
         FAR_RADIUS = common
                 .comment("View distance (in blocks): past the detail radius, the scenery continues up to this distance as a frozen",
                         "snapshot (blocks only: no animations, particles, sounds or mobs there; Sable structures still show and move).",
-                        "Captured when entering the jar, again with the backup refresh, and when a moving Planarium (Sable) has stopped",
+                        "Captured when entering the Planarium, again with the backup refresh, and when a moving Planarium (Sable) has stopped",
                         "for a few seconds. While moving, world-anchored sections continue the scenery up to this distance.",
                         "Distant chunks are loaded without simulation; fog follows the terrain already built on your client.",
                         "0 = OFF (or any value not larger than the detail radius).")
@@ -70,7 +74,7 @@ public final class Config {
         REFRESH_SECONDS = common
                 .comment("Backup refresh, in seconds (60 to 1200, default 300; lower values count as 60): a full new capture of the scenery.",
                         "It catches what isn't a block (paintings, item frames, armor stands...), and block changes too if block updates are OFF.",
-                        "0 = OFF. With both OFF, the scenery is a frozen snapshot taken when entering the jar.")
+                        "0 = OFF. With both OFF, the scenery is a frozen snapshot taken when entering the Planarium.")
                 .defineInRange("refreshSeconds", 300, 0, 1200);
         COMMON_SPEC = common.build();
 
@@ -78,12 +82,23 @@ public final class Config {
         server.comment("World permissions: what the Planarium may keep running in the world. Saved with each world",
                 "(serverconfig folder) and sent to players when they join, so their menu shows the server's choice.");
         OUTSIDE_LIVE = server
-                .comment("Lets a Planarium keep the area it shows running while a player watches from the jar (the detail radius,",
+                .comment("Lets a Planarium keep the area it shows running while a player watches from the Planarium (the detail radius,",
                         "plus a small margin for mobs): machines, redstone, furnaces and mobs keep working there, as if the player stood there.",
                         "Needed to see outside mobs and vehicles move, and to hear them. OFF: the area is only kept loaded, without running it;",
                         "outside sounds still play for what runs anyway (a player nearby, another mod).",
                         "Turning this OFF never stops an area that is already active for another reason.")
                 .define("keepOutsideRunning", true);
+        MINIATURE_LIVE = server
+                .comment("Lets a Planarium keep its interior running while a player looks at its miniature from up close",
+                        "(8 blocks), so its mobs really move in the miniature. The Planarium's 4 chunks tick entities; the 12 neighboring",
+                        "chunks also tick blocks, with 20 more full chunks loaded and further generation dependencies.",
+                        "Furnaces and redstone work; crops need a nearby player for random ticks.",
+                        "OFF: mobs and vehicles are hidden in all miniatures; their player settings are remembered.")
+                .define("keepMiniaturesRunning", false);
+        MINIATURE_LIVE_MAX = server
+                .comment("Most Planariums kept running at the same time for miniatures, on the whole server. Further Planariums show their",
+                        "mobs where they last were.")
+                .defineInRange("maxRunningMiniatures", 4, 1, 16);
         SERVER_SPEC = server.build();
 
         ModConfigSpec.Builder client = new ModConfigSpec.Builder();
@@ -92,10 +107,10 @@ public final class Config {
                 .comment("Master switch. false = everything is like in Ars Nouveau: no giant scenery, black sky, Ars lighting.")
                 .define("enabled", true);
         LIGHTING = client
-                .comment("OFF = like in Ars Nouveau: no sky, full brightness everywhere (scenery, miniature and jar interior).",
-                        "SKY_AND_SCENERY = the outside sky and time of day in the jar, real light on the giant scenery and the miniature;",
-                        "    the jar interior stays fully lit, like in Ars Nouveau.",
-                        "FULL = also the light at the Planarium's spot inside the jar: day and night as seen from there (dark in a cave),",
+                .comment("OFF = like in Ars Nouveau: no sky, full brightness everywhere (scenery, miniature and Planarium interior).",
+                        "SKY_AND_SCENERY = the outside sky and time of day in the Planarium, real light on the giant scenery and the miniature;",
+                        "    the Planarium interior stays fully lit, like in Ars Nouveau.",
+                        "FULL = also the light at the Planarium's spot inside the Planarium: day and night as seen from there (dark in a cave),",
                         "    and the light (and Contraption Lights color) of torches and lamps next to it, through the glass.")
                 .defineEnum("lighting", Lighting.FULL);
         FOG = client
@@ -112,15 +127,15 @@ public final class Config {
                 .defineEnum("caveFog", CaveFog.VANILLA);
         BIOME_COLORS = client
                 .comment("Biome effects: grass, leaves and water in the giant scenery use the colors of the real biomes around the Planarium.",
-                        "The jar interior takes the Planarium's biome (client-side only): its colors, music, ambient sounds and particles.")
+                        "The Planarium interior takes the Planarium's biome (client-side only): its colors, music, ambient sounds and particles.")
                 .define("biomeColors", true);
         WEATHER = client
                 .comment("Rain and snow from the outside world fall on the giant scenery, only where the sky is open,",
                         "with the rain sound when it rains near the Planarium.")
                 .define("weather", true);
         CLOUDS = client
-                .comment("Outside clouds in the jar when the Planarium is near the cloud layer (vanilla cloud shape).",
-                        "Ignored while Better Clouds is active (its clouds don't show in the jar).")
+                .comment("Outside clouds in the Planarium when the Planarium is near the cloud layer (vanilla cloud shape).",
+                        "Ignored while Better Clouds is active (its clouds don't show in the Planarium).")
                 .define("clouds", true);
         SCENERY_AMBIENCE = client
                 .comment("Ambient sounds of the scenery blocks (fire, lava, flowing water, portals, campfires...), from their direction",
@@ -138,7 +153,8 @@ public final class Config {
                         "Mob sounds follow outsideMobs. The area only runs if the world allows it (keepOutsideRunning, server config).")
                 .define("worldSounds", true);
         OUTSIDE_MOBS = client
-                .comment("Maximum mobs shown in the giant scenery, nearest first. 0 = OFF, including mob sounds.",
+                .comment("Maximum mobs shown in the giant scenery. 0 = OFF, including mob sounds.",
+                        "Shown mobs keep their places while eligible; the nearest newcomers fill free slots.",
                         "The menu offers steps of 8, from 0 to 64; default 32. Mob sounds are included, even with worldSounds OFF.",
                         "While enabled, the detail radius and a small margin keep running if keepOutsideRunning allows it.",
                         "At most 64 mobs and vehicles combined can be shown.")
@@ -147,24 +163,33 @@ public final class Config {
                 .comment("Boats, rafts and minecarts around the Planarium, in the detail radius of the giant scenery.",
                         "Independent of outsideMobs. Mob passengers are shown when both options are ON.",
                         "While ON, the detail radius and a small surrounding margin keep running, even with outside world sounds OFF.",
-                        "Up to 64 mobs and vehicles combined, the closest.")
+                        "Up to 64 mobs and vehicles combined. Shown groups keep their places; free slots go to the nearest.")
                 .define("outsideVehicles", false);
         MINIATURE_MOBS = client
-                .comment("Mobs inside the miniature of the jar, 32 times smaller like its blocks, with small idle animations",
-                        "(breathing, wings, looking around). They stay at their last known positions; these copies do not",
-                        "keep the pocket running. Up to 4 miniatures within 8 blocks, with at most 64 mobs each.")
-                .define("miniatureMobs", true);
+                .comment("Maximum mobs per miniature. 0 = OFF. Menu steps of 8, from 0 to 64; default 32.",
+                        "Without live updates, mobs stay at their last known positions with idle animations.",
+                        "Shown mobs keep their places; new mobs fill free slots. Requires keepMiniaturesRunning.",
+                        "Up to 4 distinct Planarium interiors within 8 blocks. Vehicles have their own setting.")
+                .defineInRange("miniatureMobs", 32, 0, 64);
+        MINIATURE_VEHICLES = client
+                .comment("Boats, rafts and minecarts in miniatures, up to 64 per Planarium.",
+                        "Independent of the mob limit. Requires keepMiniaturesRunning. Live movement also requires miniatureMobs above 0.")
+                .define("miniatureVehicles", true);
+        MINIATURE_LIVE_VIEW = client
+                .comment("Live miniature: the nearest miniature you look at (within 8 blocks) shows its mobs really moving.",
+                        "Copies of the same Planarium share its live view. Requires keepMiniaturesRunning and miniatureMobs above 0.")
+                .define("miniatureLive", true);
         OUTSIDE_AMBIENCE = client
-                .comment("Dynamic Surroundings plays the ambience of the Planarium's surroundings inside the jar (biome sounds,",
-                        "or silence if the Planarium is sheltered, or cave sounds if it is underground), and its biome fog colors show in the jar.",
+                .comment("Dynamic Surroundings plays the ambience of the Planarium's surroundings inside the Planarium (biome sounds,",
+                        "or silence if the Planarium is sheltered, or cave sounds if it is underground), and its biome fog colors show in the Planarium.",
                         "Requires Dynamic Surroundings.")
                 .define("outsideAmbience", true);
         AMBIENT_SOUNDS = client
-                .comment("AmbientSounds plays the sounds of the Planarium's surroundings inside the jar (its dimension, biome,",
+                .comment("AmbientSounds plays the sounds of the Planarium's surroundings inside the Planarium (its dimension, biome,",
                         "weather, height and nearby blocks). Requires AmbientSounds.")
                 .define("ambientSounds", true);
         LUNAR_EVENTS = client
-                .comment("Enhanced Celestials 2: the jar's moon follows the lunar event of the Planarium's world",
+                .comment("Enhanced Celestials 2: the Planarium's moon follows the lunar event of the Planarium's world",
                         "(blood moon, blue moon, harvest moon...). Requires Enhanced Celestials 2 and the synced sky.")
                 .define("lunarEvents", true);
         SUB_LEVEL_VIEWS = client
@@ -174,7 +199,7 @@ public final class Config {
                 .define("subLevelViews", true);
         NEIGHBOR_PLANARIUMS = client
                 .comment("Inside of the other Planariums in the detail radius, at real size where they stand in the scenery",
-                        "(a frozen snapshot of their blocks and light, taken when entering the jar: purely visual).",
+                        "(a frozen snapshot of their blocks and light, taken when entering the Planarium: purely visual).",
                         "Number shown, nearest first. 0 = OFF.")
                 .defineInRange("neighborPlanariums", 4, 0, 10);
         CLIENT_SPEC = client.build();
@@ -232,7 +257,7 @@ public final class Config {
         return ENABLED.get();
     }
 
-    /** Ciel du dehors dans le bocal (soleil, lune, heure, couleur du ciel). */
+    /** Ciel du dehors dans le Planarium (soleil, lune, heure, couleur du ciel). */
     public static boolean syncSky() {
         return enabled() && LIGHTING.get() != Lighting.OFF;
     }
@@ -242,7 +267,7 @@ public final class Config {
         return syncSky();
     }
 
-    /** Lumiere de l'endroit du Planarium a l'interieur du bocal (jour, nuit, caverne, torches a cote). */
+    /** Lumiere de l'endroit du Planarium a l'interieur du Planarium (jour, nuit, caverne, torches a cote). */
     public static boolean outsideLight() {
         return enabled() && LIGHTING.get() == Lighting.FULL;
     }
@@ -297,9 +322,35 @@ public final class Config {
         return enabled() && OUTSIDE_VEHICLES.get() && outsideLive();
     }
 
-    /** Mobs dans la miniature du bocal (voir MiniEntities). */
+    /** Mobs dans la miniature du Planarium (voir MiniEntities). */
     public static boolean miniatureMobs() {
-        return enabled() && MINIATURE_MOBS.get();
+        return miniatureMobLimit() > 0;
+    }
+
+    public static int miniatureMobLimit() {
+        return enabled() && miniatureLive() ? MINIATURE_MOBS.get() : 0;
+    }
+
+    public static boolean miniatureVehicles() {
+        return enabled() && miniatureLive() && MINIATURE_VEHICLES.get();
+    }
+
+    public static boolean miniatureEntities() {
+        return miniatureMobs() || miniatureVehicles();
+    }
+
+    /** Le monde laisse les Planariums faire tourner leur Planarium pour une miniature regardee (faux sans monde ouvert). */
+    public static boolean miniatureLive() {
+        return SERVER_SPEC.isLoaded() && MINIATURE_LIVE.get();
+    }
+
+    public static int miniatureLiveMax() {
+        return SERVER_SPEC.isLoaded() ? MINIATURE_LIVE_MAX.get() : MINIATURE_LIVE_MAX.getDefault();
+    }
+
+    /** Client : mobs vivants dans la miniature la plus proche (voir MiniEntities, MiniLive). */
+    public static boolean miniatureLiveView() {
+        return miniatureMobs() && MINIATURE_LIVE_VIEW.get();
     }
 
     public static boolean outsideEntities() {
@@ -330,7 +381,7 @@ public final class Config {
     }
 
     /**
-     * Couleurs a l'interieur du bocal (lumiere du dehors par les parois, parois, structures Sable du bocal) :
+     * Couleurs a l'interieur du Planarium (lumiere du dehors par les parois, parois, structures Sable du Planarium) :
      * compatibilite automatique, comme pour le decor et la miniature.
      */
     public static boolean jarColoredLight() {

@@ -65,6 +65,20 @@ public class PlanariumView {
     }
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
+        // Facultatif : miniatures vivantes (le client dit laquelle il regarde ; le serveur envoie ses mobs).
+        event.registrar(NETWORK_VERSION + ".mini2").optional().playToServer(
+                com.matthieu.planariumview.network.entities.MiniWatchPayload.TYPE,
+                com.matthieu.planariumview.network.entities.MiniWatchPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> {
+                    if (context.player() instanceof net.minecraft.server.level.ServerPlayer player) {
+                        com.matthieu.planariumview.server.MiniLive.watch(player, payload);
+                    }
+                }));
+        event.registrar(NETWORK_VERSION + ".mini2").optional().playToClient(
+                com.matthieu.planariumview.network.entities.MiniLivePayload.TYPE,
+                com.matthieu.planariumview.network.entities.MiniLivePayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(
+                        () -> com.matthieu.planariumview.client.mini.entities.MiniEntities.receiveLive(payload)));
         event.registrar(NETWORK_VERSION).optional().playToServer(
                 SubLevelPrefsPayload.TYPE, SubLevelPrefsPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {

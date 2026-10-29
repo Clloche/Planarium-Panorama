@@ -5,6 +5,7 @@ import com.matthieu.planariumview.client.scenery.entities.GiantEntities;
 import com.matthieu.planariumview.config.Config;
 import com.matthieu.planariumview.network.MiniLightPayload;
 import com.matthieu.planariumview.network.entities.MiniEntitiesPayload;
+import com.matthieu.planariumview.network.entities.MiniEntityTypes;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.DoubleTag;
@@ -17,9 +18,6 @@ import net.minecraft.server.level.FullChunkStatus;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.decoration.ArmorStand;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
@@ -33,6 +31,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.List;
+import java.util.ArrayList;
 
 import static com.matthieu.planariumview.server.SceneryCapture.captureLight;
 import static com.matthieu.planariumview.server.PocketLighting.relightPocket;
@@ -50,6 +50,8 @@ final class MiniatureSync {
     private static final Map<ResourceKey<Level>, Long> MINI_ENTITIES_NEXT = new HashMap<>();
     /** Mobs de chaque bocal pour la miniature (UUID -> sauvegarde), gardes apres le dechargement de la poche. */
     private static final Map<ResourceKey<Level>, Map<UUID, CompoundTag>> MINI_MOBS = new HashMap<>();
+    /** Meme ordre d'admission pour les instantanes, le direct et toutes les copies d'un Planarium. */
+    private static final Map<ResourceKey<Level>, List<UUID>> MINI_ORDER = new HashMap<>();
     /** Bocaux dont les mobs ont change depuis le dernier envoi. */
     private static final Set<ResourceKey<Level>> MINI_MOBS_DIRTY = new HashSet<>();
     /** Prochaine relecture des mobs d'une poche chargee (tick du serveur). */
@@ -61,8 +63,9 @@ final class MiniatureSync {
     private static final Map<ResourceKey<Level>, Long> READ_RETRY_AFTER = new HashMap<>();
     /** Bocaux dont une liste a deja ete envoyee (une liste vide doit alors partir aussi). */
     private static final Set<ResourceKey<Level>> SENT = new HashSet<>();
+    /** Dernier contenu diffuse, sans les poses deja envoyees par le flux leger. */
+    private static final Map<ResourceKey<Level>, CompoundTag> SENT_APPEARANCE = new HashMap<>();
     private static final int MOB_READ_TICKS = 100;
-    private static final int MAX_MOBS = 64;
     private static final int READ_TIMEOUT = 200;
     private static final int READ_RETRY_TICKS = 1200;
     private static final AABB INTERIOR = new AABB(0, 0, 0, 32, 34, 32);
@@ -175,7 +178,8 @@ final class MiniatureSync {
                 changed = !tag.equals(MINI_ENTITIES.put(key, tag));
             }
             if (loaded && (forced || !MOBS_READY.contains(key) || now >= MINI_MOBS_NEXT.getOrDefault(key, 0L))) {
-                MINI_MOBS_NEXT.put(key, now + MOB_READ_TICKS);
+                // Bocal vivant pour sa miniature (MiniLive) : relu a chaque passage, pour les mobs qui arrivent ou partent.
+                MINI_MOBS_NEXT.put(key, now + (MiniLive.active(key) ? 20 : MOB_READ_TICKS));
                 readMobs(pocket);
                 MOBS_READY.add(key);
                 if (READ_PENDING.remove(key) != null) releaseRead(pocket);
@@ -204,6 +208,23 @@ final class MiniatureSync {
         updateMiniEntities(pocket.getServer(), Set.of(pocket.dimension()), false);
     }
 
+    static void liveStarted(ResourceKey<Level> key) {
+        MINI_MOBS_NEXT.remove(key);
+    }
+
+    /** Un nouveau spectateur doit recevoir les apparences et positions les plus recentes du cache. */
+    static void sendToWatcher(ServerPlayer player, ResourceKey<Level> key) {
+        if (player.connection.hasChannel(MiniEntitiesPayload.TYPE)) {
+            PacketDistributor.sendToPlayer(player, new MiniEntitiesPayload(key.location(), payload(key)));
+        }
+    }
+
+    /** Derniere pose meme si la poche reste chargee par une autre source de tickets. */
+    static void liveStopped(ServerLevel pocket) {
+        MINI_MOBS_DIRTY.add(pocket.dimension());
+        captureOnExit(pocket);
+    }
+
     /**
      * Fin du suivi (ServerView.onEntityLeave). Au dechargement, le chunk devient HIDDEN avant setRemoved : la raison est
      * encore null et l'evenement ne se repete pas ensuite. Sa position est deja finale car ses ticks sont arretes.
@@ -217,8 +238,10 @@ final class MiniatureSync {
         Map<UUID, CompoundTag> mobs = MINI_MOBS.computeIfAbsent(key, ignored -> new LinkedHashMap<>());
         Entity.RemovalReason reason = entity.getRemovalReason();
         if ((reason == null || reason == Entity.RemovalReason.UNLOADED_TO_CHUNK)
-                && !((LivingEntity) entity).isDeadOrDying() && entity.getBoundingBox().intersects(INTERIOR)) {
-            if (mobs.containsKey(entity.getUUID()) || mobs.size() < MAX_MOBS) {
+                && MiniEntityTypes.alive(entity) && entity.getBoundingBox().intersects(INTERIOR)) {
+            boolean vehicle = MiniEntityTypes.vehicle(entity);
+            long count = mobs.values().stream().filter(tag -> MiniEntityTypes.vehicle(tag) == vehicle).count();
+            if (mobs.containsKey(entity.getUUID()) || count < (vehicle ? MiniEntityTypes.MAX_VEHICLES : MiniEntityTypes.MAX_MOBS)) {
                 CompoundTag tag = saveMob(entity);
                 if (tag != null && !tag.equals(mobs.put(entity.getUUID(), tag))) {
                     MINI_MOBS_DIRTY.add(key);
@@ -238,12 +261,14 @@ final class MiniatureSync {
         MINI_ENTITIES_DUE.clear();
         MINI_ENTITIES_NEXT.clear();
         MINI_MOBS.clear();
+        MINI_ORDER.clear();
         MINI_MOBS_DIRTY.clear();
         MINI_MOBS_NEXT.clear();
         MOBS_READY.clear();
         READ_PENDING.clear();
         READ_RETRY_AFTER.clear();
         SENT.clear();
+        SENT_APPEARANCE.clear();
     }
 
     /** Les 4 chunks de l'interieur du bocal ont leurs entites chargees (simulees ou non). */
@@ -284,14 +309,47 @@ final class MiniatureSync {
         }
     }
 
-    /** Relit tous les mobs d'une poche chargee (au plus MAX_MOBS). */
+    /** Meme ordre stable pour l'instantane et le flux leger, avec deux quotas independants. */
+    static List<Entity> trackedEntities(ServerLevel pocket) {
+        List<Entity> entities = pocket.getEntitiesOfClass(Entity.class, INTERIOR,
+                entity -> miniMob(entity) && !entity.isRemoved() && MiniEntityTypes.alive(entity));
+        return selectTracked(pocket.dimension(), entities);
+    }
+
+    static List<Entity> selectTracked(ResourceKey<Level> key, List<Entity> candidates) {
+        List<UUID> retained = MINI_ORDER.get(key);
+        if (retained == null) retained = new ArrayList<>(MINI_MOBS.getOrDefault(key, Map.of()).keySet());
+        Map<UUID, Integer> priority = new HashMap<>();
+        for (UUID id : retained) priority.put(id, priority.size());
+        List<Entity> entities = new ArrayList<>(candidates);
+        entities.sort(Comparator.comparingInt((Entity entity) -> priority.getOrDefault(entity.getUUID(), Integer.MAX_VALUE))
+                .thenComparing(Entity::getUUID));
+        List<Entity> selected = selectEntities(entities, MiniEntityTypes.MAX_MOBS, true);
+        MINI_ORDER.put(key, selected.stream().map(Entity::getUUID).toList());
+        return selected;
+    }
+
+    static List<Entity> selectEntities(List<Entity> entities, int mobLimit, boolean vehicles) {
+        List<Entity> selected = new ArrayList<>();
+        int mobs = 0, vehicleCount = 0;
+        for (Entity entity : entities) {
+            if (!MiniEntityTypes.supported(entity)) continue;
+            if (MiniEntityTypes.vehicle(entity)) {
+                if (!vehicles || vehicleCount >= MiniEntityTypes.MAX_VEHICLES) continue;
+                vehicleCount++;
+            } else {
+                if (mobs >= mobLimit) continue;
+                mobs++;
+            }
+            selected.add(entity);
+        }
+        return selected;
+    }
+
+    /** Relit les mobs et vehicules d'une poche chargee. */
     private static void readMobs(ServerLevel pocket) {
         Map<UUID, CompoundTag> mobs = new LinkedHashMap<>();
-        for (LivingEntity mob : pocket.getEntitiesOfClass(LivingEntity.class, INTERIOR,
-                entity -> miniMob(entity) && !entity.isRemoved() && !entity.isDeadOrDying())) {
-            if (mobs.size() >= MAX_MOBS) {
-                break;
-            }
+        for (Entity mob : trackedEntities(pocket)) {
             CompoundTag tag = saveMob(mob);
             if (tag != null) {
                 mobs.put(mob.getUUID(), tag);
@@ -303,8 +361,8 @@ final class MiniatureSync {
     }
 
     /** Mob de la miniature : pas les joueurs, ni les porte-armures (avec les decorations). */
-    private static boolean miniMob(Entity entity) {
-        return entity instanceof LivingEntity && !(entity instanceof Player) && !(entity instanceof ArmorStand);
+    static boolean miniMob(Entity entity) {
+        return MiniEntityTypes.supported(entity);
     }
 
     /**
@@ -329,13 +387,17 @@ final class MiniatureSync {
         position.add(DoubleTag.valueOf(mob.getY()));
         position.add(DoubleTag.valueOf(mob.getZ()));
         tag.put("Pos", position);
+        tag.putBoolean(MiniEntityTypes.VEHICLE, MiniEntityTypes.vehicle(mob));
+        Entity mount = mob.getVehicle();
+        if (mount != null && MiniEntityTypes.supported(mount)) tag.putUUID(MiniEntityTypes.MOUNT, mount.getUUID());
         return tag;
     }
 
     /** Donnees du serveur seulement, ou qui changent toutes seules, ou lourdes (echanges des villageois...). */
     private static final String[] MOB_VOLATILE = {"Motion", "FallDistance", "Fire", "Air", "PortalCooldown", "HurtTime",
             "HurtByTimestamp", "DeathTime", "AbsorptionAmount", "Brain", "FallFlying", "Passengers", "Offers", "Gossips",
-            "Inventory", "ArmorDropChances", "HandDropChances", "LastGossipDecay", "LastRestock", "RestocksToday", "Xp"};
+            "Inventory", "Items", "LootTable", "LootTableSeed", "ArmorDropChances", "HandDropChances",
+            "LastGossipDecay", "LastRestock", "RestocksToday", "Xp"};
 
     /** Decorations et mobs d'un bocal, dans un seul paquet (cles "entities" et "mobs"). */
     private static CompoundTag payload(ResourceKey<Level> key) {
@@ -357,12 +419,36 @@ final class MiniatureSync {
         return tag.getList("entities", Tag.TAG_COMPOUND).isEmpty() && tag.getList("mobs", Tag.TAG_COMPOUND).isEmpty();
     }
 
+    /** Compare l'apparence, sans modifier l'instantane complet conserve pour les connexions et l'arret. */
+    static CompoundTag appearance(CompoundTag snapshot) {
+        CompoundTag result = snapshot.copy();
+        ListTag mobs = result.getList("mobs", Tag.TAG_COMPOUND);
+        // L'ordre d'enumeration des entites n'a aucune importance pour la miniature.
+        CompoundTag byId = new CompoundTag();
+        for (int i = 0; i < mobs.size(); i++) {
+            CompoundTag mob = mobs.getCompound(i);
+            mob.remove("Pos");
+            mob.remove("Rotation");
+            mob.remove("OnGround");
+            // Le compteur de croissance change a chaque tick ; seul le passage bebe/adulte est visible.
+            if (mob.contains("Age")) mob.putInt("Age", mob.getInt("Age") < 0 ? -1 : 0);
+            byId.put(mob.getUUID("UUID").toString(), mob);
+        }
+        result.put("mobs", byId);
+        return result;
+    }
+
     private static void send(MinecraftServer server, ResourceKey<Level> key) {
         CompoundTag tag = payload(key);
         // Rien a montrer et rien d'envoye avant : inutile d'envoyer une liste vide.
         if (empty(tag) && !SENT.contains(key)) {
             return;
         }
+        CompoundTag appearance = appearance(tag);
+        if (MiniLive.active(key) && appearance.equals(SENT_APPEARANCE.get(key))) {
+            return;
+        }
+        SENT_APPEARANCE.put(key, appearance);
         SENT.add(key);
         MiniEntitiesPayload payload = new MiniEntitiesPayload(key.location(), tag);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {

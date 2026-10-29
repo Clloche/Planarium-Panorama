@@ -13,6 +13,8 @@ public final class AnimationFixtureAgent {
             @Override public byte[] transform(ClassLoader loader, String name, Class<?> type, ProtectionDomain domain, byte[] bytes) {
                 if (!Set.of("net/minecraft/world/entity/Entity", "net/minecraft/world/entity/LivingEntity",
                         "net/minecraft/world/entity/Mob",
+                        "net/minecraft/world/entity/vehicle/Boat", "net/minecraft/world/entity/vehicle/AbstractMinecart",
+                        "net/minecraft/world/entity/vehicle/VehicleEntity",
                         "net/minecraft/world/entity/AgeableMob", "net/minecraft/world/entity/TamableAnimal",
                         "net/minecraft/world/entity/animal/Dolphin", "net/minecraft/world/entity/GlowSquid",
                         "net/minecraft/world/entity/animal/Chicken", "net/minecraft/world/entity/animal/Parrot",
