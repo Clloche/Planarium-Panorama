@@ -321,12 +321,49 @@ final class MiniatureSync {
         if (retained == null) retained = new ArrayList<>(MINI_MOBS.getOrDefault(key, Map.of()).keySet());
         Map<UUID, Integer> priority = new HashMap<>();
         for (UUID id : retained) priority.put(id, priority.size());
-        List<Entity> entities = new ArrayList<>(candidates);
-        entities.sort(Comparator.comparingInt((Entity entity) -> priority.getOrDefault(entity.getUUID(), Integer.MAX_VALUE))
-                .thenComparing(Entity::getUUID));
+        // Les entites deja admises gardent leur ordre ; les nouvelles ne prennent que les places qui restent.
+        List<Entity> kept = new ArrayList<>();
+        List<Entity> fresh = new ArrayList<>();
+        for (Entity entity : candidates) {
+            (priority.containsKey(entity.getUUID()) ? kept : fresh).add(entity);
+        }
+        kept.sort(Comparator.comparingInt((Entity entity) -> priority.get(entity.getUUID())));
+        List<Entity> entities = new ArrayList<>(kept);
+        entities.addAll(varied(fresh, kept));
         List<Entity> selected = selectEntities(entities, MiniEntityTypes.MAX_MOBS, true);
         MINI_ORDER.put(key, selected.stream().map(Entity::getUUID).toList());
         return selected;
+    }
+
+    /**
+     * Nouvelles entites, de la variete d'abord : un de chaque type a tour de role, en commencant par les types les moins
+     * presents parmi celles deja admises. Avec une petite limite, 15 moutons et 5 vaches donnent ainsi des moutons et
+     * des vaches, et non 8 moutons. Ordre stable : par UUID dans chaque type, puis par identifiant de type.
+     */
+    static List<Entity> varied(List<Entity> fresh, List<Entity> kept) {
+        Map<String, Integer> present = new HashMap<>();
+        for (Entity entity : kept) present.merge(typeKey(entity), 1, Integer::sum);
+        List<Entity> sorted = new ArrayList<>(fresh);
+        sorted.sort(Comparator.comparing(Entity::getUUID));
+        Map<String, java.util.ArrayDeque<Entity>> byType = new LinkedHashMap<>();
+        for (Entity entity : sorted) {
+            byType.computeIfAbsent(typeKey(entity), ignored -> new java.util.ArrayDeque<>()).add(entity);
+        }
+        List<String> types = new ArrayList<>(byType.keySet());
+        types.sort(Comparator.comparingInt((String type) -> present.getOrDefault(type, 0)).thenComparing(type -> type));
+        List<Entity> result = new ArrayList<>(fresh.size());
+        while (result.size() < fresh.size()) {
+            for (String type : types) {
+                Entity next = byType.get(type).poll();
+                if (next != null) result.add(next);
+            }
+        }
+        return result;
+    }
+
+    private static String typeKey(Entity entity) {
+        var type = entity.getType();
+        return type == null ? "" : net.minecraft.world.entity.EntityType.getKey(type).toString();
     }
 
     static List<Entity> selectEntities(List<Entity> entities, int mobLimit, boolean vehicles) {

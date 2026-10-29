@@ -24,7 +24,8 @@ public final class AnimationFixtureAgent {
                         "net/minecraft/world/level/material/Fluids", "net/minecraft/world/level/block/Block",
                         "net/minecraft/sounds/SoundEvents", "com/matthieu/planariumview/client/scenery/ClientView",
                         "net/minecraft/client/multiplayer/ClientLevel", "net/minecraft/server/level/ServerLevel",
-                        "net/minecraft/server/MinecraftServer", "net/minecraft/server/dedicated/DedicatedServer").contains(name)) return null;
+                        "net/minecraft/server/MinecraftServer", "net/minecraft/server/dedicated/DedicatedServer").contains(name)
+                        && !("miniatures".equals(arguments) && "net/minecraft/world/entity/EntityType".equals(name))) return null;
                 ClassReader reader = new ClassReader(bytes);
                 ClassWriter writer = new ClassWriter(0);
                 reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {

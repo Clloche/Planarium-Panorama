@@ -129,7 +129,7 @@ tasks.register('checkMiniatureLive', JavaExec) {
     workingDir = layout.buildDirectory.dir('miniature-live-checks').get().asFile
     doFirst {
         workingDir.mkdirs()
-        jvmArgs '-javaagent:' + tasks.named('mobAnimationFixtureAgent').get().archiveFile.get().asFile.absolutePath
+        jvmArgs '-javaagent:' + tasks.named('mobAnimationFixtureAgent').get().archiveFile.get().asFile.absolutePath + '=miniatures'
     }
 }
 

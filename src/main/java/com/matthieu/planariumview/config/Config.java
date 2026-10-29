@@ -164,11 +164,12 @@ public final class Config {
                         "Independent of outsideMobs. Mob passengers are shown when both options are ON.",
                         "While ON, the detail radius and a small surrounding margin keep running, even with outside world sounds OFF.",
                         "Up to 64 mobs and vehicles combined. Shown groups keep their places; free slots go to the nearest.")
-                .define("outsideVehicles", false);
+                .define("outsideVehicles", true);
         MINIATURE_MOBS = client
                 .comment("Maximum mobs per miniature. 0 = OFF. Menu steps of 8, from 0 to 64; default 32.",
                         "Without live updates, mobs stay at their last known positions with idle animations.",
-                        "Shown mobs keep their places; new mobs fill free slots. Requires keepMiniaturesRunning.",
+                        "Shown mobs keep their places and order. New mobs fill free slots one type at a time, starting with the least represented types.",
+                        "New mobs are ordered by UUID within each type, then by type ID. Requires keepMiniaturesRunning; 0 also disables live updates.",
                         "Up to 4 distinct Planarium interiors within 8 blocks. Vehicles have their own setting.")
                 .defineInRange("miniatureMobs", 32, 0, 64);
         MINIATURE_VEHICLES = client

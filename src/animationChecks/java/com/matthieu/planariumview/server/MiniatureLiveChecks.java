@@ -12,15 +12,19 @@ import com.matthieu.planariumview.network.entities.MobEnvironment;
 import com.google.common.collect.ImmutableList;
 import io.netty.buffer.Unpooled;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.*;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.Bootstrap;
 import net.minecraft.server.level.ChunkTracker;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.vehicle.Boat;
 import net.minecraft.world.entity.vehicle.Minecart;
 import net.minecraft.world.level.ChunkPos;
@@ -352,8 +356,78 @@ public final class MiniatureLiveChecks {
         System.out.println("PASS: stable miniature selections across births, removals, shared views and world changes");
     }
 
+    /** Only type construction is a fixture; registry keys and selection use production methods. */
+    private static EntityType<?> registeredType(String name) throws Exception {
+        EntityType<?> type = fixture(EntityType.class);
+        BuiltInRegistries.ENTITY_TYPE.createIntrusiveHolder(type);
+        return Registry.register(BuiltInRegistries.ENTITY_TYPE, ResourceLocation.parse("checks:" + name), type);
+    }
+
+    private static Entity typedMob(int id, EntityType<?> type) throws Exception {
+        Method create = Class.forName("com.matthieu.planariumview.MobAnimationIntegrationChecks").getDeclaredMethod("mob", int.class);
+        create.setAccessible(true);
+        Entity mob = (Entity) create.invoke(null, id);
+        mob.setUUID(new UUID(0, id));
+        field(Entity.class, "type").set(mob, type);
+        return mob;
+    }
+
+    @SuppressWarnings("unchecked") private static void variedMiniatures() throws Exception {
+        // Permit empty registry creation without launching Minecraft or loading a mod list.
+        // The fixture agent skips EntityType's vanilla registration, but keeps getKey intact.
+        field(Bootstrap.class, "isBootstrapped").setBoolean(null, true);
+        EntityType<?> sheep = registeredType("sheep"), cow = registeredType("cow");
+        require(!EntityType.getKey(sheep).equals(EntityType.getKey(cow)), "variety fixtures have distinct registered types");
+        var key = ResourceKey.create(Registries.DIMENSION, POCKET);
+        List<Entity> crowd = new ArrayList<>();
+        for (int i = 1; i <= 20; i++) crowd.add(typedMob(i, i <= 15 ? sheep : cow));
+        List<Entity> visible = null;
+        for (int seed = 0; seed < 10; seed++) {
+            MiniatureSync.clear();
+            Collections.shuffle(crowd, new Random(seed));
+            List<Entity> selected = MiniatureSync.selectEntities(MiniatureSync.selectTracked(key, crowd), 8, false);
+            require(selected.stream().filter(entity -> entity.getType() == cow).count() == 4
+                            && selected.stream().filter(entity -> entity.getType() == sheep).count() == 4,
+                    "15 sheep and 5 cows show exactly 4 of each with a limit of 8");
+            if (visible == null) visible = selected;
+            require(selected.equals(visible), "initial variety order is independent of entity enumeration");
+        }
+        require(visible.getFirst().getType() == cow && visible.getFirst().getUUID().equals(new UUID(0, 16))
+                        && visible.get(1).getUUID().equals(new UUID(0, 1)),
+                "equal type counts use type ID order, then UUID within each type");
+        ListTag tags = new ListTag();
+        for (Entity entity : MiniatureSync.selectTracked(key, crowd)) {
+            CompoundTag tag = new CompoundTag(); tag.putUUID("UUID", entity.getUUID());
+            tag.putString("id", EntityType.getKey(entity.getType()).toString()); tags.add(tag);
+        }
+        Method choose = MiniEntities.class.getDeclaredMethod("selectedTags", ListTag.class, int.class, boolean.class);
+        choose.setAccessible(true);
+        List<CompoundTag> client = (List<CompoundTag>) choose.invoke(null, tags, 8, false);
+        require(client.stream().map(tag -> tag.getUUID("UUID")).toList().equals(visible.stream().map(Entity::getUUID).toList()),
+                "client snapshot selection shows the same varied subset as live updates");
+        crowd.add(typedMob(-1, sheep)); crowd.add(typedMob(0, cow));
+        for (int update = 0; update < 10; update++) {
+            Collections.shuffle(crowd, new Random(update));
+            require(MiniatureSync.selectEntities(MiniatureSync.selectTracked(key, crowd), 8, false).equals(visible),
+                    "new mobs of either type never replace the displayed varied subset");
+        }
+        MiniatureSync.clear();
+        crowd.clear();
+        for (int i = 100; i < 164; i++) crowd.add(typedMob(i, cow));
+        List<Entity> admitted = MiniatureSync.selectTracked(key, crowd);
+        crowd.remove(admitted.getFirst());
+        crowd.add(typedMob(0, cow));
+        Entity newcomer = typedMob(1, sheep); crowd.add(newcomer); crowd.add(typedMob(2, sheep));
+        List<Entity> replaced = MiniatureSync.selectTracked(key, crowd);
+        require(replaced.size() == 64 && replaced.subList(0, 63).equals(admitted.subList(1, 64)),
+                "variety preserves all retained mobs in order when filling a free slot");
+        require(replaced.getLast() == newcomer, "least represented type fills a free slot before type ID and UUID ordering");
+        MiniatureSync.clear();
+        System.out.println("PASS: 15 sheep + 5 cows -> 4 of each at limit 8; stable order and varied replacements");
+    }
+
     public static void main(String[] args) throws Exception {
-        protocol(); snapshots(); tickets(); options(); interpolation(); vehiclesAndCopies(); stableMiniatures();
+        protocol(); snapshots(); tickets(); options(); interpolation(); vehiclesAndCopies(); stableMiniatures(); variedMiniatures();
         System.out.println("PASS: " + assertions + " live miniature assertions");
     }
 }
