@@ -10,8 +10,8 @@ import net.minecraft.resources.ResourceLocation;
 
 /**
  * Client -> serveur : les options des sons du monde exterieur. {@code world} OFF : la zone autour du Planarium
- * reste en pause tant que personne n'y est, et le serveur n'envoie aucun de ces sons. Les autres choisissent
- * quels sons envoyer : mobs et animaux, redstone et blocs, explosions (les jukebox suivent {@code world}).
+ * reste en pause tant que personne n'y est (sauf si des mobs sont affiches), et le serveur n'envoie ni les sons des
+ * blocs, ni les explosions, ni les jukebox. {@code mobs} : les sons des mobs affiches, avec leur propre reglage.
  */
 public record SoundPrefsPayload(boolean world, boolean mobs, boolean blocks, boolean explosions)
         implements CustomPacketPayload {
@@ -31,14 +31,14 @@ public record SoundPrefsPayload(boolean world, boolean mobs, boolean blocks, boo
 
     /** Ce joueur veut-il les sons de cette categorie (voir OutsideSoundPayload) ? */
     public boolean allows(int category) {
+        // Les mobs ont leur propre reglage cote client (ils ne dependent plus des sons du monde exterieur).
+        if (category == OutsideSoundPayload.MOBS) {
+            return mobs;
+        }
         if (!world) {
             return false;
         }
-        return switch (category) {
-            case OutsideSoundPayload.MOBS -> mobs;
-            case OutsideSoundPayload.EXPLOSIONS -> explosions;
-            default -> blocks;
-        };
+        return category == OutsideSoundPayload.EXPLOSIONS ? explosions : blocks;
     }
 
     @Override

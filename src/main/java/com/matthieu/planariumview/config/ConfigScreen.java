@@ -28,8 +28,8 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Menu de configuration, construit avec YACL (Yet Another Config Lib) : onglets (General avec l'interrupteur,
- * l'eclairage et le rayon de vue ; Affichage avec le rafraichissement ; Integrations), description de l'option a droite, recherche, remise a zero par option et globale.
+ * Menu de configuration, construit avec YACL (Yet Another Config Lib) : onglets General (eclairage, distances et
+ * rafraichissement), Affichage, Entites et Integrations ; description a droite, recherche et remise a zero.
  *
  * L'interrupteur general grise les autres options du joueur (leurs valeurs sont gardees).
  * Les options d'integration sont grisees si le mod n'est pas installe, celles du serveur en multijoueur.
@@ -62,11 +62,7 @@ public final class ConfigScreen {
                 .description(describe("enabled", onOff(Config.ENABLED.getDefault())))
                 .binding(Config.ENABLED.getDefault(), Config.ENABLED::get, Config.ENABLED::set)
                 .controller(opt -> BooleanControllerBuilder.create(opt).onOffFormatter().coloured(true))
-                .listener((opt, value) -> {
-                    for (Gated g : gated) {
-                        g.option().setAvailable(value && g.possible().getAsBoolean());
-                    }
-                })
+                .listener((opt, value) -> refreshGated(gated, value))
                 .build();
 
         // Curseur a trois crans : OFF a gauche, Complet a droite.
@@ -86,36 +82,80 @@ public final class ConfigScreen {
         Option<Boolean> sceneryParticles = bool("scenery_particles", Config.SCENERY_PARTICLES.getDefault(),
                 Config.SCENERY_PARTICLES::get, Config.SCENERY_PARTICLES::set,
                 Component.translatable("options.particles").withStyle(ChatFormatting.BOLD));
+        // Notes qui changent avec "Faire vivre le dehors" et "Mobs du dehors" (voir refreshDependents) : YACL garde les
+        // noms et les descriptions construits une fois, on change donc le contenu de ces textes.
+        MutableComponent worldSoundsNote = Component.empty();
+        MutableComponent mobsNote = Component.empty();
+        MutableComponent vehiclesNote = Component.empty();
+        MutableComponent mobSoundsNote = Component.empty();
+        MutableComponent mobsName = Component.translatable(KEY + "outside_mobs");
+        MutableComponent vehiclesName = Component.translatable(KEY + "outside_vehicles");
+        MutableComponent mobSoundsName = Component.translatable(KEY + "mob_sounds");
         // Sons du monde exterieur : avec l'avertissement (la zone detaillee reste active).
         Option<Boolean> worldSounds = Option.<Boolean>createBuilder()
                 .name(Component.translatable(KEY + "world_sounds"))
                 .description(OptionDescription.of(Component.translatable(KEY + "world_sounds.tooltip"), Component.empty(),
-                        Component.translatable(KEY + "world_sounds.warning", optionName("radius"), optionName("scenery_ambience")),
+                        Component.translatable(KEY + "world_sounds.warning", optionName("radius"), optionName("scenery_ambience"),
+                                optionName("outside_live")),
                         Component.empty(),
-                        Component.translatable(KEY + "default", onOff(Config.WORLD_SOUNDS.getDefault())).withStyle(ChatFormatting.GRAY)))
+                        Component.translatable(KEY + "default", onOff(Config.WORLD_SOUNDS.getDefault())).withStyle(ChatFormatting.GRAY),
+                        worldSoundsNote))
                 .binding(Config.WORLD_SOUNDS.getDefault(), Config.WORLD_SOUNDS::get, Config.WORLD_SOUNDS::set)
                 .controller(opt -> BooleanControllerBuilder.create(opt).onOffFormatter().coloured(true))
                 .build();
-        // Mobs du dehors : avec l'avertissement (la zone detaillee reste active pour qu'ils bougent).
+        // Faire vivre le dehors : autorisation du monde (config SERVER, envoyee aux joueurs). Modifiable en solo, avec un
+        // monde ouvert ; en multijoueur, la valeur du serveur est montree, grisee.
+        boolean worldOpen = Config.SERVER_SPEC.isLoaded();
+        Option<Boolean> outsideLive = Option.<Boolean>createBuilder()
+                .name(Component.translatable(KEY + "outside_live"))
+                .description(OptionDescription.of(Component.translatable(KEY + "outside_live.tooltip"), Component.empty(),
+                        Component.translatable(KEY + "default", onOff(Config.OUTSIDE_LIVE.getDefault())).withStyle(ChatFormatting.GRAY),
+                        Component.empty(),
+                        Component.translatable(KEY + (serverSide ? "server_controlled" : worldOpen ? "world_setting" : "world_closed"))
+                                .withStyle(ChatFormatting.YELLOW)))
+                .binding(Config.OUTSIDE_LIVE.getDefault(),
+                        () -> Config.SERVER_SPEC.isLoaded() ? Config.OUTSIDE_LIVE.get() : Config.OUTSIDE_LIVE.getDefault(),
+                        value -> {
+                            if (Config.SERVER_SPEC.isLoaded()) {
+                                Config.OUTSIDE_LIVE.set(value);
+                            }
+                        })
+                .controller(opt -> BooleanControllerBuilder.create(opt).onOffFormatter().coloured(true))
+                .available(!serverSide && worldOpen)
+                .build();
         Option<Boolean> outsideMobs = Option.<Boolean>createBuilder()
-                .name(Component.translatable(KEY + "outside_mobs"))
-                .description(OptionDescription.of(Component.translatable(KEY + "outside_mobs.tooltip", optionName("world_sounds")),
+                .name(mobsName)
+                .description(OptionDescription.of(Component.translatable(KEY + "outside_mobs.tooltip", optionName("mob_sounds")),
                         Component.empty(),
                         Component.translatable(KEY + "outside_mobs.warning", optionName("radius")),
                         Component.empty(),
-                        Component.translatable(KEY + "default", onOff(Config.OUTSIDE_MOBS.getDefault())).withStyle(ChatFormatting.GRAY)))
+                        Component.translatable(KEY + "default", onOff(Config.OUTSIDE_MOBS.getDefault())).withStyle(ChatFormatting.GRAY),
+                        mobsNote))
                 .binding(Config.OUTSIDE_MOBS.getDefault(), Config.OUTSIDE_MOBS::get, Config.OUTSIDE_MOBS::set)
-                .controller(opt -> BooleanControllerBuilder.create(opt).onOffFormatter().coloured(true))
+                // Sans "Faire vivre le dehors" : la valeur reste, mais en gris (comme une integration sans son mod).
+                .controller(opt -> BooleanControllerBuilder.create(opt).coloured(false)
+                        .formatValue(v -> outsideLive.pendingValue() ? coloredOnOff(v) : greyOnOff(v)))
+                .build();
+        Option<Boolean> mobSounds = Option.<Boolean>createBuilder()
+                .name(mobSoundsName)
+                .description(OptionDescription.of(Component.translatable(KEY + "mob_sounds.tooltip"), Component.empty(),
+                        Component.translatable(KEY + "default", onOff(Config.MOB_SOUNDS.getDefault())).withStyle(ChatFormatting.GRAY),
+                        mobSoundsNote))
+                .binding(Config.MOB_SOUNDS.getDefault(), Config.MOB_SOUNDS::get, Config.MOB_SOUNDS::set)
+                .controller(opt -> BooleanControllerBuilder.create(opt).coloured(false)
+                        .formatValue(v -> outsideLive.pendingValue() && outsideMobs.pendingValue() ? coloredOnOff(v) : greyOnOff(v)))
                 .build();
         Option<Boolean> outsideVehicles = Option.<Boolean>createBuilder()
-                .name(Component.translatable(KEY + "outside_vehicles"))
+                .name(vehiclesName)
                 .description(OptionDescription.of(Component.translatable(KEY + "outside_vehicles.tooltip", optionName("outside_mobs")),
                         Component.empty(),
                         Component.translatable(KEY + "outside_vehicles.warning", optionName("radius")),
                         Component.empty(),
-                        Component.translatable(KEY + "default", onOff(Config.OUTSIDE_VEHICLES.getDefault())).withStyle(ChatFormatting.GRAY)))
+                        Component.translatable(KEY + "default", onOff(Config.OUTSIDE_VEHICLES.getDefault())).withStyle(ChatFormatting.GRAY),
+                        vehiclesNote))
                 .binding(Config.OUTSIDE_VEHICLES.getDefault(), Config.OUTSIDE_VEHICLES::get, Config.OUTSIDE_VEHICLES::set)
-                .controller(opt -> BooleanControllerBuilder.create(opt).onOffFormatter().coloured(true))
+                .controller(opt -> BooleanControllerBuilder.create(opt).coloured(false)
+                        .formatValue(v -> outsideLive.pendingValue() ? coloredOnOff(v) : greyOnOff(v)))
                 .build();
         Option<Boolean> miniatureMobs = Option.<Boolean>createBuilder()
                 .name(Component.translatable(KEY + "miniature_mobs"))
@@ -175,8 +215,10 @@ public final class ConfigScreen {
         gated.add(new Gated(sceneryAmbience, () -> true));
         gated.add(new Gated(sceneryParticles, () -> true));
         gated.add(new Gated(worldSounds, () -> true));
-        gated.add(new Gated(outsideMobs, () -> true));
-        gated.add(new Gated(outsideVehicles, () -> true));
+        // Grisees sans l'autorisation du monde (leurs valeurs sont gardees) ; les sons des mobs, aussi sans leur affichage.
+        gated.add(new Gated(outsideMobs, outsideLive::pendingValue));
+        gated.add(new Gated(outsideVehicles, outsideLive::pendingValue));
+        gated.add(new Gated(mobSounds, () -> outsideLive.pendingValue() && outsideMobs.pendingValue()));
         gated.add(new Gated(miniatureMobs, () -> true));
         gated.add(new Gated(clouds, () -> true));
         gated.add(new Gated(fog, () -> true));
@@ -186,10 +228,19 @@ public final class ConfigScreen {
         gated.add(new Gated(ambientSounds, () -> asPresent));
         gated.add(new Gated(lunar, () -> ecPresent));
         gated.add(new Gated(subLevels, () -> sablePresent));
-        boolean enabled = Config.ENABLED.get();
-        for (Gated g : gated) {
-            g.option().setAvailable(enabled && g.possible().getAsBoolean());
-        }
+        refreshGated(gated, Config.ENABLED.get());
+        Runnable dependents = () -> refreshDependents(outsideLive.pendingValue(), outsideMobs.pendingValue(),
+                worldSoundsNote, mobsNote, vehiclesNote, mobSoundsNote, mobsName, vehiclesName, mobSoundsName);
+        dependents.run();
+        // Changer l'autorisation ou l'affichage des mobs met a jour les options qui en dependent, tout de suite.
+        outsideLive.addListener((opt, value) -> {
+            refreshGated(gated, master.pendingValue());
+            dependents.run();
+        });
+        outsideMobs.addListener((opt, value) -> {
+            refreshGated(gated, master.pendingValue());
+            dependents.run();
+        });
 
         Option<Integer> radius = Option.<Integer>createBuilder()
                 .name(Component.translatable(KEY + "radius"))
@@ -235,7 +286,7 @@ public final class ConfigScreen {
 
         dirty = false;
         for (Option<?> option : List.of(master, lighting, radius, farRadius, biome, weather, sceneryAmbience, sceneryParticles, worldSounds,
-                outsideMobs, outsideVehicles, miniatureMobs, clouds, fog, blockUpdates, refresh, ambience, ambientSounds, lunar, subLevels, caveFog, neighbors)) {
+                outsideLive, outsideMobs, outsideVehicles, mobSounds, miniatureMobs, clouds, fog, blockUpdates, refresh, ambience, ambientSounds, lunar, subLevels, caveFog, neighbors)) {
             autoSave(option);
         }
 
@@ -276,18 +327,28 @@ public final class ConfigScreen {
                                 .option(clouds)
                                 .build())
                         .group(OptionGroup.createBuilder()
-                                .name(Component.translatable(KEY + "group.entities"))
-                                .collapsed(false)
-                                .option(outsideMobs)
-                                .option(outsideVehicles)
-                                .option(miniatureMobs)
-                                .build())
-                        .group(OptionGroup.createBuilder()
                                 .name(Component.translatable(KEY + "group.sounds"))
                                 .collapsed(false)
                                 .option(sceneryParticles)
                                 .option(sceneryAmbience)
                                 .option(worldSounds)
+                                .build())
+                        .build())
+                // Entites : l'autorisation du monde en tete de son groupe, les options qui en dependent juste dessous.
+                .category(ConfigCategory.createBuilder()
+                        .name(Component.translatable(KEY + "section.entities"))
+                        .group(OptionGroup.createBuilder()
+                                .name(Component.translatable(KEY + "group.scenery_entities"))
+                                .collapsed(false)
+                                .option(outsideLive)
+                                .option(outsideMobs)
+                                .option(outsideVehicles)
+                                .option(mobSounds)
+                                .build())
+                        .group(OptionGroup.createBuilder()
+                                .name(Component.translatable(KEY + "group.miniature_entities"))
+                                .collapsed(false)
+                                .option(miniatureMobs)
                                 .build())
                         .build())
                 .category(ConfigCategory.createBuilder()
@@ -356,6 +417,61 @@ public final class ConfigScreen {
     private static void saveToDisk() {
         Config.COMMON_SPEC.save();
         Config.CLIENT_SPEC.save();
+        // Seulement avec un monde ouvert en solo : en multijoueur, c'est la copie recue du serveur (jamais modifiee ici).
+        Minecraft mc = Minecraft.getInstance();
+        if (Config.SERVER_SPEC.isLoaded() && mc.getSingleplayerServer() != null) {
+            Config.SERVER_SPEC.save();
+        }
+    }
+
+    /**
+     * Options qui dependent de "Faire vivre le dehors" (et, pour les sons des mobs, de "Mobs du dehors") : nom barre et
+     * une seule ligne qui dit quelle option est OFF, comme une integration sans son mod. Rien quand tout est ON.
+     */
+    private static void refreshDependents(boolean live, boolean mobs, MutableComponent worldSoundsNote,
+                                          MutableComponent mobsNote, MutableComponent vehiclesNote,
+                                          MutableComponent mobSoundsNote, MutableComponent mobsName,
+                                          MutableComponent vehiclesName, MutableComponent mobSoundsName) {
+        Component liveOff = live ? null : optionOff("outside_live");
+        note(mobsNote, liveOff);
+        note(vehiclesNote, liveOff);
+        note(mobSoundsNote, liveOff != null ? liveOff : mobs ? null : optionOff("outside_mobs"));
+        // Les sons du monde restent possibles : seulement ce qui tourne deja pour une autre raison s'entend.
+        note(worldSoundsNote, live ? null
+                : Component.translatable(KEY + "world_sounds.live_off", optionName("outside_live")).withStyle(ChatFormatting.YELLOW));
+        strike(mobsName, !live);
+        strike(vehiclesName, !live);
+        strike(mobSoundsName, !live || !mobs);
+    }
+
+    /** "Faire vivre le dehors est OFF." */
+    private static Component optionOff(String name) {
+        return Component.translatable(KEY + "option_off", optionName(name)).withStyle(ChatFormatting.YELLOW);
+    }
+
+    /** Remplace le contenu d'une note de description (une ligne vide puis le texte), ou la vide. */
+    private static void note(MutableComponent holder, Component text) {
+        holder.getSiblings().clear();
+        if (text != null) {
+            holder.getSiblings().add(Component.literal("\n"));
+            holder.getSiblings().add(text);
+        }
+    }
+
+    private static void strike(MutableComponent name, boolean struck) {
+        name.setStyle(name.getStyle().withStrikethrough(struck));
+    }
+
+    /** Valeur gardee mais sans effet (option dont elle depend OFF) : ON ou OFF en gris. */
+    private static Component greyOnOff(boolean v) {
+        return onOff(v).copy().withStyle(ChatFormatting.GRAY);
+    }
+
+    /** Disponibilite des options du joueur : l'interrupteur general, puis leurs propres conditions. */
+    private static void refreshGated(List<Gated> gated, boolean enabled) {
+        for (Gated g : gated) {
+            g.option().setAvailable(enabled && g.possible().getAsBoolean());
+        }
     }
 
     /** A la fermeture du menu : applique les changements de lumiere et de couleur, sans sortir du bocal. */

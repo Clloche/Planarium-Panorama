@@ -284,7 +284,8 @@ final class OutsideSounds {
                     || !track.source.dimension().equals(level.dimension())
                     || !player.serverLevel().dimension().equals(track.pocket)
                     || !player.connection.hasChannel(OutsideSoundPayload.TYPE)
-                    || !prefsOf(player.getUUID()).allows(category)) {
+                    || !prefsOf(player.getUUID()).allows(category)
+                    || category == OutsideSoundPayload.MOBS && !com.matthieu.planariumview.config.Config.outsideLive()) {
                 continue;
             }
             Vec3 relative = PlanariumAnchor.relative(track, position);

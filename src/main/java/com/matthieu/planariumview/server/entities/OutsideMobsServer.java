@@ -187,7 +187,9 @@ public final class OutsideMobsServer {
     public static void tick(ServerPlayer player, ServerLevel source, ResourceKey<Level> pocket, BlockPos capturedCenter,
                      int radius, boolean ready, boolean flying) {
         UUID id = player.getUUID();
-        if (!wants(id) || !ready || radius < 0 || flying || !player.connection.hasChannel(OutsideMobsPayload.TYPE)) {
+        // Le monde ne laisse pas le Planarium faire vivre le dehors : pas de mobs ni de vehicules (ils seraient figes).
+        if (!wants(id) || !com.matthieu.planariumview.config.Config.outsideLive() || !ready || radius < 0 || flying
+                || !player.connection.hasChannel(OutsideMobsPayload.TYPE)) {
             STATES.remove(id);
             return;
         }

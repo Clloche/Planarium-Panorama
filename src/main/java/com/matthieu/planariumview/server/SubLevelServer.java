@@ -325,7 +325,7 @@ public final class SubLevelServer {
         // a whole structure in one tick stalled the server (the ship jerked, sounds cut out). New sections never wait.
         RefreshBudget refreshBudget = new RefreshBudget(System.nanoTime() + REFRESH_BUDGET_NANOS);
         for (SubLevelCompat.Body body : SubLevelCompat.bodies(source, area)) {
-            if (active) {
+            if (active && Config.outsideLive()) {
                 pinned.add(body.id());
                 if (scene.pinned.get(body.id()) != body.handle()) {
                     Object previous = scene.pinned.get(body.id());

@@ -53,6 +53,7 @@ public class PlanariumView {
     public PlanariumView(IEventBus modBus, ModContainer container) {
         container.registerConfig(ModConfig.Type.COMMON, Config.COMMON_SPEC);
         container.registerConfig(ModConfig.Type.CLIENT, Config.CLIENT_SPEC);
+        container.registerConfig(ModConfig.Type.SERVER, Config.SERVER_SPEC);
         modBus.addListener(PlanariumView::registerPayloads);
         modBus.addListener(PlanariumView::addPacks);
         NeoForge.EVENT_BUS.register(ServerView.class);

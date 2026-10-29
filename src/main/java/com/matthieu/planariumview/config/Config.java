@@ -4,8 +4,10 @@ package com.matthieu.planariumview.config;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
- * Deux fichiers de config :
+ * Trois fichiers de config :
  * - planariumview-common.toml : decide par le serveur (ce qui est capture et a quelle frequence) ;
+ * - planariumview-server.toml (dans serverconfig, avec chaque monde) : autorisations qui font tourner le monde
+ *   (chunks gardes actifs). Envoye aux joueurs a la connexion : leur menu montre la valeur du serveur ;
  * - planariumview-client.toml : choix de chaque joueur (affichage, lumiere, sons).
  */
 public final class Config {
@@ -15,6 +17,10 @@ public final class Config {
     public static final ModConfigSpec.IntValue FAR_RADIUS;
     public static final ModConfigSpec.IntValue REFRESH_SECONDS;
     public static final ModConfigSpec.IntValue BLOCK_UPDATE_SECONDS;
+
+    // --- Serveur (par monde, synchronise aux joueurs) ---
+    public static final ModConfigSpec SERVER_SPEC;
+    public static final ModConfigSpec.BooleanValue OUTSIDE_LIVE;
 
     // --- Client ---
     public static final ModConfigSpec CLIENT_SPEC;
@@ -30,6 +36,7 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue OUTSIDE_MOBS;
     public static final ModConfigSpec.BooleanValue OUTSIDE_VEHICLES;
     public static final ModConfigSpec.BooleanValue MINIATURE_MOBS;
+    public static final ModConfigSpec.BooleanValue MOB_SOUNDS;
     public static final ModConfigSpec.BooleanValue OUTSIDE_AMBIENCE;
     public static final ModConfigSpec.BooleanValue AMBIENT_SOUNDS;
     public static final ModConfigSpec.BooleanValue LUNAR_EVENTS;
@@ -67,6 +74,18 @@ public final class Config {
                         "0 = OFF. With both OFF, the scenery is a frozen snapshot taken when entering the jar.")
                 .defineInRange("refreshSeconds", 300, 0, 1200);
         COMMON_SPEC = common.build();
+
+        ModConfigSpec.Builder server = new ModConfigSpec.Builder();
+        server.comment("World permissions: what the Planarium may keep running in the world. Saved with each world",
+                "(serverconfig folder) and sent to players when they join, so their menu shows the server's choice.");
+        OUTSIDE_LIVE = server
+                .comment("Lets a Planarium keep the area it shows running while a player watches from the jar (the detail radius,",
+                        "plus a small margin for mobs): machines, redstone, furnaces and mobs keep working there, as if the player stood there.",
+                        "Needed to see outside mobs and vehicles move, and to hear them. OFF: the area is only kept loaded, without running it;",
+                        "outside sounds still play for what runs anyway (a player nearby, another mod).",
+                        "Turning this OFF never stops an area that is already active for another reason.")
+                .define("keepOutsideRunning", true);
+        SERVER_SPEC = server.build();
 
         ModConfigSpec.Builder client = new ModConfigSpec.Builder();
         client.comment("Client side: each player's own display, lighting and sound choices.");
@@ -113,10 +132,11 @@ public final class Config {
                         "and the particles of outside explosions. Follows Minecraft's Particles setting.")
                 .define("sceneryParticles", true);
         WORLD_SOUNDS = client
-                .comment("Sounds from the outside world around the Planarium (mobs, redstone, explosions, jukeboxes...), from their direction",
+                .comment("Sounds from the outside world around the Planarium (redstone, explosions, jukeboxes...), from their direction",
                         "in the scenery. Sounds directly caused by a player are excluded.",
                         "While ON, the detail radius around the Planarium keeps running as if you were there (machines, mobs, furnaces).",
-                        "OFF: stops keeping that area active, unless outside mobs or vehicles are ON or a player is there; scenery ambience remains.")
+                        "OFF: stops keeping that area active, unless outside mobs or vehicles are ON or a player is there; scenery ambience remains.",
+                        "Mobs have their own option (mobSounds). The area only runs if the world allows it (keepOutsideRunning, server config).")
                 .define("worldSounds", true);
         OUTSIDE_MOBS = client
                 .comment("Mobs around the Planarium, in the detail radius of the giant scenery (up to 64 mobs and vehicles combined, the closest).",
@@ -134,6 +154,10 @@ public final class Config {
                         "(breathing, wings, looking around). They stay at their last known positions; these copies do not",
                         "keep the pocket running. Up to 4 miniatures within 8 blocks, with at most 64 mobs each.")
                 .define("miniatureMobs", true);
+        MOB_SOUNDS = client
+                .comment("Sounds of the outside mobs (steps, calls, hurt...), from their direction in the scenery.",
+                        "Only for mobs that are shown (outsideMobs ON), and only if the server keeps the outside running (keepOutsideRunning).")
+                .define("mobSounds", true);
         OUTSIDE_AMBIENCE = client
                 .comment("Dynamic Surroundings plays the ambience of the Planarium's surroundings inside the jar (biome sounds,",
                         "or silence if the Planarium is sheltered, or cave sounds if it is underground), and its biome fog colors show in the jar.",
@@ -256,13 +280,21 @@ public final class Config {
         return enabled() && WORLD_SOUNDS.get();
     }
 
-    /** Mobs du dehors dans le decor geant (voir OutsideMobs). */
+    /**
+     * Le serveur laisse le Planarium garder la zone du dehors active (option du monde, voir OUTSIDE_LIVE). Vrai tant
+     * qu'aucun monde n'est ouvert (la valeur n'est connue qu'avec un monde).
+     */
+    public static boolean outsideLive() {
+        return !SERVER_SPEC.isLoaded() || OUTSIDE_LIVE.get();
+    }
+
+    /** Mobs du dehors dans le decor geant (voir OutsideMobs) : seulement si le serveur fait vivre le dehors. */
     public static boolean outsideMobs() {
-        return enabled() && OUTSIDE_MOBS.get();
+        return enabled() && OUTSIDE_MOBS.get() && outsideLive();
     }
 
     public static boolean outsideVehicles() {
-        return enabled() && OUTSIDE_VEHICLES.get();
+        return enabled() && OUTSIDE_VEHICLES.get() && outsideLive();
     }
 
     /** Mobs dans la miniature du bocal (voir MiniEntities). */
@@ -274,10 +306,10 @@ public final class Config {
         return outsideMobs() || outsideVehicles();
     }
 
-    // Blocs et explosions : avec les sons du monde exterieur (plus de reglage separe). Les mobs : seulement s'ils sont
-    // aussi affiches (on n'entend pas des mobs qu'on ne voit pas).
+    // Blocs et explosions : avec les sons du monde exterieur (plus de reglage separe). Les mobs : leur propre reglage,
+    // seulement s'ils sont affiches (on n'entend pas des mobs qu'on ne voit pas), donc si le serveur fait vivre le dehors.
     public static boolean mobSounds() {
-        return worldSounds() && outsideMobs();
+        return outsideMobs() && MOB_SOUNDS.get();
     }
 
     public static boolean blockSounds() {
