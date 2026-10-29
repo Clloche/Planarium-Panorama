@@ -95,8 +95,8 @@ public final class MixinHealth {
     private static final Map<String, List<Unit>> BY_TARGET = new HashMap<>();
     private static final Set<String> REGISTERED = new HashSet<>();
     private static final Set<String> WARNED = new HashSet<>();
-    /** Cible commune aux deux cotes, chargee pendant le demarrage et portant nos injections principales. */
-    private static volatile boolean witnessSeen;
+    /** Au moins une de nos cibles a atteint l'export final, quel que soit le cote ou l'ordre de chargement. */
+    private static volatile boolean targetObserved;
     private static volatile boolean installed;
     private static volatile String unavailable;
 
@@ -116,12 +116,16 @@ public final class MixinHealth {
         }
     }
 
-    /** Raison pour laquelle le bilan est indisponible, ou null s'il fonctionne. */
+    /** Probleme d'installation ou de verification, sans confondre une cible encore non chargee avec un echec. */
     public static String unavailableReason() {
         if (unavailable != null) return unavailable;
         if (!installed) return "extension Mixin non installee";
-        if (!witnessSeen) return "classe temoin ServerLevel non observee par l'extension";
         return null;
+    }
+
+    /** Temoin d'activite : ne doit etre exige qu'au premier monde ouvert, pas pendant le chargement des mods. */
+    static boolean hasObservedTarget() {
+        return targetObserved;
     }
 
     /** Une cible de ce mixin : ses crochets y sont attendus, ou non applicables si la cible est absente. */
@@ -157,7 +161,7 @@ public final class MixinHealth {
             if (known == null) return;
             units = new ArrayList<>(known);
         }
-        if (dotted(name).equals("net.minecraft.server.level.ServerLevel")) witnessSeen = true;
+        targetObserved = true;
         Map<String, Integer> calls = calls(node);
         List<String> confirmed = new ArrayList<>();
         synchronized (MixinHealth.class) {

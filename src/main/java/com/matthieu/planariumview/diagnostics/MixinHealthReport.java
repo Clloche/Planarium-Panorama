@@ -45,7 +45,7 @@ public final class MixinHealthReport {
         NeoForge.EVENT_BUS.addListener(ServerStartedEvent.class, event -> summary());
     }
 
-    /** Temoin : a la fin du chargement, l'extension doit deja avoir vu des classes transformees. */
+    /** A la fin du chargement des mods, seule l'installation est exigee : les cibles peuvent charger plus tard. */
     private static void loadComplete() {
         String reason = MixinHealth.unavailableReason();
         if (reason != null) {
@@ -58,6 +58,10 @@ public final class MixinHealthReport {
         if (summarized) return;
         summarized = true;
         String reason = MixinHealth.unavailableReason();
+        // Une cible client suffit aussi : rejoindre un serveur distant ne charge pas forcement ServerLevel.
+        if (reason == null && !MixinHealth.hasObservedTarget()) {
+            reason = "aucune cible de nos mixins observee par l'extension au premier monde ouvert";
+        }
         if (reason != null) {
             MixinHealth.unavailable(reason);
             return;
