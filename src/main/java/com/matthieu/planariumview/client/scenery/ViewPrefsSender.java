@@ -69,7 +69,7 @@ final class ViewPrefsSender {
             }
         }
         com.matthieu.planariumview.network.entities.ViewPrefsPayload view = new com.matthieu.planariumview.network.entities.ViewPrefsPayload(
-                Config.outsideMobs(), Config.outsideVehicles(), OutsideMobs.resyncCounter());
+                Config.outsideMobLimit(), Config.outsideVehicles(), OutsideMobs.resyncCounter());
         if (!view.equals(sentViewPrefs)) {
             sentViewPrefs = view;
             try {

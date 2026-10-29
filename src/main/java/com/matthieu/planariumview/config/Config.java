@@ -33,10 +33,9 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue SCENERY_AMBIENCE;
     public static final ModConfigSpec.BooleanValue SCENERY_PARTICLES;
     public static final ModConfigSpec.BooleanValue WORLD_SOUNDS;
-    public static final ModConfigSpec.BooleanValue OUTSIDE_MOBS;
+    public static final ModConfigSpec.IntValue OUTSIDE_MOBS;
     public static final ModConfigSpec.BooleanValue OUTSIDE_VEHICLES;
     public static final ModConfigSpec.BooleanValue MINIATURE_MOBS;
-    public static final ModConfigSpec.BooleanValue MOB_SOUNDS;
     public static final ModConfigSpec.BooleanValue OUTSIDE_AMBIENCE;
     public static final ModConfigSpec.BooleanValue AMBIENT_SOUNDS;
     public static final ModConfigSpec.BooleanValue LUNAR_EVENTS;
@@ -136,13 +135,14 @@ public final class Config {
                         "in the scenery. Sounds directly caused by a player are excluded.",
                         "While ON, the detail radius around the Planarium keeps running as if you were there (machines, mobs, furnaces).",
                         "OFF: stops keeping that area active, unless outside mobs or vehicles are ON or a player is there; scenery ambience remains.",
-                        "Mobs have their own option (mobSounds). The area only runs if the world allows it (keepOutsideRunning, server config).")
+                        "Mob sounds follow outsideMobs. The area only runs if the world allows it (keepOutsideRunning, server config).")
                 .define("worldSounds", true);
         OUTSIDE_MOBS = client
-                .comment("Mobs around the Planarium, in the detail radius of the giant scenery (up to 64 mobs and vehicles combined, the closest).",
-                        "While ON, the detail radius and a small surrounding margin keep running so they move, even with outside world sounds OFF.",
-                        "OFF: mobs are not shown and their sounds are not played either.")
-                .define("outsideMobs", false);
+                .comment("Maximum mobs shown in the giant scenery, nearest first. 0 = OFF, including mob sounds.",
+                        "The menu offers steps of 8, from 0 to 64; default 32. Mob sounds are included, even with worldSounds OFF.",
+                        "While enabled, the detail radius and a small margin keep running if keepOutsideRunning allows it.",
+                        "At most 64 mobs and vehicles combined can be shown.")
+                .defineInRange("outsideMobs", 32, 0, 64);
         OUTSIDE_VEHICLES = client
                 .comment("Boats, rafts and minecarts around the Planarium, in the detail radius of the giant scenery.",
                         "Independent of outsideMobs. Mob passengers are shown when both options are ON.",
@@ -154,10 +154,6 @@ public final class Config {
                         "(breathing, wings, looking around). They stay at their last known positions; these copies do not",
                         "keep the pocket running. Up to 4 miniatures within 8 blocks, with at most 64 mobs each.")
                 .define("miniatureMobs", true);
-        MOB_SOUNDS = client
-                .comment("Sounds of the outside mobs (steps, calls, hurt...), from their direction in the scenery.",
-                        "Only for mobs that are shown (outsideMobs ON), and only if the server keeps the outside running (keepOutsideRunning).")
-                .define("mobSounds", true);
         OUTSIDE_AMBIENCE = client
                 .comment("Dynamic Surroundings plays the ambience of the Planarium's surroundings inside the jar (biome sounds,",
                         "or silence if the Planarium is sheltered, or cave sounds if it is underground), and its biome fog colors show in the jar.",
@@ -290,7 +286,11 @@ public final class Config {
 
     /** Mobs du dehors dans le decor geant (voir OutsideMobs) : seulement si le serveur fait vivre le dehors. */
     public static boolean outsideMobs() {
-        return enabled() && OUTSIDE_MOBS.get() && outsideLive();
+        return outsideMobLimit() > 0;
+    }
+
+    public static int outsideMobLimit() {
+        return enabled() && outsideLive() ? OUTSIDE_MOBS.get() : 0;
     }
 
     public static boolean outsideVehicles() {
@@ -306,10 +306,9 @@ public final class Config {
         return outsideMobs() || outsideVehicles();
     }
 
-    // Blocs et explosions : avec les sons du monde exterieur (plus de reglage separe). Les mobs : leur propre reglage,
-    // seulement s'ils sont affiches (on n'entend pas des mobs qu'on ne voit pas), donc si le serveur fait vivre le dehors.
+    // Les sons des mobs suivent leur affichage, independamment des sons des blocs et des explosions.
     public static boolean mobSounds() {
-        return outsideMobs() && MOB_SOUNDS.get();
+        return outsideMobs();
     }
 
     public static boolean blockSounds() {

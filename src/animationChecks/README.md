@@ -9,7 +9,7 @@ Le second contrôle remplace les frontières du monde client et supprime l'initi
 
 ## Scénarios visuels
 
-Utiliser cette version du mod côté client et serveur : le flux optionnel des entités utilise désormais `5.entities6`.
+Utiliser cette version du mod côté client et serveur : le flux optionnel des entités utilise désormais `5.entities7` (limite de mobs choisie par le joueur).
 
 1. Observer un mob immobile depuis le bocal, avec l'affichage des mobs activé, puis lui infliger des dégâts depuis le monde source : flash rouge bref, mouvement cohérent, pas de répétition à chaque paquet.
 2. Observer les attaques d'un mob, puis celles d'un mob gaucher. Vérifier la progression complète du geste et la réaction de sa cible.

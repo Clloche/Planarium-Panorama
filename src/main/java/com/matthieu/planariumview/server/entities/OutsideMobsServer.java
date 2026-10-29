@@ -121,7 +121,7 @@ public final class OutsideMobsServer {
     public static boolean setPrefs(UUID player, ViewPrefsPayload prefs) {
         ViewPrefsPayload previous = PREFS.put(player, prefs);
         boolean changed = previous == null ? prefs.mobs() || prefs.vehicles()
-                : previous.mobs() != prefs.mobs() || previous.vehicles() != prefs.vehicles();
+                : previous.mobLimit() != prefs.mobLimit() || previous.vehicles() != prefs.vehicles();
         if (previous == null || changed || previous.resync() != prefs.resync()) {
             // Tout renvoyer, avec de quoi recreer chaque mob.
             STATES.remove(player);
@@ -221,7 +221,7 @@ public final class OutsideMobsServer {
             candidates.addAll(source.getEntitiesOfClass(VehicleEntity.class, simulated, entity -> entity.isAlive() && enabled(entity, prefs)));
         }
         candidates.removeIf(entity -> entity.isInvisible() || entity.isSpectator());
-        List<Entity> mobs = select(candidates, box, capturedCenter);
+        List<Entity> mobs = select(candidates, box, capturedCenter, prefs.mobLimit());
         Set<Integer> selected = new HashSet<>();
         for (Entity entity : mobs) selected.add(entity.getId());
         boolean resetAnimations = state.events.resetRequired();
@@ -258,8 +258,8 @@ public final class OutsideMobsServer {
                 && (prefs.vehicles() || !(entity.getVehicle() instanceof VehicleEntity));
     }
 
-    /** Garde les groupes monture/passagers ensemble, y compris lorsque la limite de 64 est atteinte. */
-    private static List<Entity> select(List<Entity> candidates, AABB box, BlockPos center) {
+    /** Garde les groupes monture/passagers ensemble, dans la limite de mobs du joueur et de 64 entites au total. */
+    private static List<Entity> select(List<Entity> candidates, AABB box, BlockPos center, int mobLimit) {
         Set<Entity> available = new HashSet<>(candidates);
         Map<Entity, List<Entity>> groups = new HashMap<>();
         for (Entity entity : candidates) {
@@ -272,10 +272,14 @@ public final class OutsideMobsServer {
         roots.sort(java.util.Comparator.comparingDouble((Entity entity) -> entity.distanceToSqr(cx, cy, cz))
                 .thenComparingInt(Entity::getId));
         List<Entity> selected = new ArrayList<>();
+        int selectedMobs = 0;
         for (Entity root : roots) {
             List<Entity> group = groups.get(root);
             if (selected.size() + group.size() > MAX_MOBS || group.stream().noneMatch(entity -> entity.getBoundingBox().intersects(box))) continue;
+            int groupMobs = (int) group.stream().filter(entity -> entity instanceof LivingEntity).count();
+            if (selectedMobs + groupMobs > mobLimit) continue;
             selected.addAll(group);
+            selectedMobs += groupMobs;
         }
         return selected;
     }

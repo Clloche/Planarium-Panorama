@@ -14,13 +14,22 @@ import net.minecraft.resources.ResourceLocation;
  * {@code resync} change quand le client a perdu ses copies (nouveau monde client, copie inconnue) : le serveur renvoie
  * alors tout, avec de quoi recreer chaque mob.
  */
-public record ViewPrefsPayload(boolean mobs, boolean vehicles, int resync) implements CustomPacketPayload {
+public record ViewPrefsPayload(int mobLimit, boolean vehicles, int resync) implements CustomPacketPayload {
+
+    public ViewPrefsPayload {
+        // Le serveur ne fait jamais confiance a une limite envoyee par le client.
+        mobLimit = Math.clamp(mobLimit, 0, 64);
+    }
+
+    public boolean mobs() {
+        return mobLimit > 0;
+    }
 
     public static final Type<ViewPrefsPayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(PlanariumView.MODID, "view_prefs"));
 
     public static final StreamCodec<ByteBuf, ViewPrefsPayload> STREAM_CODEC = StreamCodec.composite(
-            ByteBufCodecs.BOOL, ViewPrefsPayload::mobs,
+            ByteBufCodecs.VAR_INT, ViewPrefsPayload::mobLimit,
             ByteBufCodecs.BOOL, ViewPrefsPayload::vehicles,
             ByteBufCodecs.VAR_INT, ViewPrefsPayload::resync,
             ViewPrefsPayload::new);

@@ -154,6 +154,59 @@ public final class MobAnimationIntegrationChecks {
         @Override public boolean isInWaterOrBubble() { return environment != null && environment.waterOrBubble(); }
     }
 
+    public static class SelectionVehicle extends Entity {
+        public SelectionVehicle() { super(null, null); }
+        protected void defineSynchedData(net.minecraft.network.syncher.SynchedEntityData.Builder builder) {}
+        protected void readAdditionalSaveData(net.minecraft.nbt.CompoundTag tag) {}
+        protected void addAdditionalSaveData(net.minecraft.nbt.CompoundTag tag) {}
+    }
+
+    @SuppressWarnings("unchecked") private static void mobLimits() throws Exception {
+        Method select = OutsideMobsServer.class.getDeclaredMethod("select", List.class, AABB.class, BlockPos.class, int.class);
+        select.setAccessible(true);
+        AABB area = new AABB(-1, -1, -1, 100, 4, 4);
+        List<Entity> candidates = new ArrayList<>();
+        for (int i = 0; i < 70; i++) {
+            VisualMob mob = mob(1000 + i);
+            mob.setPos(i + 1, 0, 0);
+            candidates.add(mob);
+        }
+        Collections.shuffle(candidates, new Random(7));
+        for (int limit = 0; limit <= 64; limit += 8) {
+            List<Entity> chosen = (List<Entity>) select.invoke(null, candidates, area, BlockPos.ZERO, limit);
+            require(chosen.size() == limit, "production selection respects every slider step");
+            for (int i = 0; i < limit; i++) require(chosen.get(i).getId() == 1000 + i, "nearest mobs selected regardless of input order");
+        }
+        SelectionVehicle vehicle = fixture(SelectionVehicle.class);
+        vehicle.setId(500);
+        field(Entity.class, "position").set(vehicle, new Vec3(.5, 0, .5));
+        vehicle.setBoundingBox(new AABB(0, 0, 0, 1, 1, 1));
+        candidates.add(vehicle);
+        List<Entity> chosen = (List<Entity>) select.invoke(null, candidates, area, BlockPos.ZERO, 0);
+        require(chosen.equals(List.of(vehicle)), "zero mobs still permits a vehicle");
+        chosen = (List<Entity>) select.invoke(null, candidates, area, BlockPos.ZERO, 32);
+        require(chosen.size() == 33 && chosen.contains(vehicle), "vehicle does not consume the mob quota");
+        chosen = (List<Entity>) select.invoke(null, candidates, area, BlockPos.ZERO, 64);
+        require(chosen.size() == 64 && chosen.contains(vehicle), "combined entity cap remains 64");
+
+        List<Entity> mounted = new ArrayList<>();
+        mounted.add(vehicle);
+        for (int i = 0; i < 9; i++) {
+            VisualMob rider = mob(2000 + i);
+            rider.setPos(.5, 0, .5);
+            rider.planariumview$setVehicle(vehicle);
+            mounted.add(rider);
+        }
+        VisualMob independent = mob(3000);
+        independent.setPos(2, 0, 0);
+        mounted.add(independent);
+        chosen = (List<Entity>) select.invoke(null, mounted, area, BlockPos.ZERO, 8);
+        require(chosen.equals(List.of(independent)), "over-budget passenger groups are skipped whole without blocking smaller groups");
+        chosen = (List<Entity>) select.invoke(null, mounted, area, BlockPos.ZERO, 16);
+        require(chosen.size() == 11, "passenger group returns intact when the limit is raised");
+        System.out.println("PASS: mob count steps, nearest selection, independent vehicles, shared cap and whole passenger groups");
+    }
+
     @SuppressWarnings("unchecked") private static void server() throws Exception {
         Class<?> stateType = Class.forName(OutsideMobsServer.class.getName() + "$State");
         Class<?> sentType = Class.forName(OutsideMobsServer.class.getName() + "$Sent");
@@ -211,7 +264,7 @@ public final class MobAnimationIntegrationChecks {
     }
 
     @SuppressWarnings("unchecked") private static void client() throws Exception {
-        config(Config.ENABLED, true); config(Config.OUTSIDE_MOBS, true); config(Config.OUTSIDE_VEHICLES, false);
+        config(Config.ENABLED, true); config(Config.OUTSIDE_MOBS, 64); config(Config.OUTSIDE_VEHICLES, false);
         config(Config.SCENERY_PARTICLES, false); // Particle sampling is checked separately without a GPU engine.
         OutsideMobs.logout();
         ClientLevel world = fixture(ClientLevel.class);
@@ -787,7 +840,7 @@ public final class MobAnimationIntegrationChecks {
     }
 
     public static void main(String[] args) throws Exception {
-        server(); client(); aquatic(); effects(); aquaticParticles(); underwaterEmission(); biomeParticles(); particleBudget(); wings(); waterParticleLifecycle(); capturedWater(); shadows(); modelLighting(); camera();
+        mobLimits(); server(); client(); aquatic(); effects(); aquaticParticles(); underwaterEmission(); biomeParticles(); particleBudget(); wings(); waterParticleLifecycle(); capturedWater(); shadows(); modelLighting(); camera();
         System.out.println("PASS: production capture, independent observers, world isolation, stationary readiness, delayed removals, mount links, hurt playback, aquatic poses/particles, ink, biome ambience, wings, captured water, particle lifecycle, potion particles, flame orientation, scenery shadows, scaled model lighting and camera alignment");
     }
 }
