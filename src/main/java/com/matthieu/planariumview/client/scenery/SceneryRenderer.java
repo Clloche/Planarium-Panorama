@@ -368,26 +368,31 @@ final class SceneryRenderer {
         mobFrame.scale(GIANT, GIANT, GIANT);
         mobFrame.translate(-radius, -radius, -radius);
         MobShadows.Frame shadows = MobShadows.frame(mobFrame.last().pose());
+        SceneryMobOcclusion.prepare(data, mobFrame.last().pose());
         for (net.minecraft.world.entity.Entity mob : OutsideMobs.prepare(partialTick, info.origin())) {
+            var bounds = mob.getBoundingBoxForCulling().inflate(1.0);
             if (!liveArea(mob.getX() - radius - 0.5, mob.getZ() - radius - 0.5, view + 1.0)
-                    || !specialVisible(mob.getBoundingBoxForCulling().inflate(1.0), radius)) {
+                    || !specialVisible(bounds, radius)) {
                 continue;
             }
             PoseStack mobStack = GiantEntities.copyPose(mobFrame.last());
-            try {
-                int light;
-                ColorCompat.begin(fake);
+            if (!SceneryMobOcclusion.hidden(mob, bounds)) {
                 try {
-                    light = GiantEntities.packedLight(fake, mob, partialTick);
-                } finally {
-                    ColorCompat.end();
+                    int light;
+                    ColorCompat.begin(fake);
+                    try {
+                        light = GiantEntities.packedLight(fake, mob, partialTick);
+                    } finally {
+                        ColorCompat.end();
+                    }
+                    OutsideVehicles.render(mob, fake, partialTick, mobStack, blockEntityBuffers, light, flameRotation);
+                } catch (Exception | LinkageError e) {
+                    OutsideMobs.broken(mob);
+                    LOGGER.debug("[Planarium Panorama] Mob du dehors ignore", e);
+                    continue;
                 }
-                OutsideVehicles.render(mob, fake, partialTick, mobStack, blockEntityBuffers, light, flameRotation);
-            } catch (Exception | LinkageError e) {
-                OutsideMobs.broken(mob);
-                LOGGER.debug("[Planarium Panorama] Mob du dehors ignore", e);
-                continue;
             }
+            // A hidden mob can still cast a visible shadow beyond the wall. Keep the shadow pass.
             try {
                 MobShadows.render(shadows, mob, fake, mobStack, blockEntityBuffers);
             } catch (Exception | LinkageError e) {

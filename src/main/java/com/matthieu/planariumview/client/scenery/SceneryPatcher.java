@@ -151,6 +151,8 @@ final class SceneryPatcher {
         Set<SectionPos> carriedSections = new HashSet<>(pendingSectionSet);
         Set<SectionPos> dirtySections = changedSections(renderData, data, sectionStates, light, info, radius);
         dirtySections.addAll(carriedSections);
+        SceneryMeshes.failedSections.retainAll(sectionStates.keySet());
+        dirtySections.addAll(SceneryMeshes.failedSections);
         for (SectionPos existing : new HashSet<>(sectionMeshes.keySet())) {
             if (!sectionStates.containsKey(existing)) {
                 SectionMesh removed = sectionMeshes.remove(existing);

@@ -133,11 +133,22 @@ tasks.register('checkMiniatureLive', JavaExec) {
     }
 }
 
+tasks.register('checkSceneryOcclusion', JavaExec) {
+    group = 'verification'
+    description = 'Checks conservative scenery mob occlusion, transforms and cached visibility.'
+    dependsOn tasks.named('animationChecksClasses')
+    classpath = sourceSets.animationChecks.runtimeClasspath
+    mainClass = 'com.matthieu.planariumview.client.scenery.SceneryOcclusionChecks'
+    workingDir = layout.buildDirectory.dir('scenery-occlusion-checks').get().asFile
+    doFirst { workingDir.mkdirs() }
+}
+
 tasks.named('check') {
     dependsOn tasks.named('checkSubLevels')
     dependsOn tasks.named('checkOutsideMobAnimations')
     dependsOn tasks.named('checkOutsideMobIntegration')
     dependsOn tasks.named('checkMiniatureLive')
+    dependsOn tasks.named('checkSceneryOcclusion')
 }
 
 // La version affichee dans la liste des mods vient de gradle.properties (mod_version).

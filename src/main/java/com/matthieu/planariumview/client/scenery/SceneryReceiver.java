@@ -323,6 +323,7 @@ final class SceneryReceiver {
     }
 
     private static void disposeRender() {
+        SceneryMobOcclusion.clear();
         SceneryHooks.clearSceneryFrame();
         SceneryParticles.cancelHues();
         PuddlesCompat.clear();
@@ -331,6 +332,7 @@ final class SceneryReceiver {
         releaseRenderData(renderData);
         for (SectionMesh mesh : sectionMeshes.values()) mesh.close();
         sectionMeshes.clear();
+        SceneryMeshes.failedSections.clear();
         pendingSections.clear();
         pendingSectionSet.clear();
         pendingSectionStates = Map.of();

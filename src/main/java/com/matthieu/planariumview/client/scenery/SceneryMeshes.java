@@ -56,6 +56,8 @@ final class SceneryMeshes {
     static Map<SectionPos, List<CulledStatePos>> pendingSectionStates = Map.of();
     static final ArrayDeque<SectionPos> pendingSections = new ArrayDeque<>();
     static final Set<SectionPos> pendingSectionSet = new HashSet<>();
+    /** Failed rebuilds still display old geometry; it must not be used to prove occlusion of new captures. */
+    static final Set<SectionPos> failedSections = new HashSet<>();
     static StructureRenderData pendingSectionData;
     static boolean forceAllSections;
     static byte[] renderedLight;
@@ -317,12 +319,15 @@ final class SceneryMeshes {
         SectionMesh old = sectionMeshes.remove(key);
         if (states == null || states.isEmpty()) {
             if (old != null) old.close();
+            failedSections.remove(key);
         } else {
             try {
                 SectionMesh replacement = buildSection(pendingSectionData, currentRadius, states, camera);
                 sectionMeshes.put(key, replacement);
                 if (old != null) old.close();
+                failedSections.remove(key);
             } catch (Exception e) {
+                failedSections.add(key);
                 if (old != null) sectionMeshes.put(key, old);
                 LOGGER.warn("[Planarium View] Echec du retesselage de la section {}; ancienne vue conservee", key, e);
             }
