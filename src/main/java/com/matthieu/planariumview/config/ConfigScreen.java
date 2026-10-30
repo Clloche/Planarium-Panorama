@@ -86,9 +86,7 @@ public final class ConfigScreen {
         // noms et les descriptions construits une fois, on change donc le contenu de ces textes.
         MutableComponent worldSoundsNote = Component.empty();
         MutableComponent mobsNote = Component.empty();
-        MutableComponent vehiclesNote = Component.empty();
         MutableComponent mobsName = Component.translatable(KEY + "outside_mobs");
-        MutableComponent vehiclesName = Component.translatable(KEY + "outside_vehicles");
         // Sons du monde exterieur : une note explique le cas ou le monde interdit de garder la zone active.
         Option<Boolean> worldSounds = Option.<Boolean>createBuilder()
                 .name(Component.translatable(KEY + "world_sounds"))
@@ -131,18 +129,6 @@ public final class ConfigScreen {
                 .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(0, 64).step(8)
                         .formatValue(v -> outsideLive.pendingValue() ? mobLimitLabel(v) : mobLimitLabel(v).copy().withStyle(ChatFormatting.GRAY)))
                 .build();
-        Option<Boolean> outsideVehicles = Option.<Boolean>createBuilder()
-                .name(vehiclesName)
-                .description(OptionDescription.of(Component.translatable(KEY + "outside_vehicles.tooltip", optionName("outside_mobs")),
-                        Component.empty(),
-                        Component.translatable(KEY + "outside_vehicles.warning", optionName("radius")),
-                        Component.empty(),
-                        Component.translatable(KEY + "default", onOff(Config.OUTSIDE_VEHICLES.getDefault())).withStyle(ChatFormatting.GRAY),
-                        vehiclesNote))
-                .binding(Config.OUTSIDE_VEHICLES.getDefault(), Config.OUTSIDE_VEHICLES::get, Config.OUTSIDE_VEHICLES::set)
-                .controller(opt -> BooleanControllerBuilder.create(opt).coloured(false)
-                        .formatValue(v -> outsideLive.pendingValue() ? coloredOnOff(v) : greyOnOff(v)))
-                .build();
         // Faire vivre les miniatures : autre autorisation du monde (config SERVER), comme "Faire vivre le dehors".
         Option<Boolean> miniatureRunning = Option.<Boolean>createBuilder()
                 .name(Component.translatable(KEY + "miniature_live"))
@@ -162,9 +148,7 @@ public final class ConfigScreen {
                 .available(!serverSide && worldOpen)
                 .build();
         MutableComponent miniatureMobsName = Component.translatable(KEY + "miniature_mobs");
-        MutableComponent miniatureVehiclesName = Component.translatable(KEY + "miniature_vehicles");
         MutableComponent miniatureMobsNote = Component.empty();
-        MutableComponent miniatureVehiclesNote = Component.empty();
         Option<Integer> miniatureMobs = Option.<Integer>createBuilder()
                 .name(miniatureMobsName)
                 .description(OptionDescription.of(Component.translatable(KEY + "miniature_mobs.tooltip"), Component.empty(),
@@ -174,15 +158,6 @@ public final class ConfigScreen {
                 .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(0, 64).step(8)
                         .formatValue(v -> miniatureRunning.pendingValue() ? mobLimitLabel(v)
                                 : mobLimitLabel(v).copy().withStyle(ChatFormatting.GRAY)))
-                .build();
-        Option<Boolean> miniatureVehicles = Option.<Boolean>createBuilder()
-                .name(miniatureVehiclesName)
-                .description(OptionDescription.of(Component.translatable(KEY + "miniature_vehicles.tooltip"), Component.empty(),
-                        Component.translatable(KEY + "default", onOff(Config.MINIATURE_VEHICLES.getDefault())).withStyle(ChatFormatting.GRAY),
-                        miniatureVehiclesNote))
-                .binding(Config.MINIATURE_VEHICLES.getDefault(), Config.MINIATURE_VEHICLES::get, Config.MINIATURE_VEHICLES::set)
-                .controller(opt -> BooleanControllerBuilder.create(opt).coloured(false)
-                        .formatValue(v -> miniatureRunning.pendingValue() ? coloredOnOff(v) : greyOnOff(false)))
                 .build();
         MutableComponent liveViewNote = Component.empty();
         MutableComponent liveViewName = Component.translatable(KEY + "miniature_live_view");
@@ -250,9 +225,7 @@ public final class ConfigScreen {
         gated.add(new Gated(worldSounds, () -> true));
         // Grisees sans l'autorisation du monde (leurs valeurs sont gardees).
         gated.add(new Gated(outsideMobs, outsideLive::pendingValue));
-        gated.add(new Gated(outsideVehicles, outsideLive::pendingValue));
         gated.add(new Gated(miniatureMobs, miniatureRunning::pendingValue));
-        gated.add(new Gated(miniatureVehicles, miniatureRunning::pendingValue));
         gated.add(new Gated(miniatureLiveView, () -> miniatureRunning.pendingValue()
                 && miniatureMobs.pendingValue() > 0));
         gated.add(new Gated(clouds, () -> true));
@@ -265,15 +238,13 @@ public final class ConfigScreen {
         gated.add(new Gated(subLevels, () -> sablePresent));
         refreshGated(gated, Config.ENABLED.get());
         Runnable dependents = () -> refreshDependents(outsideLive.pendingValue(),
-                worldSoundsNote, mobsNote, vehiclesNote, mobsName, vehiclesName);
+                worldSoundsNote, mobsNote, mobsName);
         dependents.run();
         Runnable miniatureDependents = () -> {
             boolean running = miniatureRunning.pendingValue();
             boolean shown = miniatureMobs.pendingValue() > 0;
             note(miniatureMobsNote, running ? null : optionOff("miniature_live"));
-            note(miniatureVehiclesNote, running ? null : optionOff("miniature_live"));
             strike(miniatureMobsName, !running);
-            strike(miniatureVehiclesName, !running);
             note(liveViewNote, !running ? optionOff("miniature_live") : shown ? null : optionOff("miniature_mobs"));
             strike(liveViewName, !running || !shown);
         };
@@ -283,10 +254,6 @@ public final class ConfigScreen {
             miniatureDependents.run();
         });
         miniatureMobs.addListener((opt, value) -> {
-            refreshGated(gated, master.pendingValue());
-            miniatureDependents.run();
-        });
-        miniatureVehicles.addListener((opt, value) -> {
             refreshGated(gated, master.pendingValue());
             miniatureDependents.run();
         });
@@ -340,7 +307,7 @@ public final class ConfigScreen {
 
         dirty = false;
         for (Option<?> option : List.of(master, lighting, radius, farRadius, biome, weather, sceneryAmbience, sceneryParticles, worldSounds,
-                outsideLive, outsideMobs, outsideVehicles, miniatureMobs, miniatureVehicles, miniatureRunning, miniatureLiveView, clouds, fog, blockUpdates, refresh, ambience, ambientSounds, lunar, subLevels, caveFog, neighbors)) {
+                outsideLive, outsideMobs, miniatureMobs, miniatureRunning, miniatureLiveView, clouds, fog, blockUpdates, refresh, ambience, ambientSounds, lunar, subLevels, caveFog, neighbors)) {
             autoSave(option);
         }
 
@@ -396,14 +363,12 @@ public final class ConfigScreen {
                                 .collapsed(false)
                                 .option(outsideLive)
                                 .option(outsideMobs)
-                                .option(outsideVehicles)
                                 .build())
                         .group(OptionGroup.createBuilder()
                                 .name(Component.translatable(KEY + "group.miniature_entities"))
                                 .collapsed(false)
                                 .option(miniatureRunning)
                                 .option(miniatureMobs)
-                                .option(miniatureVehicles)
                                 .option(miniatureLiveView)
                                 .build())
                         .build())
@@ -485,16 +450,12 @@ public final class ConfigScreen {
      * une seule ligne qui dit quelle option est OFF, comme une integration sans son mod. Rien quand tout est ON.
      */
     private static void refreshDependents(boolean live, MutableComponent worldSoundsNote,
-                                          MutableComponent mobsNote, MutableComponent vehiclesNote,
-                                          MutableComponent mobsName, MutableComponent vehiclesName) {
-        Component liveOff = live ? null : optionOff("outside_live");
-        note(mobsNote, liveOff);
-        note(vehiclesNote, liveOff);
+                                          MutableComponent mobsNote, MutableComponent mobsName) {
+        note(mobsNote, live ? null : optionOff("outside_live"));
         // Les sons du monde restent possibles : seulement ce qui tourne deja pour une autre raison s'entend.
         note(worldSoundsNote, live ? null
                 : Component.translatable(KEY + "world_sounds.live_off", optionName("outside_live")).withStyle(ChatFormatting.YELLOW));
         strike(mobsName, !live);
-        strike(vehiclesName, !live);
     }
 
     /** "Faire vivre le dehors est OFF." */

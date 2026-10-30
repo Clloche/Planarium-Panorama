@@ -167,20 +167,19 @@ public final class MiniatureLiveChecks {
         load(Config.SERVER_SPEC); load(Config.CLIENT_SPEC);
         try {
             require(!Config.MINIATURE_LIVE.get() && Config.MINIATURE_LIVE_VIEW.get() && Config.miniatureLiveMax() == 4, "world OFF, player ON, cap 4 defaults");
-            require(Config.MINIATURE_MOBS.get() == 32 && Config.MINIATURE_VEHICLES.get(), "32 mobs and vehicles enabled by default");
+            require(Config.MINIATURE_MOBS.get() == 32, "32 mobs by default");
             require(!Config.miniatureMobs() && !Config.miniatureVehicles() && !Config.miniatureLiveView(),
                     "world OFF disables all three effective miniature options");
             for (int mask = 0; mask < 16; mask++) for (int limit = 0; limit <= 64; limit += 8) {
                 Config.ENABLED.set((mask & 1) != 0); Config.MINIATURE_MOBS.set(limit);
-                Config.MINIATURE_VEHICLES.set((mask & 2) != 0);
                 Config.MINIATURE_LIVE_VIEW.set((mask & 4) != 0); Config.MINIATURE_LIVE.set((mask & 8) != 0);
                 require(Config.miniatureLiveView() == ((mask & 13) == 13 && limit > 0),
-                        "zero mobs disables direct movement even with vehicles ON");
+                        "zero mobs disables direct movement even with vehicles shown");
                 require(Config.miniatureMobLimit() == ((mask & 9) == 9 ? limit : 0), "master and world gate every mob limit");
-                require(Config.miniatureVehicles() == ((mask & 11) == 11), "vehicles require master and world permission");
+                require(Config.miniatureVehicles() == ((mask & 9) == 9), "vehicles follow master and world permission");
             }
             Config.MINIATURE_LIVE.set(false);
-            require(Config.MINIATURE_MOBS.get() == 64 && Config.MINIATURE_VEHICLES.get() && Config.MINIATURE_LIVE_VIEW.get(),
+            require(Config.MINIATURE_MOBS.get() == 64 && !Config.miniatureVehicles() && Config.MINIATURE_LIVE_VIEW.get(),
                     "world OFF preserves all player choices");
             Config.MINIATURE_LIVE.set(true); Config.MINIATURE_MOBS.set(0);
             require(!Config.miniatureLiveView() && Config.miniatureVehicles() && Config.MINIATURE_LIVE_VIEW.get(),

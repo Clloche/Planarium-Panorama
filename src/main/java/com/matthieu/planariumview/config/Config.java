@@ -36,9 +36,7 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue SCENERY_PARTICLES;
     public static final ModConfigSpec.BooleanValue WORLD_SOUNDS;
     public static final ModConfigSpec.IntValue OUTSIDE_MOBS;
-    public static final ModConfigSpec.BooleanValue OUTSIDE_VEHICLES;
     public static final ModConfigSpec.IntValue MINIATURE_MOBS;
-    public static final ModConfigSpec.BooleanValue MINIATURE_VEHICLES;
     public static final ModConfigSpec.BooleanValue MINIATURE_LIVE_VIEW;
     public static final ModConfigSpec.BooleanValue OUTSIDE_AMBIENCE;
     public static final ModConfigSpec.BooleanValue AMBIENT_SOUNDS;
@@ -84,7 +82,7 @@ public final class Config {
         OUTSIDE_LIVE = server
                 .comment("Lets a Planarium keep the area it shows running while a player watches from the Planarium (the detail radius,",
                         "plus a small margin for mobs): machines, redstone, furnaces and mobs keep working there, as if the player stood there.",
-                        "Needed to see outside mobs and vehicles move, and to hear them. OFF: the area is only kept loaded, without running it;",
+                        "Shows outside boats, rafts and minecarts, and is needed to see outside mobs move and to hear them. OFF: the area is only kept loaded, without running it;",
                         "outside sounds still play for what runs anyway (a player nearby, another mod).",
                         "Turning this OFF never stops an area that is already active for another reason.")
                 .define("keepOutsideRunning", true);
@@ -148,34 +146,23 @@ public final class Config {
         WORLD_SOUNDS = client
                 .comment("Sounds from the outside world around the Planarium (redstone, explosions, jukeboxes...), from their direction",
                         "in the scenery. Sounds directly caused by a player are excluded.",
-                        "While ON, the detail radius around the Planarium keeps running as if you were there (machines, mobs, furnaces).",
-                        "OFF: stops keeping that area active, unless outside mobs or vehicles are ON or a player is there; scenery ambience remains.",
-                        "Mob sounds follow outsideMobs. The area only runs if the world allows it (keepOutsideRunning, server config).")
+                        "Mob sounds follow outsideMobs. The detail radius runs as if you were there (machines, mobs, furnaces) when the",
+                        "world allows it (keepOutsideRunning, server config), whether this option is ON or OFF: outside vehicles need it.")
                 .define("worldSounds", true);
         OUTSIDE_MOBS = client
                 .comment("Maximum mobs shown in the giant scenery. 0 = OFF, including mob sounds.",
                         "Shown mobs keep their places while eligible; the nearest newcomers fill free slots.",
                         "The menu offers steps of 8, from 0 to 64; default 32. Mob sounds are included, even with worldSounds OFF.",
                         "While enabled, the detail radius and a small margin keep running if keepOutsideRunning allows it.",
-                        "At most 64 mobs and vehicles combined can be shown.")
+                        "Boats, rafts and minecarts are shown with keepOutsideRunning, outside this limit; mob passengers need this limit above 0.")
                 .defineInRange("outsideMobs", 32, 0, 64);
-        OUTSIDE_VEHICLES = client
-                .comment("Boats, rafts and minecarts around the Planarium, in the detail radius of the giant scenery.",
-                        "Independent of outsideMobs. Mob passengers are shown when both options are ON.",
-                        "While ON, the detail radius and a small surrounding margin keep running, even with outside world sounds OFF.",
-                        "Up to 64 mobs and vehicles combined. Shown groups keep their places; free slots go to the nearest.")
-                .define("outsideVehicles", true);
         MINIATURE_MOBS = client
                 .comment("Maximum mobs per miniature. 0 = OFF. Menu steps of 8, from 0 to 64; default 32.",
                         "Without live updates, mobs stay at their last known positions with idle animations.",
                         "Shown mobs keep their places and order. New mobs fill free slots one type at a time, starting with the least represented types.",
                         "New mobs are ordered by UUID within each type, then by type ID. Requires keepMiniaturesRunning; 0 also disables live updates.",
-                        "Up to 4 distinct Planarium interiors within 8 blocks. Vehicles have their own setting.")
+                        "Up to 4 distinct Planarium interiors within 8 blocks. Boats, rafts and minecarts are shown with keepMiniaturesRunning, outside this limit.")
                 .defineInRange("miniatureMobs", 32, 0, 64);
-        MINIATURE_VEHICLES = client
-                .comment("Boats, rafts and minecarts in miniatures, up to 64 per Planarium.",
-                        "Independent of the mob limit. Requires keepMiniaturesRunning. Live movement also requires miniatureMobs above 0.")
-                .define("miniatureVehicles", true);
         MINIATURE_LIVE_VIEW = client
                 .comment("Live miniature: the nearest miniature you look at (within 8 blocks) shows its mobs really moving.",
                         "Copies of the same Planarium share its live view. Requires keepMiniaturesRunning and miniatureMobs above 0.")
@@ -319,8 +306,9 @@ public final class Config {
         return enabled() && outsideLive() ? OUTSIDE_MOBS.get() : 0;
     }
 
+    /** Bateaux, radeaux et wagonnets du dehors : font partie de "Faire vivre le dehors". */
     public static boolean outsideVehicles() {
-        return enabled() && OUTSIDE_VEHICLES.get() && outsideLive();
+        return enabled() && outsideLive();
     }
 
     /** Mobs dans la miniature du Planarium (voir MiniEntities). */
@@ -332,8 +320,9 @@ public final class Config {
         return enabled() && miniatureLive() ? MINIATURE_MOBS.get() : 0;
     }
 
+    /** Bateaux, radeaux et wagonnets des miniatures : font partie de "Faire vivre les miniatures". */
     public static boolean miniatureVehicles() {
-        return enabled() && miniatureLive() && MINIATURE_VEHICLES.get();
+        return enabled() && miniatureLive();
     }
 
     public static boolean miniatureEntities() {

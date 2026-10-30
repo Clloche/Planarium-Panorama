@@ -1,75 +1,44 @@
 # Maintenance — Planarium Panorama
 
 Document de développement, pas pour les joueurs (le README reste centré sur les fonctionnalités).
-Il liste, pour chaque intégration : la version testée, ce qui dépend de détails internes d'un autre mod,
-comment ça casse si ce mod change, et les tests à refaire après une mise à jour.
+Il liste, pour chaque intégration, ce qui dépend de détails internes d'un autre mod, comment ça casse si ce mod
+change, et les tests à refaire après une mise à jour.
 
-Révision du **2026-10-23**, pour l'état du code **1.6.1-dev**, y compris le correctif du portable engine.
-La précédente modification du document (`0db1153`, 2026-10-22) couvrait surtout l'immersion et le ciel incliné.
-Cette révision reprend aussi les changements depuis la 1.5 : brouillard, découpe, Planariums voisins,
-optimisations de la 1.6, contraptions assemblées et rafraîchissement des structures en mouvement.
+État du code : **1.8-dev** (Minecraft 1.21.1, NeoForge 21.1.228).
 
-## Versions testées et références retrouvées
+## Versions de référence
 
-Relevé actualisé le 2026-10-23, à partir du README, des JAR locaux et des journaux conservés.
-Une version chargée dans un journal confirme la présence du mod, pas la validation de toutes ses fonctions.
-Les références historiques et les JAR désactivés restent identifiés séparément ; aucun nouveau test en jeu
-n'a été effectué pour rédiger cette mise à jour.
-La date ci-dessous est celle de la source ou du relevé du JAR ; « — » signifie que la date du test n'est pas conservée.
+Dernières versions connues pour fonctionner. Relever la version réellement chargée dans le log, pas seulement le
+nom du JAR, et mettre ce tableau à jour après chaque test.
 
-| Mod | Version de référence | Source / état | Date de la source |
-|---|---|---|---|
-| Minecraft / NeoForge | 1.21.1 / 21.1.228 | Chargés dans la session locale du 23 | 2026-10-23 |
-| Ars Nouveau | 5.13.3 | Chargé dans la session locale du 23 | 2026-10-23 |
-| Sable | 2.0.6 | Chargé le 23 ; référence antérieure : 2.0.4 le 21 | 2026-10-23 |
-| Sable Companion | 1.6.0 | Chargé le 23 ; dépendance embarquée de Sable | 2026-10-23 |
-| Ars Sable | 1.2.0 | Chargé dans la session locale du 23 | 2026-10-23 |
-| Create | 6.0.10 | Chargé dans la session locale du 23 | 2026-10-23 |
-| Flywheel | 1.0.6 | Chargé le 23 ; dépendance embarquée de Create | 2026-10-23 |
-| Create Aeronautics / Simulated / Offroad | 1.3.2 | Chargés le 23 depuis le bundle Aeronautics | 2026-10-23 |
-| Contraption Lights | 1.5.2 ; ancienne référence : 1.5.4 | 1.5.2 chargé le 23 ; 1.5.4 dans le log du 17 | 2026-10-23 / 2026-10-17 |
-| Contraption Lights Compat / Fixes | 2.4.0 / 1.5.0 | Présents dans le pack du 23 ; à conserver dans le contexte d'un rapport de rendu | 2026-10-23 |
-| Dynamic Surroundings | 0.4.6 | Chargé dans la session locale du 23 | 2026-10-23 |
-| Enhanced Celestials 2 (Core) | 2.0.3.3 | Chargé dans la session locale du 23 | 2026-10-23 |
-| Enhanced Celestials 2 (Default Lunar Events) | 2.0.1.3 | Chargé dans la session locale du 23 | 2026-10-23 |
-| Puddles & Floods | 1.1.6 | Chargé dans la session locale du 23 | 2026-10-23 |
-| YetAnotherConfigLib | 3.8.2 | Chargé dans la session locale du 23 | 2026-10-23 |
-| Better Clouds | 1.13.11 | Chargé dans la session locale du 23 | 2026-10-23 |
-| AmbientSounds | 6.3.10 | JAR local désactivé (`.jar.disabled`), absent de la liste des mods chargés le 23 | 2026-10-23 |
-| Falling Leaves | 2.6.0 | README et JAR de test ; ancien log : 2.5.1 | — |
-| Snow! Real Magic | 12.2.3+neoforge | Version chargée dans un ancien log | 2026-10-17 |
-| Serene Seasons | 10.1.0.3 | Version testée indiquée dans le README | — |
-| Alex's Caves | 2.0.2 | Liste des mods d'un ancien rapport de plantage | 2026-10-15 |
-| Distant Horizons | 3.3.3 | Version testée indiquée dans le README | — |
-| Traveler's Titles | 5.1.3 | Version testée indiquée dans le README | — |
-| Voxy (NeoVoxy) | 0.5.0-alpha.12 | Référence du README et des sessions du 21 ; absent de la liste chargée le 23 | 2026-10-21 |
-| Simple Clouds | Non relevée | Aucun JAR ni numéro de version retrouvé dans les sources consultées | — |
-| Windy: Configurable | 1.2.1 | README ; ancien log : 1.2.0 | — |
-| Swinging Lanterns | 2.0.4 | Version testée indiquée dans le README | — |
-| Sodium | 0.8.13 | Chargé dans la session locale du 23 | 2026-10-23 |
-| Jaden's Nether Expansion | 2.4.1 | Version testée indiquée dans le README | — |
-| AmbientEnvironment | 18.0.0.2 | Chargé le 23 ; correctif des raccords de teinte en vol dans `73ac734` | 2026-10-23 |
-| Lithium | 0.15.4 | Chargé le 23 ; utile pour reproduire les collisions des fumées | 2026-10-23 |
-
-Sources locales utilisées : `README.md`, `run/mods`, les métadonnées des dépendances embarquées,
-`run/logs/latest.log`, `build/sublevel-repro/logs/latest.log`, `run/logs/2026-10-17-12.log.gz`
-et `run/crash-reports/crash-2026-10-15_14.20.22-client.txt`.
-Les chemins dans `run` et `build` servent de provenance locale et peuvent disparaître lors d'un nettoyage.
-Pour une prochaine mise à jour, relever la version effectivement chargée dans le log en plus du nom du JAR.
-Le journal du 23 utilisé ici est celui du lancement à 14:54, avec Planarium Panorama `1.6.1-dev+1b09dde`.
-Le dépôt source fourni pour Aeronautics (`Simulated-Project-main(1).zip`) a aussi servi à vérifier le portable engine ;
-ses méthodes ont été recoupées avec le JAR Simulated 1.3.2 embarqué. Cette archive externe n'est pas une dépendance du projet.
-
-## Repères des changements à maintenir
-
-| Période | Changements et références Git |
+| Mod | Version |
 |---|---|
-| 1.5 / 1.5.1 | Immersion et ciel incliné (`0db1153`), brouillard liquide DS (`bb28d36`), miniature partagée (`bc2f6a1`), copie CPU pour la découpe (`f4b250e`), raccords des sommets (`78b7ed4`) |
-| Préparation de la 1.6 | Rayon détaillé cylindrique (`16ed068`), Planariums voisins (`8024021`, `03fbb88`, `8b7d690`) |
-| 1.6 | Culling du décor et du vol (`2eea05b`, `aef8061`), préparation asynchrone de l'anneau (`9553608`), cache de lumière Minecraft (`184bde2`), compatibilité Contraption Lights automatique (`b926b63`) ; version publiée dans `7497ec1` |
-| 1.6.1-dev | Allègement des couleurs en vol et brouillard des block entities (`4e748d4`), contraptions assemblées et pivot partagé des voiles (`570e9dd`), captures des structures après stabilisation (`1b09dde`), correctif d'animation et de particules du portable engine |
-
-Ces références servent à retrouver les décisions techniques. Elles ne constituent pas un relevé de tests en jeu.
+| Ars Nouveau | 5.13.3 |
+| Sable / Sable Companion | 2.0.6 / 1.6.0 |
+| Ars Sable | 1.2.0 |
+| Create / Flywheel | 6.0.10 / 1.0.6 |
+| Create Aeronautics / Simulated / Offroad | 1.3.2 |
+| Contraption Lights (+ Compat 2.4.0, Fixes 1.5.0) | 1.5.2 |
+| Dynamic Surroundings | 0.4.6 et 0.4.7 |
+| Enhanced Celestials 2 (Core / Default Lunar Events) | 2.0.3.3 / 2.0.1.3 |
+| Puddles & Floods | 1.1.6 |
+| YetAnotherConfigLib | 3.8.2 |
+| Better Clouds | 1.13.11 |
+| Sodium | 0.8.13 |
+| AmbientEnvironment | 18.0.0.2 |
+| Lithium | 0.15.4 |
+| AmbientSounds | 6.3.10 (pas retesté récemment) |
+| Falling Leaves | 2.6.0 |
+| Snow! Real Magic | 12.2.3 |
+| Serene Seasons | 10.1.0.3 |
+| Alex's Caves | 2.0.2 |
+| Distant Horizons | 3.3.3 |
+| Traveler's Titles | 5.1.3 |
+| Voxy (NeoVoxy) | 0.5.0-alpha.12 |
+| Windy: Configurable | 1.2.1 |
+| Swinging Lanterns | 2.0.4 |
+| Jaden's Nether Expansion | 2.4.1 |
+| Simple Clouds | non relevée |
 
 ## Comment une intégration peut casser
 
@@ -78,18 +47,33 @@ Quatre cas, du plus visible au plus dangereux :
 1. **Plantage au démarrage** : mixin obligatoire dont la cible a disparu. Message clair, facile à voir.
 2. **Désactivation avec avertissement** : la réflexion échoue, un avertissement est écrit une fois dans le log.
 3. **Désactivation silencieuse** : mixin en `require = 0` qui ne s'applique plus, ou réflexion qui échoue sans log
-   (ou seulement en DEBUG). La fonction disparaît sans signe : seul un test en jeu la révèle.
+   (ou seulement en DEBUG). Le bilan des mixins couvre les mixins ; la réflexion demande encore un test en jeu.
 4. **Écriture en mémoire native** (Flywheel) : un mauvais calcul n'est pas une exception récupérable.
    Affichage corrompu ou plantage possible.
+
+### Bilan des mixins
+
+Package `diagnostics` : `PlanariumMixinPlugin` fait l'inventaire des crochets en lisant nos mixins avant le chargement
+des cibles ; `MixinHealthExtension` vérifie chaque classe finale (après MixinExtras) ; `MixinHealthReport` écrit
+au premier monde ouvert une ligne par mod :
+
+```
+[Planarium Panorama] Mixins <mod> <version> : <ok>/<attendus> verifies
+```
+
+- Une ligne en WARN avec « inactifs : … » nomme les crochets qui ne s'appliquent plus.
+- « pas encore charges » : la cible n'a pas encore été chargée (normal pour certaines classes), ce n'est pas un échec.
+- `@ExpectIn` limite un crochet multi-cibles à certaines cibles ; `@Alternative` groupe les variantes d'un même
+  crochet selon la version d'un mod (une seule doit s'appliquer).
+- `-Dplanariumview.strictMixins=true` (développement) : un échec confirmé arrête le jeu.
+- Nouveau mixin : vérifier qu'il apparaît dans le bilan, et ajouter `@ExpectIn` / `@Alternative` au besoin plutôt
+  que de laisser un faux échec.
 
 ### Avertissements : règles
 
 - Avertir seulement quand **le mod est installé mais incompatible**. Un mod absent ou une intégration désactivée
   volontairement (option sur OFF) ne doit rien écrire.
-- Un `catch` ne détecte pas une injection de mixin qui ne s'applique plus. Pour ces cas, un indicateur mis à vrai la
-  première fois que l'injection s'exécute peut aider, **mais un indicateur encore à faux ne prouve rien** : il faut aussi
-  savoir que l'action censée déclencher l'injection a eu lieu. Sinon : avertissements injustifiés au démarrage.
-  (Exemple : vérifier un crochet de couleur après avoir effectivement demandé un calcul de couleur.)
+- Les diagnostics détaillés vont en `LOGGER.debug`.
 
 ## Par intégration
 
@@ -99,25 +83,26 @@ Dépend de :
 
 - Mixins sur des classes internes : `PlanariumRenderer`, `PlanariumRenderer.StructureRenderData`,
   `PlanariumRenderingWorld`, `PlanariumProjectorRenderer`, `PlanariumTile`, `DimBoundary`.
-- Beaucoup d'injections sont en `require = 0`. Certaines sont obligatoires, notamment
-  `PlanariumTileSubLevelMixin` et celles sur `tickRateManager` et les deux surcharges de `getEntities` dans
-  `PlanariumRenderingWorldMixin`.
-  Une mise à jour peut donc **planter** (injections obligatoires) **ou désactiver en silence** (les autres).
-- Constantes recopiées à la main dans `ClientView` : `PAD`, `ARS_SCALE`, `ARS_OFFSET`, `GIANT`, `Y_SHIFT = 25`
-  (échelle et position du rendu d'Ars). Si Ars les change, rien ne plante : le décor est seulement décalé.
+  Certaines injections sont obligatoires (`PlanariumTileSubLevelMixin`, `tickRateManager`, les deux surcharges de
+  `getEntities` dans `PlanariumRenderingWorldMixin`) : une mise à jour peut **planter** ou **désactiver en silence**.
+- Constantes recopiées à la main dans `ClientView` : `PAD`, `ARS_SCALE`, `ARS_OFFSET`, `GIANT`, `Y_SHIFT = 25`.
+  Si Ars les change, rien ne plante : le décor est seulement décalé.
 - Format de la dimension de poche (bocal de 32 × 32, parois `ars_nouveau:dim_boundary`, `PlanariumChunkGenerator.innerBox`).
-- Contrat du faux monde : les recherches d'entités doivent renvoyer une liste vide, pas `null`.
-  Le portable engine appelle `getEntitiesOfClass(Player.class, ...)` pour sa trappe ; avec Ars 5.13.3,
-  les deux surcharges de `getEntities` renvoient `null`. Le mixin corrige ces retours dans les copies.
-  Ne pas les rediriger vers les joueurs du vrai monde : les positions appartiennent au repère de la copie.
+- Contrat du faux monde : les recherches d'entités doivent renvoyer une liste vide, pas `null` (Ars 5.13.3 renvoie
+  `null` ; le mixin corrige ces retours dans les copies). Ne pas les rediriger vers le vrai monde : les positions
+  appartiennent au repère de la copie.
+- `ArsParticles` : effets des block entities d'Ars (lumières, appliques, Whirlisprig, chambre d'imprégnation) dans
+  la miniature et le décor détaillé, capturés une fois puis rejoués.
+- `ProjectorLighting` : remplace le `MultiBufferSource` de `PlanariumProjectorRenderer` (modèle cutout) pour éclairer
+  parois et plancher bloc par bloc. Suppose un seul projecteur dessiné par image.
 
 Tests :
 
 - Décor géant aligné contre les parois et sous le plancher (pas de trou ni de chevauchement au bord).
 - Miniature : lumière réelle (pas 15 partout), ombrage des coins normal, parois en verre complètes.
-- Parois et plancher de l'intérieur éclairés (`ProjectorLighting`), plateau de la miniature éclairé par un feu dans le bocal.
+- Parois et plancher de l'intérieur éclairés, plateau de la miniature éclairé par un feu dans le bocal.
 - Planarium sur un vaisseau Sable : le bocal trouve son Planarium.
-- Plusieurs Planariums vers le même bocal : pas de reconstruction de la miniature chaque seconde en alternant les vues.
+- Plusieurs Planariums vers le même bocal : pas de reconstruction de la miniature chaque seconde.
 
 ### Sable / Sable Companion
 
@@ -135,37 +120,31 @@ dimension). Vérifier à chaque version s'il est encore nécessaire ; sans dange
 
 Captures et protocole (`SubLevelServer`, `SubLevelView`, `SubLevelPayload`) :
 
-- Géométrie et poses voyagent séparément. Les poses sont envoyées toutes les 2 ticks ; le client les interpole sur
-  100 ms. Les matrices restent en double précision (`SubLevelTransforms`) pour les plots éloignés de Sable.
-- Le déplacement seul ne marque plus les sections comme modifiées. Après 20 ticks de stabilité, leur lumière est
-  reprise si leur pose a changé depuis la capture. Les vrais changements de blocs et le rafraîchissement de secours
-  restent pris en compte selon `blockUpdateSeconds` et `refreshSeconds` : ce n'est pas un arrêt général des mises à jour.
-- Les recaptures différées partagent un budget de 2 ms par appel ; au moins une est autorisée, les sections nouvelles
-  passent immédiatement. Ce budget n'est donc pas une limite stricte pour une première capture importante.
-- La liste des sections visibles précède les paquets de géométrie pour libérer les anciennes sections côté client.
-  Conserver les renvois après connexion/changement de dimension et la limite commune de 256 sections par scène.
-- Paquets NBT compressés : 1 000 000 octets maximum sur le réseau, limite de lecture décompressée de 32 Mio.
-  Les champs facultatifs de pose doivent garder un repli pour les clients qui ne les interprètent pas.
+- Géométrie et poses voyagent séparément. Poses toutes les 2 ticks, interpolées sur 100 ms côté client. Matrices en
+  double précision (`SubLevelTransforms`) pour les plots éloignés.
+- Le déplacement seul ne marque pas les sections comme modifiées. Après 20 ticks de stabilité, leur lumière est
+  reprise si leur pose a changé. Les vrais changements de blocs suivent `blockUpdateSeconds` et `refreshSeconds`.
+- Recaptures différées : budget partagé de 2 ms par appel, au moins une autorisée ; les sections nouvelles passent
+  immédiatement.
+- La liste des sections visibles précède les paquets de géométrie. Garder les renvois après connexion/changement de
+  dimension et la limite de 256 sections par scène.
+- Paquets NBT compressés : 1 000 000 octets maximum sur le réseau, 32 Mio décompressés. Les champs facultatifs de
+  pose (dont `fluids`) doivent garder un repli.
+- `SubLevelView.rainShelter` : les blocs des structures abritent de la pluie dans `WeatherView`.
+- Les particules du décor (`SceneryHooks.sceneryFrame`, `FramedParticle`) suivent le repère incliné de la structure.
 
 Tests :
 
 - Vaisseau visible dans le décor géant et la miniature, qui bouge et tourne (90°, 180°, 45°).
-- Planarium incliné : soleil, lune, étoiles et nuages alignés avec le décor (lacet, tangage et roulis).
-- Planarium immergé par le mouvement du vaisseau : brouillard d'eau ou de lave, ambiance sous-marine dans l'eau,
-  puis retour à l'air en ressortant. Le joueur reste physiquement au sec dans le bocal. Les effets des liquides
-  personnalisés ne sont pas encore pris en charge ; le petit échantillon de fluides voyage dans le champ NBT
-  facultatif `fluids` des poses Sable, y compris quand les copies de structures sont désactivées.
-- Découpe du décor contre le volume intérieur du bocal (`ClippedVertexBuffer`, `JarClip`) : liquide traversant
-  une paroi avec un roulis de 70°, puis tangage et déplacement. Les faces extérieures et leurs UV doivent rester
-  intactes ; le sol du bocal reste visible. Vérifier aussi le passage au décor en vol et le retour à la photo normale.
-  Cette découpe concerne les maillages du décor, pas les rendus spéciaux de block entities (volant d'Aeronautics).
-- Planarium sur un vaisseau : déplacement (décor en vol), arrêt (photo normale puis anneau lointain 5 s plus tard).
-- Sortie du bocal pendant que le vaisseau bouge, puis retour.
-- Déconnexion à l'intérieur du bocal sur un vaisseau, puis reconnexion : le vaisseau et la vue reviennent.
-- Vaisseau à l'intérieur du bocal : éclairé comme le bocal (`SubLevelLight`), pas comme son plot.
-- Déplacement prolongé avec beaucoup de sections : pas de recapture complète à chaque changement de pose,
-  ni saccade périodique accompagnée d'une coupure des sons. À l'arrêt, la lumière doit finir par se mettre à jour.
-- Modifier réellement un bloc du vaisseau ; comparer les options de mise à jour et de secours sur ON puis OFF.
+- Planarium incliné : soleil, lune, étoiles et nuages alignés avec le décor (lacet, tangage, roulis).
+- Planarium immergé par le mouvement du vaisseau : brouillard d'eau ou de lave, ambiance sous-marine, retour à l'air.
+- Découpe du décor contre le bocal (`ClippedVertexBuffer`, `JarClip`) : liquide traversant une paroi avec un roulis
+  de 70°, puis tangage et déplacement ; passage au décor en vol et retour.
+- Déplacement (décor en vol), arrêt (photo normale puis anneau 5 s plus tard), sortie pendant le mouvement, puis
+  déconnexion/reconnexion à l'intérieur.
+- Vaisseau à l'intérieur du bocal : éclairé comme le bocal (`SubLevelLight`).
+- Déplacement prolongé : pas de recapture complète à chaque pose, ni saccade avec coupure des sons.
+- Pluie : pas de pluie sous un toit du vaisseau ; particules de blocs inclinées avec le vaisseau.
 - Block entities du vaisseau (moteur, volant, hélice) : même brouillard que les blocs voisins, y compris sous l'eau.
 
 ### Ars Sable
@@ -176,37 +155,20 @@ Tests : les mêmes reconnexions que Sable.
 
 ### Planariums voisins (Ars Nouveau)
 
-Implémentation : `NeighborPocketsServer`, `NeighborPocketsPayload`, `NeighborPrefsPayload`, `NeighborPockets`
-et `NeighborPlanariumModel`. Dépend de `PlanariumTile.key`, du format des poches, du modèle du Planarium et des
-captures de blocs/lumière de `VisibleCapture`. C'est une photo visuelle figée de la poche voisine, sans simulation
-ni animation de ses machines.
+`NeighborPocketsServer`, `NeighborPocketsPayload`, `NeighborPrefsPayload`, `NeighborPockets`, `NeighborPlanariumModel`.
+Photo figée de la poche voisine (pas de simulation). Dépend de `PlanariumTile.key`, du format des poches, du modèle
+du Planarium et de `VisibleCapture`.
 
-- Recherche dans le cylindre du rayon détaillé, tri par proximité, au plus 10 voisins. Option client
-  `neighborPlanariums` : 4 par défaut, 0 = OFF ; la préférence est transmise au serveur pour limiter aussi la capture.
-- Photos en cache par dimension de poche ; les changements de blocs invalident ce cache pour les prochaines captures.
-  Le cache serveur conserve au plus 64 photos, dans l'ordre des accès : une lecture avec `CACHE.get()` conserve
-  une poche parmi les plus récemment utilisées, et la moins récemment utilisée est évincée à la 65e insertion.
-  Ne pas promettre une mise à jour en direct d'une photo déjà affichée pendant la visite.
-- Sur Sable, la recherche se fait autour de la position du bloc dans son plot : elle concerne les Planariums de
-  cette même structure. Au sol, elle concerne ceux du sol.
-- Les parois partagées avec les voisins affichés sont masquées. Le modèle du Planarium géant doit suivre les mêmes
-  ouvertures ; son plancher et son verre utilisent la lumière de la poche correspondante.
-- Le ciel de la poche est combiné avec le plus fort niveau de ciel des six cases autour de son Planarium, lu dans
-  le décor reçu. La lumière des lampes extérieures est aussi interpolée entre les dix faces et le centre avec
-  `JarLight.computeTable`, puis combinée au maximum avec la lumière des blocs de la photo, dans les coordonnées
-  de la poche. Le ciel et la table sont relus chaque seconde ; si l'un change, les sections sont reconstruites dans
-  le budget habituel. Leurs listes de blocs sont conservées pour cela, et les anciens buffers restent affichés
-  jusqu'à leur remplacement, puis sont fermés. La photo des blocs de la poche reste figée.
-  Les dix mesures des faces et celle du centre sont comparées avant tout recalcul de `JarLight.computeTable` :
-  à éclairage identique, la table existante est conservée. Un changement de ciel seul ne recalcule pas cette table.
+- Cylindre du rayon détaillé, tri par proximité, au plus 10 voisins (option client, 4 par défaut, transmise au serveur).
+- Cache serveur LRU de 64 photos par dimension de poche, invalidé par les changements de blocs. Pas de mise à jour
+  en direct d'une photo déjà affichée.
+- Sur Sable, la recherche concerne les Planariums de la même structure.
+- Parois partagées masquées ; ciel et lumière extérieure relus chaque seconde, la table `JarLight.computeTable`
+  n'est recalculée que si les mesures changent. Les anciens buffers restent affichés jusqu'au remplacement.
 
-Tests : deux bocaux adjacents puis en diagonale, voisins à des hauteurs différentes, torche dans une poche,
-options 0/1/4/10 pendant la visite, plusieurs joueurs avec des limites différentes, sortie/rentrée après modification.
-Vérifier l'absence de verre noir, de mur opaque entre bocaux adjacents et de doublon de coque.
-Ouvrir puis fermer un plafond au-dessus d'un voisin : après réception du nouvel éclairage du décor, son intérieur
-doit suivre sans disparaître pendant la reconstruction des sections.
-Poser puis retirer une lampe à côté du Planarium voisin : son intérieur doit suivre la lumière extérieure reçue,
-tout en conservant celle des lampes placées dans sa poche.
+Tests : bocaux adjacents et en diagonale, hauteurs différentes, torche dans une poche, options 0/1/4/10 pendant la
+visite, plusieurs joueurs. Pas de verre noir, de mur opaque entre bocaux adjacents ni de doublon de coque.
+Plafond ouvert puis fermé au-dessus d'un voisin, lampe posée puis retirée à côté.
 
 ### Flywheel (risque le plus grave)
 
@@ -215,155 +177,82 @@ section, blocs dans les 4 bits bas, ciel dans les 4 hauts, après le bloc des bl
 `FwLightDataCollectorMixin` → `FlywheelCompat.boostSection` qui écrit directement en mémoire (`MemoryUtil`).
 Aussi : `VisualizationManager.get/blockEntities`, `queueRemove/queueAdd`, `onLightUpdate`.
 
-Casse : si le format change, l'écriture tombe au mauvais endroit. **Pas d'exception récupérable** : affichage corrompu
-ou plantage. Vérifier la version de Flywheel ou certaines tailles avant d'écrire réduirait le risque, mais ne remplace
-pas le test.
+Casse : si le format change, l'écriture tombe au mauvais endroit. **Pas d'exception récupérable.**
 
 À faire : vérifier `missing` au début de `boostSection` ; noter ici la version dont le format a été vérifié.
 
-Tests (obligatoires à chaque mise à jour de Flywheel ou de Create) :
-- Coffre, lit, engrenage de Create dans le bocal près d'une torche et près d'une paroi éclairée : même lumière que les
-  blocs autour, et change quand la lumière du dehors change (jour/nuit).
+Tests (obligatoires à chaque mise à jour de Flywheel ou de Create) : coffre, lit, engrenage dans le bocal près
+d'une torche et d'une paroi éclairée ; même lumière que les blocs autour, qui suit le jour/nuit.
 
 ### Create
 
 Dépend de : `SmartBlockEntity.markVirtual()` et `tick()` (mode virtuel de Ponder) dans `CreateCopies` ;
-`SoundScapes` (`CreateSoundScapesMixin`). Le mode virtuel a déjà surpris une fois (sifflets alimentés sans redstone).
-Tests : machines animées dans le décor et la miniature, sons des machines, sifflet non alimenté silencieux.
+`SoundScapes` (`CreateSoundScapesMixin`). Le mode virtuel a déjà surpris (sifflets alimentés sans redstone).
 
-Les copies restent virtuelles et attachées au faux monde. Ne jamais réattacher ni faire tourner la block entity
-réelle. L'animation doit continuer si les sons ou les particules sont désactivés ; `CopyParticles` s'occupe des
-effets visuels, `MachineSounds` des sons. Les particules des copies suivent leur repère et leur échelle via
-`FramedParticle`, et les émetteurs sont oubliés quand la copie n'est plus affichée.
+Les copies restent virtuelles et attachées au faux monde : ne jamais réattacher ni faire tourner la block entity
+réelle. `CopyParticles` s'occupe des effets, `MachineSounds` des sons ; l'animation continue sans eux.
 
-#### Contraptions assemblées sur Sable
+Contraptions assemblées sur Sable (`ContraptionCapture`, réflexion sur `AbstractContraptionEntity.getContraption()`,
+`Contraption.getBlocks()`, `toGlobalVector`) :
 
-`ContraptionCapture` lit par réflexion `AbstractContraptionEntity.getContraption()`, `Contraption.getBlocks()`
-et `AbstractContraptionEntity.toGlobalVector(Vec3, float)`. Après assemblage, ces blocs sont dans une entité Create,
-plus dans les chunks du plot : capturer uniquement le plot fait disparaître hélices, voiles et autres mécanismes.
+- Sections capturées dans le repère local de la contraption ; une signature des états/NBT déclenche la recapture.
+- Origines factices réservées par contraption (`y = -1 000 000`, marge de 64 blocs en x) : les garder distinctes.
+- Champs `group`, `group_pose`, `local` : une seule rotation interpolée par contraption. Revenir à une interpolation
+  par section refait apparaître le « wobble » des voiles.
+- Les tests de proximité `origin` et `worldBounds` de `SubLevelServer.dirty()` sont indépendants (les sections de
+  contraption ont `origin = null`).
+- Casse : `Unsupported Create API; contraptions on sub-levels are not shown`.
 
-- Les sections sont capturées dans le repère local de la contraption. Une signature des états/NBT déclenche une
-  nouvelle capture si les blocs changent ; tourner ou se déplacer ne suffit pas à reconstruire leur géométrie.
-- Chaque contraption réserve ses propres origines factices (`y = -1 000 000`, intervalle en x avec marge de 64 blocs).
-  Garder ces espaces distincts : sinon les tables de voisinage et de lumière confondent des mécanismes différents.
-- Les champs NBT `group`, `group_pose` et `local` relient les sections au même pivot, centré au milieu du bloc
-  d'ancrage. Le client interpole une seule rotation puis applique les positions locales. Revenir à une interpolation
-  indépendante des coins fait réapparaître le « wobble » : les sections des voiles se séparent pendant la rotation.
-  Le champ `pose` reste envoyé pour le repli.
-- Casse : avertissement `Unsupported Create API; contraptions on sub-levels are not shown` si les signatures
-  changent ; une contraption individuelle peut aussi être ignorée avec seulement une trace DEBUG.
-
-Tests : assemblage/désassemblage d'une hélice, voile traversant plusieurs sections de 16 blocs, plusieurs mécanismes
-côte à côte, rotation du mécanisme pendant le déplacement et l'inclinaison du vaisseau, modification d'un bloc
-assemblé, sortie/rentrée et reconnexion. Vérifier le décor géant et la miniature, les raccords et la lumière.
-
-**Correctif appliqué — invalidation de la lumière des contraptions (régression de `f0b8f8f`, 2026-10-23).**
-Les sections de contraptions gardent `Part.origin = null`, mais `SubLevelServer.dirty()` conditionnait aussi
-le test de `worldBounds` à `origin != null`. Les changements à proximité ne les marquaient donc plus comme
-modifiées et leur éclairage pouvait rester ancien jusqu'au rafraîchissement de secours.
-Les tests de proximité dans le plot (`origin`) et dans le monde physique (`worldBounds`) sont maintenant
-indépendants, chacun avec sa propre vérification de nullité.
-
-Test à effectuer : garder une contraption assemblée immobile, activer les mises à jour de blocs et désactiver le
-rafraîchissement de secours, puis poser et retirer une source lumineuse près de ses limites physiques. Sa copie
-doit changer d'éclairage après le délai de mise à jour des blocs, sans sortir du bocal ni réassembler le mécanisme.
-Correctif identifié par lecture du code ; validation en jeu encore à faire.
+Tests : machines animées et leurs sons dans le décor et la miniature, sifflet non alimenté silencieux ;
+hélice assemblée/désassemblée, voile sur plusieurs sections pendant rotation et inclinaison, bloc assemblé modifié,
+lampe posée près d'une contraption immobile (sa lumière doit suivre sans réassembler).
 
 ### Create Aeronautics / Simulated
 
-Dépend de : noms de classes (`HotAirBurnerBlockEntity`, `BasePropellerBlockEntity`, `SmartPropellerBlockEntity`),
-champ public `prop`, méthodes `isActive()`, `spawnParticles()` (`CopyParticles`), son du brûleur (`MachineSounds`).
-Le brûleur a aussi des crochets de capacité, signal, intensité et sortie de gaz, et utilise
-`HotAirEmberParticleData(boolean)`. Son rendu immédiat change l'état OpenGL : `CreateCopies.render` restaure
-le shader, le test de profondeur et le culling après son rendu.
-Casse : avertissements `Burner preview particles unavailable`, `Propeller preview particles unavailable`,
-ou désactivation/silence selon le crochet concerné.
-Tests : brûleur (flamme, son), hélices (rotation, particules) dans les copies.
+Dépend de : `HotAirBurnerBlockEntity`, `BasePropellerBlockEntity`, `SmartPropellerBlockEntity`, champ `prop`,
+`isActive()`, `spawnParticles()`, son du brûleur, `HotAirEmberParticleData(boolean)`. Le rendu immédiat du brûleur
+change l'état OpenGL : `CreateCopies.render` restaure shader, profondeur et culling.
 
-Portable engine (Simulated 1.3.2) :
+Portable engine (`PortableEngineBlockEntity`) : son `tick()` client anime `visualSpeed`, `visualStrength` et la
+trappe (état lu dans `BurnTime`, `GeneratedSpeed`, `SuperHeated`). En mode virtuel, `spawnParticles()` est appelé
+par `CopyParticles` si `getCurrentBurnTime() > 0`. La copie ne consomme pas de carburant.
 
-- Classe `dev.simulated_team.simulated.content.blocks.portable_engine.PortableEngineBlockEntity` ; son `tick()`
-  client anime `visualSpeed`, `visualStrength` et la trappe. L'état provient notamment de `BurnTime`,
-  `GeneratedSpeed` et `SuperHeated` dans le NBT capturé.
-- Le journal du 23 a montré une `NullPointerException` dans `updateHatchTime` : `players` était nul. `CreateCopies`
-  désactivait ensuite les animations de cette classe (`Create preview animation skipped`). Le correctif des
-  recherches d'entités de `PlanariumRenderingWorldMixin` permet au tick virtuel de continuer.
-- Le tick natif ignore `spawnParticles()` en mode virtuel. `CopyParticles` appelle cette méthode une fois par tick
-  d'émetteur visible si `getCurrentBurnTime() > 0` : mêmes sorties, fréquences et variantes de flammes que le mod.
-  On garde le mode virtuel ; la copie ne doit ni consommer du carburant ni simuler le réseau mécanique.
-- Casse : `Portable engine preview particles unavailable` si ces méthodes changent. Une erreur du tick peut de
-  nouveau arrêter toute l'animation de la classe. La trappe n'a pas de joueur local à détecter dans la copie.
-
-Tests à refaire après le correctif : moteur éteint/allumé/surchauffé dans le décor et la miniature ; pulsation et
-chauffe des tuyaux, fumée aux deux sorties, arrêt de la fumée moteur éteint, effets placés et redimensionnés avec le
-vaisseau en mouvement. Désactiver les particules puis les sons séparément : l'animation doit rester active.
-Vérifier que les deux avertissements précédents n'apparaissent plus. La compilation du correctif a réussi le 23 ;
-la validation visuelle complète reste à consigner.
+Casse : `Burner / Propeller / Portable engine preview particles unavailable`, ou `Create preview animation skipped`.
+Tests : brûleur (flamme, son), hélices, moteur éteint/allumé/surchauffé dans le décor et la miniature, avec particules
+puis sons désactivés séparément (l'animation doit rester).
 
 ### Contraption Lights
 
-Dépend de : `ColorLightEngine.colorSection(Scratch, BlockAndTintGetter, int, int, int, boolean)` (signature exacte,
-`ClColorSectionMixin`), `ColorLightEngine.invalidate`, `clear`, `ColorLightFeature.tag`, `tagBaked`, `baking`
-et du format des couleurs dans la lumière (`ClTag`). `ClColorFeatureMixin` intercepte aussi
-`tag(int, BlockAndTintGetter, int, int, int, boolean)` pour les constructions sans couleur.
-Casse : la redirection des couleurs du décor est désactivée avec un avertissement (plus de repli sur `setSource`).
-Les crochets de `ClTag` peuvent échouer silencieusement ; les tests visuels restent nécessaires.
+Dépend de : `ColorLightEngine.colorSection(Scratch, BlockAndTintGetter, int, int, int, boolean)` (`ClColorSectionMixin`),
+`ColorLightEngine.invalidate`, `clear`, `ColorLightFeature.tag`, `tagBaked`, `baking`, `blendCorner`, et du format
+des couleurs dans la lumière (`ClTag`). `ClColorFeatureMixin` intercepte aussi `tag(…, boolean)`.
+Casse : redirection des couleurs désactivée avec avertissement.
 
-Depuis la 1.6, la compatibilité est automatique si Contraption Lights est installé : pas d'ancienne option de
-couleurs du décor à réactiver. Les réglages du mod Contraption Lights restent à considérer.
-`ColorCompat` garde un contexte par thread et un emplacement de cache par faux monde, réutilisé entre ses sections
-et ses rendus spéciaux. Les modifications dans un monde existant invalident ses sections avec `blocksChanged`.
-Ne pas vider le cache global à chaque construction ni remplacer la source globale avec `setSource`.
+- Compatibilité automatique si le mod est installé. `ColorCompat` garde un contexte par thread et un cache par faux
+  monde ; ne pas vider le cache global à chaque construction ni utiliser `setSource`.
+- Sources portées (`JarWalls.findSources`) : `WrappedBlockLight.lightState` par réflexion, puis repli Moonlight
+  `IBlockHolder.getHeldBlock()` (lanternes murales d'Amendments).
+- Le **terrain en vol** utilise volontairement `beginWithoutColor()` : l'absence de couleur y est normale.
 
-Couleur des sources portées : `JarWalls.findSources`, partagé par le bocal et `MiniOutsideLight`, résout le bloc
-lumineux avec `WrappedBlockLight.lightState(BlockGetter, BlockPos, BlockState)` par réflexion. Sans ce crochet,
-le repli Moonlight lit `IBlockHolder.getHeldBlock()` dans la block entity ; sans les deux, l'état d'origine reste
-utilisé. Le diagnostic des lanternes murales d'Amendments donnait `amendments:wall_lantern` et `#769CFF` :
-la couleur du support était utilisée au lieu de celle de la lanterne tenue. Vérifier une lanterne murale normale
-et une lanterne des âmes, dans le bocal et sa miniature, ainsi que le repli sur serveur dédié.
-
-Les sections du **terrain en vol** utilisent volontairement `beginWithoutColor()` pour éviter les recherches de
-sources à chaque section. Leur éclairage vanilla reste actif ; le décor normal et les copies de structures ont
-leur propre traitement. Ne pas présenter l'absence de couleur du terrain en vol comme une panne de l'intégration.
-
-Tests : torche colorée dans le décor géant (pas de clignotement blanc), dans la miniature et près des parois ;
-glowstone et block entities colorées ; changement d'une source lumineuse sans ancienne teinte conservée ; pluie,
-entrée en vol puis retour à l'arrêt sans saccade de recherche de couleurs ni perte de couleur du bocal.
+Tests : torche colorée dans le décor (pas de clignotement blanc), la miniature et près des parois ; lanterne murale
+et lanterne des âmes ; source retirée sans ancienne teinte ; entrée en vol puis retour sans saccade.
 
 ### Dynamic Surroundings (le plus de points d'accroche)
 
 Dépend de : nombreux mixins `Ds…` (scanners de biome et de plafond, variables de biome et météo, saisons, sons bloqués,
-lucioles, dimensions) et champs privés lus par nom : `dimensionRules`, `configuredCloudHeight` (`DsAltitude`),
-`obstacles`, `TAG_LIBRARY` (`DsFirefliesCompat`), `growthRate` (`DsRipplesCompat`).
-`DsFogCalculatorMixin` cible `HolisticFogRangeCalculator.render` : garder le brouillard liquide du bocal immergé,
-même si le joueur y est au sec. Sinon DS peut le recalculer ou inonder le journal d'avertissements par image.
-`DsBiomeScannerMixin` doit aussi éviter de relancer ses recherches sur un faux monde à chaque lecture de biome.
-Casse : surtout en silence.
-Tests : ambiance du biome du dehors dans le bocal, silence sous abri, sons de grotte sous terre, lucioles dans le décor,
-cascades du décor, pluie du dehors, immersion dans l'eau et la lave, sortie à l'air et absence de spam de brouillard.
+lucioles, dimensions, réverbération `DsSoundFxMixin`) et champs privés lus par nom : `dimensionRules`,
+`configuredCloudHeight` (`DsAltitude`), `obstacles`, `TAG_LIBRARY` (`DsFirefliesCompat`), `growthRate` (`DsRipplesCompat`).
 
-Audit DS 0.4.7 (sources fournies et signatures du JAR, pas encore validé en jeu) :
+- `DsFogCalculatorMixin` (`HolisticFogRangeCalculator.render`) garde le brouillard liquide du bocal immergé.
+- `DsBiomeScannerMixin` ne doit pas relancer ses recherches sur un faux monde à chaque lecture de biome.
+- 0.4.7 : `DsPointLightsMixin` adapte le rayon des lucioles copiées dans `PointLights.add` (le chemin
+  `FireflyLights` reste pour 0.4.6) ; `DsWeatherSimulationMixin` fournit la pluie synchronisée à `WeatherSimulation`
+  et au vent ; `DsDimensionInfoMixin` force `particleWeather()` à faux dans les poches.
+- Les nouveaux effets 0.4.7 (pluie sur les vitres, givre, brouillard au sol) ne sont pas projetés dans le décor.
 
-- `FireflyLights` est remplacé par `PointLights.add(double, double, double, float, float, float, float, float)` ;
-  le dernier argument est le rayon. `DsPointLightsMixin` adapte ce rayon à l'échelle de la luciole copiée, dans le
-  lot natif de DS : même tri par distance et limite globale de 64 lumières. Les lots séparés et le chemin
-  `FireflyLights` restent pour 0.4.6. Les lumières du vrai monde gardent leur rayon natif.
-- `WeatherVariables` passe son intensité de pluie par le nouveau `WeatherSimulation`. Sans adaptation, ce simulateur
-  et `WindService` lisent la pluie nulle de la poche. `DsWeatherSimulationMixin` leur fournit la pluie et le tonnerre
-  synchronisés, avec les mêmes conditions d'activation que les variables météo existantes.
-- `DsDimensionInfoMixin` force `particleWeather()` à faux pour les dimensions de poche quand Planarium Panorama
-  est activé. La pluie en particules de DS reste ainsi hors de la poche, indépendamment de `SyncedEffects`,
-  de `NoSkyEffects` ou du ciel d'une dimension modifiée. Les simulateurs restent synchronisés pour l'ambiance.
-  Cette protection ne dépend pas de l'option d'ambiance ; désactiver le mod rend le choix normal à DS.
-- Les scanners de biome/plafond, les variables, les saisons, les signatures de brouillard, les champs de lucioles
-  et de cercles d'eau utilisés restent présents. Les sons `waterfall.0` à `waterfall.5` restent disponibles.
-- La pluie du décor géant reste dessinée par `WeatherView`. Les nouveaux effets DS (pluie sur les vitres, givre,
-  brouillard au sol) n'ont pas de projection ajoutée vers le décor géant par cette adaptation.
-
-Tests 0.4.7 à faire : lumières des lucioles aux deux échelles, sons et intensité météo sous la pluie et l'orage,
-retour au temps sec, intégration OFF, puis même contrôle des lucioles avec 0.4.6. Vérifier aussi l'absence de pluie
-DS à taille normale dans une poche qui ne contient pas de pluie réelle, avec ciel normal, sans ciel et ciel modifié,
-et avec l'ambiance extérieure désactivée. La pluie du décor doit suivre son option météo.
+Tests : ambiance du biome du dehors, silence sous abri, sons de grotte, lucioles aux deux échelles, cascades, pluie et
+orage puis retour au sec, vent, réverbération des sons du dehors, immersion eau/lave, pas de spam de brouillard,
+pas de pluie DS à taille normale dans une poche sans pluie réelle.
 
 ### AmbientSounds
 
@@ -372,106 +261,124 @@ Tests : sons du biome et du terrain du dehors dans le bocal.
 
 ### Falling Leaves, Snow! Real Magic
 
-Champs privés : `SpriteContents.byMipLevel` (Minecraft, lu par la compatibilité Falling Leaves), `variantModel`, `wrapped` (Snow! Real Magic). Casse en silence.
+Champs privés : `SpriteContents.byMipLevel` (Falling Leaves), `variantModel`, `wrapped` (Snow! Real Magic). Casse en silence.
 Tests : feuilles qui tombent dans le décor et la miniature ; neige sur un bloc dans le décor.
 
 ### Enhanced Celestials 2, Serene Seasons, Puddles & Floods, Alex's Caves, Distant Horizons, Traveler's Titles, YACL
 
 Mixins ciblés (`EcForecastMixin`, `DsSereneSeasonsMixin`, `PfPlacementMixin`, `AcAmbersolLightMixin`,
-`DhClientApiMixin`, `TravelersTitlesMixin`, `Yacl…`) en `require = 0`. Casse en silence.
-Tests rapides : lune de sang du dehors dans le bocal ; couleurs de saison ; flaques dans le décor ; pas de lumière
-fantôme sous l'ambersol ; pas de bande de terrain lointain DH autour du bocal ; pas de « ??? » en entrant ;
-menu de config (boutons, groupes, sauvegarde immédiate, Échap).
+`DhClientApiMixin`, `TravelersTitlesMixin`, `Yacl…`) en `require = 0`.
+Tests rapides : lune de sang du dehors ; couleurs de saison ; flaques dans le décor ; pas de lumière fantôme sous
+l'ambersol ; pas de bande DH autour du bocal ; pas de « ??? » en entrant ; menu de config (groupes, notes « X est
+désactivé », valeurs grisées, sauvegarde immédiate, Échap).
+
+### Sodium
+
+Le chemin rapide de Sodium pour les modèles s'applique aux copies de mobs, mais pas son culling ni celui
+d'EntityCulling : les copies sont dessinées par nous (voir l'occlusion plus bas).
+
+## Mobs et véhicules
+
+### Décor géant (`OutsideMobsServer`, `OutsideMobs`, `OutsideMobsPayload`, `ViewPrefsPayload`)
+
+- Le serveur choisit jusqu'à `outsideMobs` mobs (0–64, option client bornée par le serveur) dans le rayon détaillé ;
+  les mobs affichés gardent leur place, les plus proches remplissent les places libres. Bateaux, radeaux et
+  wagonnets sont affichés dès que le monde fait vivre le dehors (`keepOutsideRunning`), hors limite des mobs ;
+  les mobs à bord demandent une limite au-dessus de 0.
+- Mobs ou véhicules affichés gardent le rayon détaillé + `SIMULATION_MARGIN` actifs (`ViewTickets`), même avec
+  les sons du monde sur OFF.
+- Les copies ne tickent pas : poses, animations (`MobAnimations`, `MobAnimationTimeline`), dégâts, attaque, mort,
+  effets de potion, feu, ombres (`MobShadows`), particules et sons sont reçus du serveur ou rejoués.
+- Mixins : `MobAnimationBroadcastMixin` (événements envoyés par `ServerChunkCache`), `RandomStrollGoalMixin` et
+  `SquidRandomMovementGoalMixin` (les mobs observés continuent de bouger sans joueur proche), `SquidInkMixin`,
+  `EntityEnvironmentMixin` (les copies ne lisent jamais l'eau ou le sol de la poche), `LivingEffectParticlesMixin`,
+  `BoatSceneryMixin`, accesseurs (`SynchedEntityDataAccessor` lit l'apparence sans consommer les changements
+  destinés aux vrais clients).
+- `SceneryMobOcclusion` / `VoxelOcclusion` : occlusion des mobs du décor par ses blocs, seulement au rendu
+  (aucun effet sur les ticks, sons ou paquets). Désactivée en vol et tant que des sections sont en attente.
+  Mesure (Spark, 60 s) : derrière un mur, le décor passe d'environ 7,8 % à 4,1 % du fil de rendu ; à découvert,
+  le test coûte environ 0,2 %. Les ombres des mobs cachés restent dessinées (l'ombre peut dépasser du mur).
+
+Tests : mobs qui apparaissent après quelques secondes, se déplacent, nagent, volent, montent un autre mob ou un
+bateau ; coup, mort, potion, feu ; sons des mobs avec les sons du monde OFF ; limite changée pendant la visite ;
+mob caché derrière un mur puis visible par une porte ou un trou d'un bloc, sans clignotement en tournant vite.
+
+### Miniatures (`MiniatureSync`, `MiniLive`, `MiniEntities`, `MiniEntityTypes`, paquets `Mini…`)
+
+- Sans direct : photo des mobs de la poche (capturée aussi au déchargement, ticket de lecture de niveau 33),
+  affichée avec de petites animations. Sélection stable : ordre `MINI_ORDER`, puis nouveaux mobs un type à la fois
+  (`varied`, types les moins présents d'abord, UUID dans un type).
+- Direct (`keepMiniaturesRunning` du monde + option client) : la miniature la plus proche regardée (8 blocs) reçoit
+  ses mobs 5 fois par seconde ; tickets de niveau 31 sur les 4 chunks, au plus `maxRunningMiniatures` Planariums
+  sur le serveur. Les copies d'un même Planarium partagent le direct.
+- Véhicules : affichés dès que le monde fait vivre les miniatures, jusqu'à 64, hors limite des mobs.
+
+Tests : 20 mobs de deux types avec une limite de 8 (variété), mob qui naît/meurt pendant qu'on regarde, sortie de
+portée et retour, plusieurs joueurs sur le même Planarium, limite atteinte de `maxRunningMiniatures`, bateau avec
+passager, permission du monde OFF (tout caché, choix du joueur conservés).
 
 ## Rendu, captures et performances
 
 - **Forme du détail** : `DetailShape` définit le cylindre commun aux captures et au rendu. Tester les diagonales et
-  la frontière détail/anneau/vol ; un critère carré réintroduit des blocs dans les coins ou des trous de raccord.
-- **Précision des sommets** : `GridSnap.snapMesh` remet les positions sur une grille de 1/4096 de bloc source avant
-  le tri des transparents et l'upload. Cela ferme les fissures qui laissaient scintiller des pixels de ciel.
-  Garder l'opération sur le maillage fini pour préserver les chemins optimisés de `VertexConsumer`.
-  Dans le décor détaillé et l'anneau, les faces non translucides débordent aussi de 1/8192 de bloc géant pour fermer
-  les jonctions en T. Vérifier près du bocal les raccords entre textures différentes : le recouvrement peut encore
-  poser un problème de profondeur visible selon la distance et la résolution.
-- **Maillage des parois et du plancher** : `ProjectorLighting` conserve tous les points de grille du contour des
-  rectangles d'éclairage fusionnés (éventail pour les grands rectangles, cellules pour les petits). Les positions
-  sont arrondies sur une grille du monde de 1/1024 de bloc pour fermer les raccords entre faces.
-- **Culling** : `SceneryFrustum` traite le décor détaillé, l'anneau et le vol, que Sodium ne peut pas éliminer à notre
-  place. Les boîtes viennent des vrais sommets, avec la même matrice que le dessin, inclinaison Sable comprise.
-  Invalider les listes visibles après ajout/retrait/reconstruction ; une boîte inconnue doit rester visible.
-- **Découpe** : `ClippedVertexBuffer` garde une copie CPU des sommets à l'upload pour éviter la lecture GPU au premier
-  découpage. Cette copie peut être libérée loin du bocal ; `glGetBufferSubData` reste un repli si la section doit être
-  découpée plus tard. Libérer aussi les copies CPU, buffers de travail et maillages découpés à la fermeture.
-- **Anneau asynchrone** : `FarRing` prépare palettes et tables sur son exécuteur ; l'installation, les maillages et
-  les objets OpenGL restent sur le fil de rendu. `loadVersion` rejette les résultats devenus obsolètes après une
-  nouvelle capture, un changement de monde ou une désactivation. Ne pas lire un monde vivant depuis cet exécuteur.
-- **Cache Minecraft** : les constructions d'anneau, de terrain en vol et de poches voisines partagent le cache de
-  lumière/ombrage de `ModelBlockRenderer` pendant une construction, puis appellent `clearCache` dans un `finally`.
-  Ses clés sont des positions : conserver le cache entre deux faux mondes mélange leurs éclairages.
-- **Budgets** : `CaptureBudget` partage 6 ms par tick serveur entre les captures qui l'utilisent ; le client construit
-  progressivement anneau et voisins (2 ms par image chacun), et vol (2,5 ms). Une section individuelle peut dépasser
-  ce budget. Une accumulation ne prouve donc pas à elle seule une fuite ni un respect strict du temps d'image.
-- **Cache lointain** : les changements invalident les photos concernées ; leur âge est aussi borné. À l'arrêt du
-  Planarium, le terrain normal revient et l'anneau attend 100 ticks de stabilité. Vérifier les tickets libérés à la
-  sortie et à l'arrêt serveur, ainsi que la reconnexion et le changement de rayon.
-- **Miniatures de sublevels en mouvement** : `Part.mini()` peut reconstruire le maillage et son contexte de couleurs
-  toutes les 20 ticks si la pose a changé. L'ancien maillage est fermé : ce sont des allocations répétées, pas une
-  accumulation de maillages. Cela concerne le bocal vu de l'extérieur, avec une structure Sable qui bouge dedans.
-  Réutiliser le contexte de couleurs seulement si un profilage montre que ces allocations posent problème.
+  la frontière détail/anneau/vol.
+- **Précision des sommets** : `GridSnap.snapMesh` (grille de 1/4096) avant tri et upload ; les faces non translucides
+  débordent de 1/8192 de bloc géant pour fermer les jonctions en T.
+- **Parois et plancher** : `ProjectorLighting` garde tous les points du contour des rectangles fusionnés et arrondit
+  au 1/1024 de bloc. Coût mesuré : environ 5 % du fil de rendu, dont 4 % pour `Subdivider.replay`, qui renvoie à
+  chaque image les sommets en cache. Piste : les garder dans un `VertexBuffer` (une seule reconstruction par image
+  au plus, ancien rendu gardé pour les shaders, les fissures de cassage et les modèles translucides).
+- **Culling** : `SceneryFrustum` traite le décor détaillé, l'anneau et le vol. Une boîte inconnue reste visible.
+- **Découpe** : `ClippedVertexBuffer` garde une copie CPU des sommets ; `glGetBufferSubData` reste un repli.
+- **Anneau asynchrone** : `FarRing` prépare sur son exécuteur, installe sur le fil de rendu ; `loadVersion` rejette
+  les résultats obsolètes. Ne pas lire un monde vivant depuis l'exécuteur.
+- **Cache Minecraft** : le cache de lumière de `ModelBlockRenderer` est vidé (`clearCache`, dans un `finally`) après
+  chaque construction d'anneau, de vol ou de voisins.
+- **Budgets** : `CaptureBudget` partage 6 ms par tick serveur ; le client construit anneau et voisins (2 ms par image
+  chacun) et vol (2,5 ms). Une section individuelle peut dépasser ce budget.
+- **Miniatures de structures en mouvement** : `Part.mini()` peut reconstruire le maillage toutes les 20 ticks.
 
-Diagnostic des sections lentes : `FarRing` journalise les constructions de plus de 20 ms avec leurs étapes
-(tessellation, maillage, tri, upload). Ajouter l'argument JVM `-Dplanariumview.diagSections=true` pour obtenir
-les coûts par type de bloc. Relever le mode affiché (normal/anneau/vol), les rayons, les mods chargés et l'action
-qui déclenche la saccade avant de comparer les mesures.
+Diagnostic des sections lentes : `FarRing` journalise les constructions de plus de 20 ms ;
+`-Dplanariumview.diagSections=true` donne les coûts par type de bloc.
 
-Tests de rendu : tourner rapidement la caméra, modifier le FOV, incliner le vaisseau, regarder un modèle qui
-dépasse de son bloc, passer près d'une paroi avec eau/verre, répéter entrée/sortie et marche/arrêt du vol.
-Vérifier l'absence de disparition au bord de l'écran, de fissures blanches, de gel au premier découpage et de
-vieille photo installée après avoir changé de monde. Refaire ces cas avec et sans Sodium ; les références Voxy
-du tableau ne remplacent pas un nouveau test de cette version.
+Tests de rendu : tourner vite la caméra, changer le FOV, incliner le vaisseau, longer une paroi avec eau/verre,
+entrer/sortir, démarrer/arrêter le vol. Pas de disparition au bord de l'écran, de fissures blanches, de gel au
+premier découpage ni de vieille photo après un changement de monde. Avec et sans Sodium.
 
 ## Règles générales
 
-- **Fils d'exécution** : la comparaison des photos (`ClientView`, `DIFF_THREAD`), l'instantané de lumière lu par les
-  fils de Sable (`SubLevelLight`) et les couleurs du bocal (`JarColor`, `WallColors`) travaillent sur des copies figées.
-  Sur ces fils, ne jamais lire le monde ou le moteur de lumière directement.
-- **Fin d'un monde** : tout état statique côté serveur doit être vidé à l'arrêt du serveur (`onServerStopping`),
-  sinon il passe au monde suivant en solo. Fait : scènes Sable, tickets et caches de l'anneau, du vol et des voisins
-  (`SubLevelServer.clear`, `FarRingServer.clearAll`, `FlightServer.clearAll`, `NeighborPocketsServer.clearAll`).
-  À faire : `RELIT`, `FLOOR_CLEANED`, `MINI_LIGHT`, `MINI_ENTITIES`, `MINI_ENTITIES_DUE`, `MINI_ENTITIES_NEXT`.
-- **Caméra des copies** : `CreateCopies.clear()` remet aussi `cameraProxy` à `null` pour libérer sa référence au
-  monde client après déconnexion. Une recréation au prochain monde ne suffit pas à libérer le précédent au menu.
-- **Messages du client** (`ViewTogglePayload`, `SoundPrefsPayload`, `SubLevelPrefsPayload`, `NeighborPrefsPayload`) : les valeurs identiques
-  sont déjà filtrées par endroits, mais des bascules ON/OFF répétées forcent des captures complètes ou des changements
-  de tickets. Sur un serveur public : limiter à un changement par seconde par joueur.
-- **Tests du dépôt** : `src/test` n'est plus suivi par Git ; `checkSubLevels` est sauté s'il est absent. Garder les
-  tests en local et les lancer avant une publication.
-- **Protocole et serveur dédié** : garder les canaux facultatifs et les vérifications `hasChannel` ; ne pas introduire
-  de classe cliente dans les captures serveur. Inclure une connexion multijoueur et un lancement dédié dans les
-  vérifications de publication après modification des paquets ou de la compatibilité par réflexion.
-
-## Vérifications de cette révision
-
-- Le 2026-10-23, `gradlew.bat --offline build` a réussi sur le code incluant les corrections de voile et du portable
-  engine. `compileTestJava` et `test` étaient `NO-SOURCE`, `checkSubLevels` était `SKIPPED` : ce résultat confirme
-  la compilation et la production du JAR, pas le comportement en jeu.
-- Le journal du lancement du 23 à 14:54 confirme les versions chargées listées plus haut. Les anciennes références
-  du README, les JAR désactivés et les cas de la liste ci-dessous restent à revalider visuellement.
-- Cette modification de documentation a été recoupée avec les sources et l'historique ; elle n'ajoute aucun résultat
-  de test manuel au relevé.
+- **Structure** : `ClientView` et `ServerView` ne font plus que coordonner. Côté client : `SceneryState`,
+  `SceneryReceiver`, `SceneryPatcher`, `SceneryMeshes`, `SceneryRenderer`, `SceneryFog`, `SceneryHooks`,
+  `ViewPrefsSender`. Côté serveur : `SceneryCapture`, `TrackUpdater`, `ViewTickets`, `PlanariumAnchor`,
+  `OutsideSounds`, `PocketLighting`, `MiniatureSync`.
+- **Fils d'exécution** : la comparaison des photos (`DIFF_THREAD`), l'instantané de lumière de Sable (`SubLevelLight`)
+  et les couleurs du bocal (`JarColor`, `WallColors`) travaillent sur des copies figées. Jamais de lecture du monde
+  depuis ces fils.
+- **Fin d'un monde** : tout état statique serveur doit être vidé à l'arrêt (`ServerView.onServerStopping` /
+  `onServerStopped`), sinon il passe au monde suivant en solo. À faire : `RELIT` et `FLOOR_CLEANED`
+  (`PocketLighting`).
+- **Caméra des copies** : `CreateCopies.clear()` remet `cameraProxy` à `null` après déconnexion.
+- **Messages du client** (`ViewTogglePayload`, `SoundPrefsPayload`, `SubLevelPrefsPayload`, `NeighborPrefsPayload`,
+  `ViewPrefsPayload`, `MiniWatchPayload`) : des bascules répétées forcent captures ou changements de tickets. Sur un
+  serveur public : limiter à un changement par seconde par joueur. Le serveur borne toujours les limites reçues.
+- **Protocole et serveur dédié** : garder les canaux facultatifs et `hasChannel` ; pas de classe cliente dans les
+  captures serveur. Tester une connexion multijoueur et un serveur dédié après modification des paquets.
+- **Vérifications Gradle** (`src/animationChecks`, suivies par Git, lancées par `check`) : `checkOutsideMobAnimations`,
+  `checkOutsideMobIntegration`, `checkMiniatureLive`, `checkSceneryOcclusion`. `checkSubLevels` dépend de
+  `src/test`, non suivi, et est sauté s'il est absent.
 
 ## Après une mise à jour du modpack (liste courte)
 
-1. Lancer le jeu et lire le log : support Sable activé ; aucun avertissement « … indisponible / unsupported ».
+1. Lancer le jeu et lire le log : bilan des mixins sans « inactifs », support Sable activé, aucun « unsupported ».
 2. Décor géant aligné avec les parois (Ars Nouveau).
 3. Coffre et engrenage éclairés dans le bocal (Flywheel).
 4. Torche colorée dans le décor (Contraption Lights).
 5. Sons du biome du dehors (Dynamic Surroundings, AmbientSounds).
-6. Machine de Create, brûleur, hélice et portable engine : animation, lumière et particules dans le décor et la miniature.
-7. Voile assemblée sur plusieurs sections : rotation commune sans « wobble », assemblage et désassemblage visibles.
-8. Vaisseau : déplacement, arrêt, lumière après stabilisation, sortie, déconnexion/reconnexion (Sable, Ars Sable).
-9. Planariums voisins : limite client respectée aussi à la capture, verre partagé masqué, planchers éclairés.
-10. Vol, caméra et inclinaison : pas de sections qui disparaissent, de pixels blancs, de gels de découpe ou de spam DS.
-11. Neige, feuilles, flaques, lune de sang si ces mods sont installés.
-12. Plusieurs joueurs, serveur dédié, puis deux sauvegardes ouvertes successivement sans relancer Minecraft.
-13. Mettre à jour le tableau des versions avec les résultats réellement observés et les cas restant à tester.
+6. Machine de Create, brûleur, hélice et portable engine dans le décor et la miniature.
+7. Voile assemblée sur plusieurs sections : rotation sans « wobble ».
+8. Vaisseau : déplacement, arrêt, pluie sous abri, sortie, déconnexion/reconnexion (Sable, Ars Sable).
+9. Planariums voisins : limite respectée, verre partagé masqué, planchers éclairés.
+10. Mobs et véhicules du dehors, puis miniature avec et sans direct.
+11. Vol, caméra et inclinaison : pas de sections qui disparaissent, de pixels blancs ni de spam DS.
+12. Neige, feuilles, flaques, lune de sang si ces mods sont installés.
+13. Plusieurs joueurs, serveur dédié, puis deux sauvegardes ouvertes successivement sans relancer Minecraft.
+14. Mettre à jour le tableau des versions.

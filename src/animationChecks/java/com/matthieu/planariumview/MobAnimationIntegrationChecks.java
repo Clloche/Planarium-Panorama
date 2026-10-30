@@ -315,7 +315,7 @@ public final class MobAnimationIntegrationChecks {
     }
 
     @SuppressWarnings("unchecked") private static void client() throws Exception {
-        config(Config.ENABLED, true); config(Config.OUTSIDE_MOBS, 64); config(Config.OUTSIDE_VEHICLES, false);
+        config(Config.ENABLED, true); config(Config.OUTSIDE_MOBS, 64);
         config(Config.SCENERY_PARTICLES, false); // Particle sampling is checked separately without a GPU engine.
         OutsideMobs.logout();
         ClientLevel world = fixture(ClientLevel.class);
