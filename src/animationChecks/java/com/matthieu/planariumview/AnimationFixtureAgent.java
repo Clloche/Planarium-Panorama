@@ -11,6 +11,7 @@ public final class AnimationFixtureAgent {
     public static void premain(String arguments, Instrumentation instrumentation) {
         instrumentation.addTransformer(new ClassFileTransformer() {
             @Override public byte[] transform(ClassLoader loader, String name, Class<?> type, ProtectionDomain domain, byte[] bytes) {
+                boolean scopeMinecraft = "spell-scope".equals(arguments) && "net/minecraft/client/Minecraft".equals(name);
                 if (!Set.of("net/minecraft/world/entity/Entity", "net/minecraft/world/entity/LivingEntity",
                         "net/minecraft/world/entity/Mob",
                         "net/minecraft/world/entity/vehicle/Boat", "net/minecraft/world/entity/vehicle/AbstractMinecart",
@@ -29,7 +30,7 @@ public final class AnimationFixtureAgent {
                         "net/minecraft/sounds/SoundEvents", "com/matthieu/planariumview/client/scenery/ClientView",
                         "net/minecraft/client/multiplayer/ClientLevel", "net/minecraft/server/level/ServerLevel",
                         "net/minecraft/server/MinecraftServer", "net/minecraft/server/dedicated/DedicatedServer").contains(name)
-                        && !("miniatures".equals(arguments) && "net/minecraft/world/entity/EntityType".equals(name))) return null;
+                        && !("miniatures".equals(arguments) && "net/minecraft/world/entity/EntityType".equals(name)) && !scopeMinecraft) return null;
                 ClassReader reader = new ClassReader(bytes);
                 ClassWriter writer = new ClassWriter(0);
                 reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {

@@ -133,6 +133,19 @@ tasks.register('checkMiniatureLive', JavaExec) {
     }
 }
 
+tasks.register('checkMiniatureSpellScope', JavaExec) {
+    group = 'verification'
+    description = 'Checks the vanilla spell particle constructor with the production scope mixin applied.'
+    dependsOn tasks.named('mobAnimationFixtureAgent')
+    classpath = sourceSets.animationChecks.runtimeClasspath
+    mainClass = 'com.matthieu.planariumview.SpellScopeMixinChecks'
+    workingDir = layout.buildDirectory.dir('spell-scope-checks').get().asFile
+    doFirst {
+        workingDir.mkdirs()
+        jvmArgs '-javaagent:' + tasks.named('mobAnimationFixtureAgent').get().archiveFile.get().asFile.absolutePath + '=spell-scope'
+    }
+}
+
 tasks.register('checkSceneryOcclusion', JavaExec) {
     group = 'verification'
     description = 'Checks conservative scenery mob occlusion, transforms and cached visibility.'
@@ -148,6 +161,7 @@ tasks.named('check') {
     dependsOn tasks.named('checkOutsideMobAnimations')
     dependsOn tasks.named('checkOutsideMobIntegration')
     dependsOn tasks.named('checkMiniatureLive')
+    dependsOn tasks.named('checkMiniatureSpellScope')
     dependsOn tasks.named('checkSceneryOcclusion')
 }
 

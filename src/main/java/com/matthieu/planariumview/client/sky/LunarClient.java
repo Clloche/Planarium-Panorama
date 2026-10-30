@@ -38,6 +38,10 @@ public final class LunarClient {
     private static boolean failed;
     private static Method load;
     private static Method tick;
+    private static Method currentEvent;
+    /** Evenement lunaire au tick precedent (Holder du mod), null avant la premiere lecture dans ce bocal. */
+    private static Object lastEvent;
+    private static boolean noticesFailed;
 
     private LunarClient() {
     }
@@ -62,6 +66,8 @@ public final class LunarClient {
         tag = null;
         forecast = null;
         forecastLevel = null;
+        lastEvent = null;
+        noticesFailed = false;
     }
 
     private static boolean applies(Level level) {
@@ -80,6 +86,7 @@ public final class LunarClient {
                 forecast = create(client);
                 forecastLevel = client;
                 dirty = true;
+                lastEvent = null; // Entrer dans un bocal pendant un evenement n'annonce rien, comme en se connectant.
             }
             if (dirty) {
                 dirty = false;
@@ -118,6 +125,7 @@ public final class LunarClient {
         }
         load = forecastClass.getMethod("load", CompoundTag.class);
         tick = forecastClass.getMethod("tick");
+        currentEvent = forecastClass.getMethod("currentLunarEventHolder");
         return constructor.newInstance(key, level, holder.get());
     }
 
@@ -125,6 +133,7 @@ public final class LunarClient {
     private static void onClientTick(ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
         if (forecast == null || mc.level == null || mc.isPaused() || forecastLevel != mc.level || !applies(mc.level)) {
+            if (mc.level == null || forecastLevel != mc.level || !applies(mc.level)) lastEvent = null;
             return;
         }
         try {
@@ -132,6 +141,46 @@ public final class LunarClient {
         } catch (Throwable e) {
             failed = true;
             forecast = null;
+            return;
         }
+        notices(mc);
+    }
+
+    /**
+     * Messages de debut et de fin d'evenement, comme dans le monde d'origine. Le mod les envoie seulement aux joueurs de
+     * ce monde-la (LunarForecast.notifyEventSwitched) : dans le bocal, on les montre nous-memes quand l'evenement de
+     * notre calendrier change. Meme texte et meme endroit (discussion ou barre d'action) que le mod.
+     */
+    private static void notices(Minecraft mc) {
+        if (noticesFailed || mc.player == null) return;
+        try {
+            Object current = currentEvent.invoke(forecast);
+            updateNotices(current, mc.player::displayClientMessage);
+        } catch (Throwable e) {
+            noticesFailed = true;
+            LOGGER.debug("[Planarium Panorama] Enhanced Celestials : messages lunaires du bocal desactives", e);
+        }
+    }
+
+    private static void updateNotices(Object current,
+            java.util.function.BiConsumer<net.minecraft.network.chat.Component, Boolean> display) throws Exception {
+        Object previous = lastEvent;
+        lastEvent = current;
+        if (previous == null || current == null || previous.equals(current)) return;
+        notice(((Holder<?>) previous).value(), "endNotification", display);
+        notice(((Holder<?>) current).value(), "startNotification", display);
+    }
+
+    private static void notice(Object lunarEvent, String which,
+            java.util.function.BiConsumer<net.minecraft.network.chat.Component, Boolean> display) throws Exception {
+        Optional<?> notification = (Optional<?>) lunarEvent.getClass().getMethod(which).invoke(lunarEvent);
+        if (notification.isEmpty()) return;
+        Object value = notification.get();
+        String type = String.valueOf(value.getClass().getMethod("notificationType").invoke(value));
+        if ("NONE".equals(type)) return;
+        Object text = value.getClass().getMethod("customTranslationTextComponent").invoke(value);
+        net.minecraft.network.chat.Component component =
+                (net.minecraft.network.chat.Component) text.getClass().getMethod("getComponent").invoke(text);
+        display.accept(component, "HOT_BAR".equals(type));
     }
 }

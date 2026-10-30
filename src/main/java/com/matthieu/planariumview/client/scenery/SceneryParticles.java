@@ -488,6 +488,17 @@ public final class SceneryParticles {
 
     private static Particle spawnAtRaw(Space space, ParticleOptions options, double x, double y, double z, double vx, double vy,
                                        double vz, int light) {
+        boolean previousMiniature = creatingMiniature;
+        creatingMiniature = space.scale() < 1.0;
+        try {
+            return createInSpace(space, options, x, y, z, vx, vy, vz, light);
+        } finally {
+            creatingMiniature = previousMiniature;
+        }
+    }
+
+    private static Particle createInSpace(Space space, ParticleOptions options, double x, double y, double z, double vx, double vy,
+                                          double vz, int light) {
         Minecraft mc = Minecraft.getInstance();
         boolean beforeWater = space.scale() > 1 && SceneryWaterParticles.supports(options);
         if ((attaching != null || beforeWater) && !hasWrappedCapacity()) return null;
@@ -959,6 +970,16 @@ public final class SceneryParticles {
             dz = Shapes.collide(Direction.Axis.Z, box, shapes, dz);
         }
         return new Vec3(dx, dy, dz);
+    }
+
+    /** Vrai pendant la creation d'une particule de miniature (son constructeur tourne avant qu'on la connaisse). */
+    private static boolean creatingMiniature;
+
+    /** Vrai pour une particule de miniature (32 fois plus petite), y compris pendant sa construction. */
+    public static boolean miniature(Particle particle) {
+        if (creatingMiniature) return true;
+        Space space = SPACE.isEmpty() ? null : SPACE.get(particle);
+        return space != null && space.scale() < 1.0;
     }
 
     /** Echelle du mouvement, y compris les accelerations ajoutees par une particule apres sa creation. */

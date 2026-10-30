@@ -4,7 +4,6 @@ import com.matthieu.planariumview.mixin.entities.HoglinAnimationAccessor;
 import com.matthieu.planariumview.mixin.entities.IronGolemAnimationAccessor;
 import com.matthieu.planariumview.mixin.entities.RavagerAnimationAccessor;
 import com.matthieu.planariumview.mixin.entities.SheepAnimationAccessor;
-import com.matthieu.planariumview.mixin.entities.ZoglinAnimationAccessor;
 import com.matthieu.planariumview.network.entities.MobAnimations;
 
 import com.mojang.logging.LogUtils;
@@ -58,9 +57,6 @@ public final class MobEventAnimations {
         } else if (entity instanceof HoglinAnimationAccessor hoglin) {
             hoglin.planariumview$setAttackAnimationRemainingTicks(
                     Math.max(0, hoglin.planariumview$getAttackAnimationRemainingTicks() - 1));
-        } else if (entity instanceof ZoglinAnimationAccessor zoglin) {
-            zoglin.planariumview$setAttackAnimationRemainingTicks(
-                    Math.max(0, zoglin.planariumview$getAttackAnimationRemainingTicks() - 1));
         } else if (entity instanceof SheepAnimationAccessor sheep) {
             sheep.planariumview$setEatAnimationTick(Math.max(0, sheep.planariumview$getEatAnimationTick() - 1));
         }
@@ -80,8 +76,6 @@ public final class MobEventAnimations {
             ravager.planariumview$setStunnedTick(0);
         } else if (entity instanceof HoglinAnimationAccessor hoglin) {
             hoglin.planariumview$setAttackAnimationRemainingTicks(0);
-        } else if (entity instanceof ZoglinAnimationAccessor zoglin) {
-            zoglin.planariumview$setAttackAnimationRemainingTicks(0);
         } else if (entity instanceof SheepAnimationAccessor sheep) {
             sheep.planariumview$setEatAnimationTick(0);
         }
