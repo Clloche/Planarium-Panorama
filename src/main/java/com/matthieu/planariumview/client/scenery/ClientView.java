@@ -89,6 +89,7 @@ public final class ClientView {
                         manager -> {
                             com.matthieu.planariumview.client.jar.ProjectorLighting.clear();
                             com.matthieu.planariumview.client.mini.PlanariumFloor.resourcesReloaded();
+                            CloudView.clear();
                         }));
         container.getEventBus().addListener(net.neoforged.fml.event.lifecycle.FMLClientSetupEvent.class,
                 event -> event.enqueueWork(() -> {

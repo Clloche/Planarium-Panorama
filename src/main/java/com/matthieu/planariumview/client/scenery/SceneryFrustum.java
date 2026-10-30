@@ -71,10 +71,37 @@ final class SceneryFrustum {
         valid = false;
     }
 
+    static final int OUTSIDE = 0;
+    static final int INTERSECT = 1;
+    static final int INSIDE = 2;
+
+    /** Boite entierement dehors, coupee par un bord, ou entierement dedans (avec la meme marge que visible). */
+    int classify(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+        if (!known(minX, minY, minZ, maxX, maxY, maxZ)) return INTERSECT;
+        int result = frustum.intersectAab(minX - MARGIN, minY - MARGIN, minZ - MARGIN,
+                maxX + MARGIN, maxY + MARGIN, maxZ + MARGIN);
+        if (result == FrustumIntersection.INSIDE) return INSIDE;
+        if (result == FrustumIntersection.INTERSECT) return INTERSECT;
+        return OUTSIDE;
+    }
+
+    /** Comme visible(float[]), sans tableau a creer. */
+    boolean visible(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+        if (!known(minX, minY, minZ, maxX, maxY, maxZ)) return true;
+        return frustum.testAab(minX - MARGIN, minY - MARGIN, minZ - MARGIN, maxX + MARGIN, maxY + MARGIN, maxZ + MARGIN);
+    }
+
     /** Vrai si la boite peut etre visible (boite vide ou inconnue : gardee). */
     boolean visible(float[] box) {
-        if (box == null || box[0] > box[3]) return true;
-        return frustum.testAab(box[0] - MARGIN, box[1] - MARGIN, box[2] - MARGIN,
-                box[3] + MARGIN, box[4] + MARGIN, box[5] + MARGIN);
+        return box == null || visible(box[0], box[1], box[2], box[3], box[4], box[5]);
+    }
+
+    static boolean known(float[] box) {
+        return box != null && known(box[0], box[1], box[2], box[3], box[4], box[5]);
+    }
+
+    private static boolean known(float x0, float y0, float z0, float x1, float y1, float z1) {
+        return x0 <= x1 && y0 <= y1 && z0 <= z1 && Float.isFinite(x0) && Float.isFinite(y0)
+                && Float.isFinite(z0) && Float.isFinite(x1) && Float.isFinite(y1) && Float.isFinite(z1);
     }
 }

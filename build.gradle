@@ -159,6 +159,19 @@ tasks.register('checkParticleLightCache', JavaExec) {
     }
 }
 
+tasks.register('checkFlightShaderBatch', JavaExec) {
+    group = 'verification'
+    description = 'Checks flight shader batching, clipped fallback and render-state cleanup without OpenGL.'
+    dependsOn tasks.named('mobAnimationFixtureAgent')
+    classpath = sourceSets.animationChecks.runtimeClasspath
+    mainClass = 'com.matthieu.planariumview.client.scenery.FlightShaderBatchChecks'
+    workingDir = layout.buildDirectory.dir('flight-shader-checks').get().asFile
+    doFirst {
+        workingDir.mkdirs()
+        jvmArgs '-javaagent:' + tasks.named('mobAnimationFixtureAgent').get().archiveFile.get().asFile.absolutePath + '=flight-batch'
+    }
+}
+
 tasks.register('checkSceneryOcclusion', JavaExec) {
     group = 'verification'
     description = 'Checks conservative scenery mob occlusion, transforms and cached visibility.'
@@ -176,6 +189,7 @@ tasks.named('check') {
     dependsOn tasks.named('checkMiniatureLive')
     dependsOn tasks.named('checkMiniatureSpellScope')
     dependsOn tasks.named('checkParticleLightCache')
+    dependsOn tasks.named('checkFlightShaderBatch')
     dependsOn tasks.named('checkSceneryOcclusion')
 }
 

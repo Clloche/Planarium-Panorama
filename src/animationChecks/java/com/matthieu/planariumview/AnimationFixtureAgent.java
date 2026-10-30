@@ -12,6 +12,8 @@ public final class AnimationFixtureAgent {
         instrumentation.addTransformer(new ClassFileTransformer() {
             @Override public byte[] transform(ClassLoader loader, String name, Class<?> type, ProtectionDomain domain, byte[] bytes) {
                 boolean scopeMinecraft = "spell-scope".equals(arguments) && "net/minecraft/client/Minecraft".equals(name);
+                boolean flightBuffer = "flight-batch".equals(arguments) && "com/mojang/blaze3d/vertex/VertexBuffer".equals(name);
+                boolean flightRenderType = "flight-batch".equals(arguments) && "net/minecraft/client/renderer/RenderType".equals(name);
                 if (!Set.of("net/minecraft/world/entity/Entity", "net/minecraft/world/entity/LivingEntity",
                         "net/minecraft/world/entity/Mob",
                         "net/minecraft/world/entity/vehicle/Boat", "net/minecraft/world/entity/vehicle/AbstractMinecart",
@@ -34,12 +36,22 @@ public final class AnimationFixtureAgent {
                         "net/minecraft/sounds/SoundEvents", "com/matthieu/planariumview/client/scenery/ClientView",
                         "net/minecraft/client/multiplayer/ClientLevel", "net/minecraft/server/level/ServerLevel",
                         "net/minecraft/server/MinecraftServer", "net/minecraft/server/dedicated/DedicatedServer").contains(name)
-                        && !("miniatures".equals(arguments) && "net/minecraft/world/entity/EntityType".equals(name)) && !scopeMinecraft) return null;
+                        && !("miniatures".equals(arguments) && "net/minecraft/world/entity/EntityType".equals(name))
+                        && !scopeMinecraft && !flightBuffer && !flightRenderType) return null;
                 ClassReader reader = new ClassReader(bytes);
                 ClassWriter writer = new ClassWriter(0);
                 reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {
                     @Override public MethodVisitor visitMethod(int access, String method, String descriptor, String signature, String[] exceptions) {
                         MethodVisitor visitor = super.visitMethod(access, method, descriptor, signature, exceptions);
+                        if (flightBuffer && Set.of("bind", "draw", "unbind").contains(method) && descriptor.equals("()V")) {
+                            visitor.visitCode();
+                            visitor.visitMethodInsn(Opcodes.INVOKESTATIC,
+                                    "com/matthieu/planariumview/client/scenery/FlightShaderBatchChecks",
+                                    "record" + Character.toUpperCase(method.charAt(0)) + method.substring(1), "()V", false);
+                            visitor.visitInsn(Opcodes.RETURN);
+                            visitor.visitMaxs(0, (access & Opcodes.ACC_STATIC) == 0 ? 1 : 0); visitor.visitEnd();
+                            return null;
+                        }
                         if (!method.equals("<clinit>")) return visitor;
                         visitor.visitCode(); visitor.visitInsn(Opcodes.RETURN); visitor.visitMaxs(0, 0); visitor.visitEnd();
                         return null;

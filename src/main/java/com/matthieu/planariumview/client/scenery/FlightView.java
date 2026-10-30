@@ -58,6 +58,17 @@ public final class FlightView {
     private static int visibleRadius;
     private static int knownRadius;
     private static final Map<Long, Section> sections = new HashMap<>();
+
+    /**
+     * Sections regroupees par blocs de 4 x 4 x 4 (64 blocs de cote), avec la boite de tous leurs sommets, en coordonnees
+     * du monde. Le champ de vision teste d'abord la region : entierement dehors, ses sections sont sautees ; entierement
+     * dedans, elles sont toutes gardees sans test. Seules les regions coupees par un bord sont testees section par
+     * section. Avec une grande distance de vue, des milliers de tests par image en moins (le vol bouge sans arret, le
+     * champ de vision change donc a chaque image).
+     */
+    private record Region(double[] box, List<Section> members) {}
+    private static final List<Region> regions = new ArrayList<>();
+    private static boolean regionsDirty = true;
     private static final LinkedHashMap<Long, FarRingPayload.Data> pending = new LinkedHashMap<>();
     /** Matrice de chaque section pour l'image en cours (calculee une fois, utilisee par chaque couche). */
     private static final List<DrawFrame> frame = new ArrayList<>();
@@ -99,6 +110,7 @@ public final class FlightView {
                     pending.remove(key);
                     Section removed = sections.remove(key);
                     if (removed != null) removed.buffers().values().forEach(VertexBuffer::close);
+                    regionsDirty = true;
                     coverage.ready(key);
                 }
             }
@@ -108,6 +120,7 @@ public final class FlightView {
                     pending.remove(key);
                     Section removed = sections.remove(key);
                     if (removed != null) removed.buffers().values().forEach(VertexBuffer::close);
+                    regionsDirty = true;
                 }
             }
             case FlightPayload.READY -> ready = true;
@@ -154,6 +167,7 @@ public final class FlightView {
                 Section built = build(key, next.getValue(), camera);
                 Section old = built == null ? sections.remove(key) : sections.put(key, built);
                 if (old != null) old.buffers().values().forEach(VertexBuffer::close);
+                regionsDirty = true;
                 coverage.ready(key);
             } catch (RuntimeException e) {
                 LOGGER.debug("[Planarium Panorama] Section du decor en vol ignoree", e);
@@ -210,17 +224,60 @@ public final class FlightView {
             // Test dans le repere commun (le placement du vol, origine proche) : la boite de chaque section est decalee
             // de la meme translation entiere que son dessin. Meme geometrie que le dessin, sans perte de precision.
             frustum.update(common, projection);
-            for (Section section : sections.values()) {
+            collectVisible(origin, common, fog);
+        } finally {
+            poseStack.popPose();
+        }
+    }
+
+    private static void collectVisible(BlockPos origin, Matrix4f common, FlightFog.Frame fog) {
+        if (regionsDirty) buildRegions();
+        for (Region region : regions) {
+            double[] r = region.box();
+            int test = r == null ? SceneryFrustum.INTERSECT : frustum.classify(
+                    (float) (r[0] - origin.getX()), (float) (r[1] - origin.getY()), (float) (r[2] - origin.getZ()),
+                    (float) (r[3] - origin.getX()), (float) (r[4] - origin.getY()), (float) (r[5] - origin.getZ()));
+            if (test == SceneryFrustum.OUTSIDE) continue;
+            for (Section section : region.members()) {
                 int x = section.origin().getX() - origin.getX();
                 int y = section.origin().getY() - origin.getY();
                 int z = section.origin().getZ() - origin.getZ();
                 float[] box = section.box();
-                if (box != null && !frustum.visible(new float[]{box[0] + x, box[1] + y, box[2] + z,
-                        box[3] + x, box[4] + y, box[5] + z})) continue;
+                if (test == SceneryFrustum.INTERSECT && SceneryFrustum.known(box) && !frustum.visible(box[0] + x, box[1] + y,
+                        box[2] + z, box[3] + x, box[4] + y, box[5] + z)) continue;
                 frame.add(new DrawFrame(section, new Matrix4f(common).translate(x, y, z), fog.section(x, y, z)));
             }
-        } finally {
-            poseStack.popPose();
+        }
+    }
+
+    private static void buildRegions() {
+        regionsDirty = false;
+        regions.clear();
+        Map<Long, List<Section>> groups = new HashMap<>();
+        for (Section section : sections.values()) {
+            BlockPos at = section.origin();
+            groups.computeIfAbsent(BlockPos.asLong(at.getX() >> 6, at.getY() >> 6, at.getZ() >> 6),
+                    ignored -> new ArrayList<>()).add(section);
+        }
+        for (List<Section> members : groups.values()) {
+            double[] box = {Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY,
+                    Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY};
+            boolean unknown = false;
+            for (Section section : members) {
+                float[] b = section.box();
+                if (!SceneryFrustum.known(b)) {
+                    unknown = true; // Boite inconnue : toujours testee section par section (et gardee).
+                    continue;
+                }
+                BlockPos at = section.origin();
+                box[0] = Math.min(box[0], (double) at.getX() + b[0]);
+                box[1] = Math.min(box[1], (double) at.getY() + b[1]);
+                box[2] = Math.min(box[2], (double) at.getZ() + b[2]);
+                box[3] = Math.max(box[3], (double) at.getX() + b[3]);
+                box[4] = Math.max(box[4], (double) at.getY() + b[4]);
+                box[5] = Math.max(box[5], (double) at.getZ() + b[5]);
+            }
+            regions.add(new Region(unknown || box[0] > box[3] ? null : box, members));
         }
     }
 
@@ -230,6 +287,7 @@ public final class FlightView {
             return;
         }
         var shader = RenderSystem.getShader();
+        if (shader == null) return;
         var offset = shader.CHUNK_OFFSET;
         float x = 0, y = 0, z = 0;
         float fogStart = RenderSystem.getShaderFogStart();
@@ -241,31 +299,67 @@ public final class FlightView {
             RenderSystem.setShaderFogStart(fogStart / ClientView.GIANT);
             RenderSystem.setShaderFogEnd(fogEnd / ClientView.GIANT);
         }
+        // Toutes les sections partagent la meme ModelViewMat ; seul ChunkOffset change. Le shader est donc prepare une
+        // fois (uniformes, textures), puis chaque section met a jour son decalage et se dessine, comme Minecraft le fait
+        // pour ses chunks et comme FarRing. drawWithShader refaisait toute la preparation a chaque section : avec une
+        // grande distance de vue, des milliers de fois par image (70 % du rendu en vol, 96 chunks).
+        boolean applied = false;
+        Matrix4f appliedView = null;
         try {
             for (DrawFrame entry : frame) {
                 VertexBuffer buffer = entry.section().buffers().get(type);
                 if (buffer == null || buffer.getFormat() == null) continue;
                 buffer.bind();
-                if (offset != null) {
-                    offset.set(entry.fog().chunkOffset());
-                    buffer.drawWithShader(entry.fog().modelView(), projection, shader);
-                } else {
-                    buffer.drawWithShader(entry.original(), projection, shader);
+                if (offset == null || buffer instanceof ClippedVertexBuffer) {
+                    // Sans ChunkOffset (shader d'un autre mod) ou decoupe contre le bocal : leur propre dessin complet,
+                    // qui libere le shader a la fin.
+                    if (applied) {
+                        shader.clear();
+                        applied = false;
+                    }
+                    if (offset != null) {
+                        offset.set(entry.fog().chunkOffset());
+                        buffer.drawWithShader(entry.fog().modelView(), projection, shader);
+                    } else {
+                        buffer.drawWithShader(entry.original(), projection, shader);
+                    }
+                    continue;
                 }
+                Matrix4f view = entry.fog().modelView();
+                if (!applied || view != appliedView) {
+                    if (applied) shader.clear();
+                    shader.setDefaultUniforms(com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS, view, projection,
+                            net.minecraft.client.Minecraft.getInstance().getWindow());
+                    applied = true;
+                    shader.apply();
+                    appliedView = view;
+                }
+                offset.set(entry.fog().chunkOffset());
+                offset.upload();
+                buffer.draw();
             }
         } finally {
-            if (offset != null) {
-                offset.set(x, y, z);
-                RenderSystem.setShaderFogStart(fogStart);
-                RenderSystem.setShaderFogEnd(fogEnd);
+            try {
+                if (applied) shader.clear();
+            } finally {
+                try {
+                    if (offset != null) {
+                        offset.set(x, y, z);
+                        RenderSystem.setShaderFogStart(fogStart);
+                        RenderSystem.setShaderFogEnd(fogEnd);
+                    }
+                } finally {
+                    VertexBuffer.unbind();
+                }
             }
-            VertexBuffer.unbind();
         }
     }
 
     private static void clearSections() {
         sections.values().forEach(section -> section.buffers().values().forEach(VertexBuffer::close));
         sections.clear();
+        regions.clear();
+        regionsDirty = true;
         pending.clear();
         frame.clear();
         coverage.clear();

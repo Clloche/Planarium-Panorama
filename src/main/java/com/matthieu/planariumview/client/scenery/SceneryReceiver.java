@@ -304,6 +304,7 @@ final class SceneryReceiver {
         NeighborPockets.clear();
         FarRing.knownRadius = 0;
         FlightView.clear();
+        CloudView.clear();
         shownEdge = -1.0F;
         disposeRender();
         lastTemplate = null;

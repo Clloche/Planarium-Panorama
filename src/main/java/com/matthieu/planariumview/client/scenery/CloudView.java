@@ -44,6 +44,20 @@ final class CloudView {
     private static boolean[] shape;
     private static boolean shapeFailed;
     private static VertexBuffer buffer;
+    /**
+     * Ce que le maillage garde : il est fait autour d'une case entiere de la grille des nuages, en blanc, et place a
+     * chaque image par la matrice (defilement, hauteur) avec sa couleur dans ColorModulator. Il n'est refait que quand on
+     * change de case, de mode, de distance, de hauteur d'un bloc, ou toutes les 10 ticks (l'effacement au loin suit
+     * alors le defilement). Avant, il etait refait a chaque image (3 % du rendu en vol).
+     */
+    private static boolean built;
+    private static int builtCi, builtCj, builtCells;
+    private static boolean builtFancy;
+    private static float builtBottom;
+    private static long builtTime;
+    private static float builtFar;
+    private static boolean hasMesh;
+    private static java.lang.ref.WeakReference<ClientLevel> builtLevel = new java.lang.ref.WeakReference<>(null);
 
     private CloudView() {
     }
@@ -104,17 +118,95 @@ final class CloudView {
         float fadeEnd = far * 0.95F;
         float fadeStart = far * 0.55F;
 
+        // Le maillage est en coordonnees de la case (ci, cj), base des nuages a y = 0 : ce decalage le place.
+        Matrix4f local = localPlacement(placement, cu, cv, ci, cj, bottom);
+        long time = level.getGameTime() / 10;
+        boolean rebuild = needsRebuild(level, ci, cj, n, fancy, bottom, far, time);
+        if (rebuild && !rebuild(local, camera, fadeStart, fadeEnd, ci, cj, n, fancy)) {
+            return;
+        }
+        if (rebuild) {
+            built = true;
+            builtCi = ci;
+            builtCj = cj;
+            builtCells = n;
+            builtFancy = fancy;
+            builtBottom = bottom;
+            builtTime = time;
+            builtFar = far;
+            builtLevel = new java.lang.ref.WeakReference<>(level);
+        }
+        if (!hasMesh || buffer == null) return;
+
+        // Meme passage dans le bocal que le decor geant.
+        Matrix4f pose = new Matrix4f(modelView).mul(local);
+        float[] previousColor = RenderSystem.getShaderColor().clone();
+        RenderSystem.setShaderColor(previousColor[0] * r, previousColor[1] * g, previousColor[2] * b, previousColor[3]);
+
+        RenderSystem.enableDepthTest();
+        RenderSystem.disableCull();
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        try {
+            buffer.bind();
+            // Comme les nuages vanilla : d'abord la profondeur seule, puis la couleur de la face la plus proche
+            // (sinon les faces de derriere se verraient a travers, les nuages etant transparents).
+            RenderSystem.colorMask(false, false, false, false);
+            buffer.drawWithShader(pose, projection, GameRenderer.getPositionColorShader());
+            RenderSystem.colorMask(true, true, true, true);
+            RenderSystem.depthFunc(org.lwjgl.opengl.GL11.GL_LEQUAL);
+            buffer.drawWithShader(pose, projection, GameRenderer.getPositionColorShader());
+        } finally {
+            VertexBuffer.unbind();
+            RenderSystem.colorMask(true, true, true, true);
+            RenderSystem.setShaderColor(previousColor[0], previousColor[1], previousColor[2], previousColor[3]);
+            RenderSystem.disableBlend();
+            RenderSystem.enableCull();
+        }
+    }
+
+    static Matrix4f localPlacement(Matrix4f placement, double cu, double cv, int ci, int cj, float bottom) {
+        return new Matrix4f(placement).translate((float) ((ci - cu) * CELL), bottom, (float) ((cj - cv) * CELL));
+    }
+
+    private static boolean needsRebuild(ClientLevel level, int ci, int cj, int cells, boolean fancy,
+                                        float bottom, float far, long time) {
+        return !built || builtLevel.get() != level || ci != builtCi || cj != builtCj || cells != builtCells
+                || fancy != builtFancy || Math.abs(bottom - builtBottom) > 1.0F || far != builtFar || time != builtTime;
+    }
+
+    /** Ressources, sortie du bocal ou deconnexion : aucune ancienne forme ni aucun buffer ne doit rester en cache. */
+    static void clear() {
+        built = false;
+        hasMesh = false;
+        builtLevel.clear();
+        shape = null;
+        shapeFailed = false;
+        VertexBuffer old = buffer;
+        buffer = null;
+        if (old != null) {
+            if (RenderSystem.isOnRenderThread()) old.close();
+            else RenderSystem.recordRenderCall(old::close);
+        }
+    }
+
+    /** Refait le maillage blanc autour de la case (ci, cj), en gardant aussi en cache une zone vide. */
+    private static boolean rebuild(Matrix4f local, Vec3 camera, float fadeStart, float fadeEnd, int ci, int cj, int n,
+                                   boolean fancy) {
+        float r = 1.0F, g = 1.0F, b = 1.0F;
+        float bottom = 0.0F;
+        float top = fancy ? THICK : 0.0F;
         BufferBuilder builder = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        Builder out = new Builder(builder, camera, placement, fadeStart, fadeEnd);
+        Builder out = new Builder(builder, camera, local, fadeStart, fadeEnd);
         for (int i = ci - n; i <= ci + n; i++) {
             for (int j = cj - n; j <= cj + n; j++) {
                 if (!filled(i, j)) {
                     continue;
                 }
-                // Coordonnees relatives au Planarium (en blocs du monde d'origine).
-                float x0 = (float) ((i - cu) * CELL);
+                // Coordonnees relatives a la case (ci, cj) (en blocs du monde d'origine).
+                float x0 = (i - ci) * CELL;
                 float x1 = x0 + CELL;
-                float z0 = (float) ((j - cv) * CELL);
+                float z0 = (j - cj) * CELL;
                 float z1 = z0 + CELL;
                 if (!fancy) {
                     out.quad(x0, bottom, z0, x1, bottom, z0, x1, bottom, z1, x0, bottom, z1, r, g, b, 1.0F);
@@ -138,31 +230,17 @@ final class CloudView {
         }
         MeshData mesh = builder.build();
         if (mesh == null) {
-            return;
+            hasMesh = false;
+            return true; // Region vide : elle est aussi gardee en cache.
         }
         if (buffer == null) {
             buffer = new VertexBuffer(VertexBuffer.Usage.DYNAMIC);
         }
         buffer.bind();
-        buffer.upload(mesh);
-
-        // Meme passage dans le bocal que le decor geant.
-        Matrix4f pose = new Matrix4f(modelView).mul(placement);
-
-        RenderSystem.enableDepthTest();
-        RenderSystem.disableCull();
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        // Comme les nuages vanilla : d'abord la profondeur seule, puis la couleur de la face la plus proche
-        // (sinon les faces de derriere se verraient a travers, les nuages etant transparents).
-        RenderSystem.colorMask(false, false, false, false);
-        buffer.drawWithShader(pose, projection, GameRenderer.getPositionColorShader());
-        RenderSystem.colorMask(true, true, true, true);
-        RenderSystem.depthFunc(org.lwjgl.opengl.GL11.GL_LEQUAL);
-        buffer.drawWithShader(pose, projection, GameRenderer.getPositionColorShader());
-        VertexBuffer.unbind();
-        RenderSystem.disableBlend();
-        RenderSystem.enableCull();
+        try { buffer.upload(mesh); }
+        finally { VertexBuffer.unbind(); }
+        hasMesh = true;
+        return true;
     }
 
     private static boolean filled(int i, int j) {
