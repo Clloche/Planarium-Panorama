@@ -31,10 +31,16 @@ public final class MobShadows {
 
     private MobShadows() {}
 
-    public record Frame(Vector3f camera, DimensionType dimension, int skyDarken, boolean realLighting) {}
+    /** {@code distanceScale}: real blocks per copy block, for the shadow fade (1/32 in a miniature). */
+    public record Frame(Vector3f camera, DimensionType dimension, int skyDarken, boolean realLighting, float distanceScale) {}
 
     /** Read the camera and lighting once per frame, in the same coordinates as the interpolated copies. */
     public static Frame frame(Matrix4f sceneryToCamera) {
+        return frame(sceneryToCamera, 1.0F, Config.realLighting());
+    }
+
+    /** Same, for copies drawn at another scale (miniatures), with their own lighting choice. */
+    public static Frame frame(Matrix4f sceneryToCamera, float distanceScale, boolean realLighting) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || !mc.options.entityShadows().get()
                 || !((EntityRenderDispatcherInvoker) mc.getEntityRenderDispatcher()).planariumview$shouldRenderShadow()) return null;
@@ -48,7 +54,7 @@ public final class MobShadows {
             }
             darken = skyDarken(SkySync.timeOfDay(mc.level), SkySync.rainLevel(mc.level), SkySync.thunderLevel(mc.level));
         }
-        return new Frame(camera(sceneryToCamera), type, darken, Config.realLighting());
+        return new Frame(camera(sceneryToCamera), type, darken, realLighting, distanceScale);
     }
 
     private static Vector3f camera(Matrix4f sceneryToCamera) {
@@ -80,7 +86,8 @@ public final class MobShadows {
         if (!(renderer instanceof EntityRendererShadowAccessor shadow)) return;
         float radius = Math.min(shadow.planariumview$shadowRadius(entity), 32);
         double x = entity.getX(), y = entity.getY(), z = entity.getZ(); // OutsideMobs.prepare already interpolated these.
-        double dx = x - frame.camera().x, dy = y - frame.camera().y, dz = z - frame.camera().z;
+        double dx = (x - frame.camera().x) * frame.distanceScale(), dy = (y - frame.camera().y) * frame.distanceScale(),
+                dz = (z - frame.camera().z) * frame.distanceScale();
         float strength = strength(dx * dx + dy * dy + dz * dz, shadow.planariumview$shadowStrength());
         if (!(radius > 0) || !(strength > 0)) return;
         int minY = Mth.floor(y - Math.min(strength / .5F, radius));

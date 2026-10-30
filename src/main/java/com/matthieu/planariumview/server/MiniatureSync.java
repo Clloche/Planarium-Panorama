@@ -18,6 +18,7 @@ import net.minecraft.server.level.FullChunkStatus;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
@@ -314,6 +315,12 @@ final class MiniatureSync {
         List<Entity> entities = pocket.getEntitiesOfClass(Entity.class, INTERIOR,
                 entity -> miniMob(entity) && !entity.isRemoved() && MiniEntityTypes.alive(entity));
         return selectTracked(pocket.dimension(), entities);
+    }
+
+    /** Mobs en train de mourir (ils ne font plus partie de l'instantane), pour finir leur animation en direct. */
+    static List<LivingEntity> dyingEntities(ServerLevel pocket) {
+        return pocket.getEntitiesOfClass(LivingEntity.class, INTERIOR,
+                entity -> miniMob(entity) && !entity.isRemoved() && entity.isDeadOrDying());
     }
 
     static List<Entity> selectTracked(ResourceKey<Level> key, List<Entity> candidates) {

@@ -12,23 +12,17 @@ import com.matthieu.planariumview.mixin.entities.SceneryEntityAccessor;
 
 import com.google.common.collect.ImmutableList;
 import com.mojang.logging.LogUtils;
-import io.netty.buffer.Unpooled;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.Boat;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4d;
@@ -280,36 +274,8 @@ public final class OutsideMobs {
 
     /** Donnees synchronisees et equipement recus (seulement quand ils ont change). */
     private static void apply(Copy copy, OutsideMobsPayload.Entry entry) {
-        if (entry.data().length > 0) {
-            RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.wrappedBuffer(entry.data()), level.registryAccess());
-            try {
-                List<SynchedEntityData.DataValue<?>> values = new ArrayList<>();
-                while (buf.isReadable()) {
-                    int id = buf.readUnsignedByte();
-                    if (id == 255) break;
-                    values.add(SynchedEntityData.DataValue.read(buf, id));
-                }
-                copy.entity.getEntityData().assignValues(values);
-            } catch (RuntimeException e) {
-                LOGGER.debug("[Planarium Panorama] Donnees d'un mob du dehors ignorees", e);
-            } finally {
-                buf.release();
-            }
-        }
-        if (entry.equipment().length > 0 && copy.entity instanceof LivingEntity living) {
-            RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.wrappedBuffer(entry.equipment()), level.registryAccess());
-            try {
-                for (EquipmentSlot slot : EquipmentSlot.values()) {
-                    if (!buf.isReadable()) break;
-                    ItemStack stack = ItemStack.OPTIONAL_STREAM_CODEC.decode(buf);
-                    living.setItemSlot(slot, stack);
-                }
-            } catch (RuntimeException e) {
-                LOGGER.debug("[Planarium Panorama] Equipement d'un mob du dehors ignore", e);
-            } finally {
-                buf.release();
-            }
-        }
+        MobAppearance.data(copy.entity, entry.data(), level.registryAccess());
+        if (copy.entity instanceof LivingEntity living) MobAppearance.equipment(living, entry.equipment(), level.registryAccess());
     }
 
     /** Chaque tick client : animation de marche d'apres le deplacement interpole, et menage. */
@@ -375,7 +341,7 @@ public final class OutsideMobs {
                 OutsideAquatic.apply(entity, state.environment());
                 if (entity instanceof LivingEntity living) {
                     copy.livingAnimation.advance((int) Math.floor(time));
-                    applyAnimation(living, copy.livingAnimation);
+                    copy.livingAnimation.apply(living);
                     if (state.vehicleId() >= 0) living.walkAnimation.update(0, 0.4F);
                     else living.calculateEntityAnimation(state.environment() != null && state.environment().waterOrBubble());
                     if (copy.livingAnimation.takePoof() && warmedUp && copy.ready && copy.rendered != null) {
@@ -402,22 +368,6 @@ public final class OutsideMobs {
                 LOGGER.debug("[Planarium Panorama] Animation d'un mob du dehors ignoree", e);
             }
         }
-    }
-
-    /** Only renderer fields: no AI, damage handling, drops, sounds or entity tick. */
-    private static void applyAnimation(LivingEntity entity, MobAnimationTimeline animation) {
-        if (animation.takeHurt()) entity.animateHurt(0);
-        MobAnimations.Snapshot state = animation.state();
-        entity.hurtTime = state.hurtTime();
-        entity.hurtDuration = state.hurtDuration();
-        entity.deathTime = state.deathTime();
-        if (state.dying()) entity.setHealth(0);
-        else if (entity.getHealth() <= 0) entity.setHealth(1); // Health metadata can arrive before its delayed death event.
-        entity.swinging = state.swinging();
-        entity.swingingArm = state.offHand() ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
-        entity.swingTime = state.swingTime();
-        entity.oAttackAnim = animation.previousAttack();
-        entity.attackAnim = animation.attack();
     }
 
     /** Boucles creees normalement a l'ajout d'un wagonnet au monde client, et donc absentes de nos copies. */

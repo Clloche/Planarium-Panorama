@@ -1,6 +1,8 @@
 package com.matthieu.planariumview.client.scenery.entities;
 
 import com.matthieu.planariumview.network.entities.MobAnimations;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.LivingEntity;
 import java.util.Comparator;
 import java.util.PriorityQueue;
 
@@ -94,6 +96,22 @@ public final class MobAnimationTimeline {
     }
 
     public boolean ended() { return ended; }
+
+    /**
+     * Dying now or soon: a death (or its final puff) is applied or still waiting in the queue. A copy that the server
+     * stops sending must stay until then, even if two packets arrive before the next animation tick.
+     */
+    public boolean departing() {
+        if (ended) return false;
+        if (dying) return true;
+        for (Change change : pending) {
+            if (change.snapshot() != null ? change.snapshot().dying()
+                    : change.event().kind() == MobAnimations.Kind.DEATH || change.event().kind() == MobAnimations.Kind.POOF) {
+                return true;
+            }
+        }
+        return false;
+    }
     public int takeInk() {
         int result = inkBursts;
         inkBursts = 0;
@@ -103,5 +121,32 @@ public final class MobAnimationTimeline {
         return new MobAnimations.Snapshot(hurtTime, hurtDuration, dying, deathTime, swinging, offHand, swingTime, swingDuration);
     }
     public float attack() { return attack; }
+
+    /** Only renderer fields: no AI, damage handling, drops, sounds or entity tick. */
+    public void apply(LivingEntity entity) {
+        if (takeHurt()) entity.animateHurt(0);
+        MobAnimations.Snapshot state = state();
+        entity.hurtTime = state.hurtTime();
+        entity.hurtDuration = state.hurtDuration();
+        entity.deathTime = state.deathTime();
+        if (state.dying()) entity.setHealth(0);
+        else if (entity.getHealth() <= 0) entity.setHealth(1); // Health metadata can arrive before its delayed death event.
+        entity.swinging = state.swinging();
+        entity.swingingArm = state.offHand() ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
+        entity.swingTime = state.swingTime();
+        entity.oAttackAnim = previousAttack();
+        entity.attackAnim = attack();
+    }
+
+    /** Back to a calm pose when a copy stops following the server (no hit flash, death tilt or swing left behind). */
+    public static void calm(LivingEntity entity) {
+        entity.hurtTime = 0;
+        entity.deathTime = 0;
+        if (entity.getHealth() <= 0) entity.setHealth(1);
+        entity.swinging = false;
+        entity.swingTime = 0;
+        entity.oAttackAnim = 0;
+        entity.attackAnim = 0;
+    }
     public float previousAttack() { return previousAttack; }
 }

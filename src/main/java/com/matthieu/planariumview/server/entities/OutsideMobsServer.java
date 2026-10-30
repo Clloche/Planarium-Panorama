@@ -158,7 +158,7 @@ public final class OutsideMobsServer {
 
     /** Observe accepted vanilla broadcasts, even when no real player is tracking the source mob. */
     public static void capture(Entity entity, Packet<?> packet) {
-        if (STATES.isEmpty() || !(entity instanceof LivingEntity living) || entity instanceof Player
+        if (STATES.isEmpty() && !com.matthieu.planariumview.server.MiniLive.watching() || !(entity instanceof LivingEntity living) || entity instanceof Player
                 || entity instanceof ArmorStand || !(entity.level() instanceof ServerLevel source)) return;
         MobAnimations.Kind kind;
         boolean offHand = false;
@@ -177,7 +177,7 @@ public final class OutsideMobsServer {
     }
 
     public static void captureInk(Squid squid) {
-        if (!STATES.isEmpty() && squid.level() instanceof ServerLevel source) {
+        if ((!STATES.isEmpty() || com.matthieu.planariumview.server.MiniLive.watching()) && squid.level() instanceof ServerLevel source) {
             emit(squid, source, MobAnimations.Kind.INK, false, 0);
         }
     }
@@ -188,6 +188,8 @@ public final class OutsideMobsServer {
         for (State state : STATES.values()) {
             if (source.dimension().equals(state.source) && state.sent.containsKey(entity.getId())) state.events.add(event);
         }
+        // Miniatures vivantes : meme evenement, pour les spectateurs de ce bocal (voir MiniLive).
+        com.matthieu.planariumview.server.MiniLive.event(source, entity, event);
     }
 
     /**
@@ -411,7 +413,7 @@ public final class OutsideMobsServer {
                 vehicleId, seat, visual, create, data, equipment, animation, environment);
     }
 
-    private static MobEnvironment environment(Entity entity) {
+    public static MobEnvironment environment(Entity entity) {
         if (!(entity instanceof LivingEntity)) return null;
         var velocity = entity.getDeltaMovement();
         MobEnvironment.SquidPose pose = entity instanceof Squid squid
@@ -420,7 +422,7 @@ public final class OutsideMobsServer {
                 (float) velocity.x, (float) velocity.y, (float) velocity.z, pose);
     }
 
-    private static MobAnimations.Snapshot snapshot(LivingEntity entity) {
+    public static MobAnimations.Snapshot snapshot(LivingEntity entity) {
         return new MobAnimations.Snapshot(Math.clamp(entity.hurtTime, 0, MobAnimations.MAX_DURATION),
                 Math.clamp(entity.hurtDuration, 0, MobAnimations.MAX_DURATION), entity.isDeadOrDying(),
                 Math.clamp(entity.deathTime, 0, MobAnimations.MAX_DURATION), entity.swinging,
@@ -453,7 +455,7 @@ public final class OutsideMobsServer {
     }
 
     /** Toutes les valeurs, y compris les retours au defaut, sans modifier les marqueurs dirty de Minecraft. */
-    private static byte[] encodeData(Entity mob) {
+    public static byte[] encodeData(Entity mob) {
         return encodeData(mob.getEntityData(), mob.registryAccess());
     }
 
@@ -472,7 +474,7 @@ public final class OutsideMobsServer {
     }
 
     /** Tout l'equipement (mains, armure, armure du corps), dans l'ordre d'EquipmentSlot. */
-    private static byte[] encodeEquipment(LivingEntity mob) {
+    public static byte[] encodeEquipment(LivingEntity mob) {
         RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.buffer(), mob.registryAccess());
         try {
             for (EquipmentSlot slot : EquipmentSlot.values()) {

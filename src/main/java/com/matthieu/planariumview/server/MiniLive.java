@@ -2,8 +2,11 @@ package com.matthieu.planariumview.server;
 
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
 import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.network.entities.MiniEntityTypes;
 import com.matthieu.planariumview.network.entities.MiniLivePayload;
 import com.matthieu.planariumview.network.entities.MiniWatchPayload;
+import com.matthieu.planariumview.network.entities.MobAnimations;
+import com.matthieu.planariumview.server.entities.MobEventQueue;
 import com.matthieu.planariumview.server.entities.OutsideMobsServer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
@@ -18,6 +21,8 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.network.PacketDistributor;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -55,6 +60,42 @@ public final class MiniLive {
     }
 
     private static final Map<UUID, Watch> WATCHES = new HashMap<>();
+    /** Ce qui a ete envoye a chaque spectateur (apparence, animations), comme pour les mobs du dehors. */
+    private static final Map<UUID, Viewer> VIEWERS = new HashMap<>();
+    /** Tout est renvoye (donnees, equipement, phase des animations) toutes les 2 secondes, par securite. */
+    private static final int FULL_INTERVAL = 40;
+
+    private static final class Viewer {
+        ResourceKey<Level> pocket;
+        final Map<UUID, Sent> sent = new HashMap<>();
+        final MobEventQueue events = new MobEventQueue();
+        long lastFull = Long.MIN_VALUE / 2;
+    }
+
+    private static final class Sent {
+        int entityId;
+        byte[] data = new byte[0];
+        byte[] equipment = new byte[0];
+        boolean dying;
+    }
+
+    /** Vrai si quelqu'un regarde une miniature vivante : les evenements des mobs sont alors captures. */
+    public static boolean watching() {
+        return !VIEWERS.isEmpty();
+    }
+
+    /**
+     * Evenement d'un mob (coup, attaque, mort, nuage, encre ; voir OutsideMobsServer.capture), pour les spectateurs de
+     * son bocal qui ont deja recu ce mob.
+     */
+    public static void event(ServerLevel source, Entity entity, MobAnimations.Event event) {
+        if (VIEWERS.isEmpty()) return;
+        for (Viewer viewer : VIEWERS.values()) {
+            if (source.dimension().equals(viewer.pocket) && viewer.sent.containsKey(entity.getUUID())) {
+                viewer.events.add(event);
+            }
+        }
+    }
     /** Bocaux qui ont leurs tickets en ce moment, dans l'ordre ou ils ont commence. */
     private static final Set<ResourceKey<Level>> ACTIVE = new LinkedHashSet<>();
 
@@ -115,6 +156,7 @@ public final class MiniLive {
         boolean allowed = Config.miniatureLive();
         WATCHES.entrySet().removeIf(entry -> !allowed || now - entry.getValue().seen() > WATCH_TIMEOUT
                 || !valid(server.getPlayerList().getPlayer(entry.getKey()), entry.getValue()));
+        VIEWERS.keySet().retainAll(WATCHES.keySet());
         // Bocaux demandes : ceux qui tournent deja d'abord (pas de va-et-vient a la limite), puis les autres.
         Set<ResourceKey<Level>> requested = new LinkedHashSet<>();
         for (Watch watch : WATCHES.values()) {
@@ -163,25 +205,102 @@ public final class MiniLive {
         List<Entity> mobs = MiniatureSync.trackedEntities(pocket);
         // Sans joueur pres d'eux, les mobs cesseraient de se promener apres 5 secondes (RandomStrollGoalMixin).
         OutsideMobsServer.observeMiniature(mobs, server.getTickCount());
-        Map<UUID, MiniLivePayload.Entry> poses = new HashMap<>();
-        for (Entity mob : mobs) {
-            int flags = (mob.onGround() ? MiniLivePayload.Entry.ON_GROUND : 0)
-                    | (mob.isInWater() ? MiniLivePayload.Entry.IN_WATER : 0)
-                    | (mob.isUnderWater() ? MiniLivePayload.Entry.UNDERWATER : 0);
-            float body = mob instanceof LivingEntity living ? living.yBodyRot : mob.getYRot();
-            poses.put(mob.getUUID(), new MiniLivePayload.Entry(mob.getUUID(), (float) mob.getX(), (float) mob.getY(), (float) mob.getZ(),
-                    body, mob.getYHeadRot(), mob.getXRot(), flags));
-        }
+        List<LivingEntity> dying = MiniatureSync.dyingEntities(pocket);
+        int now = server.getTickCount();
+        // Apparence encodee une fois par envoi, pour tous les spectateurs ; relue un envoi sur deux (8 ticks).
+        boolean appearance = (now / SEND_TICKS) % 2 == 0;
+        Map<Entity, byte[]> data = new HashMap<>();
+        Map<Entity, byte[]> equipment = new HashMap<>();
         for (Map.Entry<UUID, Watch> watch : WATCHES.entrySet()) {
             if (!watch.getValue().pocket().equals(pocket.dimension())) continue;
             ServerPlayer player = server.getPlayerList().getPlayer(watch.getKey());
-            if (player != null && player.connection.hasChannel(MiniLivePayload.TYPE)) {
-                List<MiniLivePayload.Entry> entries = MiniatureSync.selectEntities(mobs, watch.getValue().mobLimit(), watch.getValue().vehicles())
-                        .stream().map(entity -> poses.get(entity.getUUID())).toList();
-                MiniLivePayload payload = new MiniLivePayload(pocket.dimension().location(), entries);
-                PacketDistributor.sendToPlayer(player, payload);
+            if (player == null || !player.connection.hasChannel(MiniLivePayload.TYPE)) continue;
+            Viewer viewer = VIEWERS.computeIfAbsent(watch.getKey(), ignored -> new Viewer());
+            if (!pocket.dimension().equals(viewer.pocket)) {
+                viewer.pocket = pocket.dimension();
+                viewer.sent.clear();
+                viewer.events.clear();
+                viewer.lastFull = Long.MIN_VALUE / 2;
+            }
+            boolean reset = viewer.events.resetRequired();
+            boolean full = reset || now - viewer.lastFull >= FULL_INTERVAL;
+            if (full) viewer.lastFull = now;
+            // Un mob deja montre qui meurt reste dans le flux jusqu'a son nuage : son animation de mort se joue.
+            // Il compte parmi les 64 mobs du paquet (le client refuse plus de 128 entites) : sa place est reservee.
+            List<Entity> selected = selectForViewer(mobs, dying, viewer.sent.keySet(), watch.getValue().mobLimit(),
+                    watch.getValue().vehicles());
+            List<MiniLivePayload.Entry> entries = new ArrayList<>(selected.size());
+            Set<UUID> present = new java.util.HashSet<>();
+            for (Entity mob : selected) {
+                try {
+                    entries.add(entry(mob, viewer, full, appearance, data, equipment));
+                    present.add(mob.getUUID());
+                } catch (RuntimeException | LinkageError e) {
+                    // Un mob modde qui refuse d'etre lu : seulement sa position, sans le reste.
+                    present.add(mob.getUUID());
+                    entries.add(pose(mob));
+                }
+            }
+            viewer.sent.keySet().retainAll(present);
+            PacketDistributor.sendToPlayer(player, new MiniLivePayload(pocket.dimension().location(), now, reset, entries,
+                    viewer.events.drain()));
+        }
+    }
+
+    static List<Entity> selectForViewer(List<Entity> mobs, List<LivingEntity> dying, Set<UUID> sent,
+                                        int limit, boolean vehicles) {
+        List<Entity> departing = new ArrayList<>();
+        for (LivingEntity mob : dying) {
+            if (sent.contains(mob.getUUID()) && departing.size() < MiniEntityTypes.MAX_MOBS) departing.add(mob);
+        }
+        int mobLimit = Math.min(limit, MiniEntityTypes.MAX_MOBS - departing.size());
+        List<Entity> selected = new ArrayList<>(MiniatureSync.selectEntities(mobs, mobLimit, vehicles));
+        selected.addAll(departing);
+        return selected;
+    }
+
+    private static MiniLivePayload.Entry pose(Entity mob) {
+        int flags = (mob.onGround() ? MiniLivePayload.Entry.ON_GROUND : 0)
+                | (mob.isInWater() ? MiniLivePayload.Entry.IN_WATER : 0)
+                | (mob.isUnderWater() ? MiniLivePayload.Entry.UNDERWATER : 0);
+        float body = mob instanceof LivingEntity living ? living.yBodyRot : mob.getYRot();
+        return new MiniLivePayload.Entry(mob.getUUID(), (float) mob.getX(), (float) mob.getY(), (float) mob.getZ(),
+                body, mob.getYHeadRot(), mob.getXRot(), flags);
+    }
+
+    /** Position, plus ce qui a change pour ce spectateur (voir OutsideMobsServer.entry). */
+    private static MiniLivePayload.Entry entry(Entity mob, Viewer viewer, boolean full, boolean appearance,
+                                               Map<Entity, byte[]> dataCache, Map<Entity, byte[]> equipmentCache) {
+        MiniLivePayload.Entry pose = pose(mob);
+        Sent sent = viewer.sent.get(mob.getUUID());
+        boolean created = sent == null || sent.entityId != mob.getId();
+        if (created) {
+            sent = new Sent();
+            sent.entityId = mob.getId();
+            viewer.sent.put(mob.getUUID(), sent);
+        }
+        byte[] data = new byte[0];
+        byte[] equipment = new byte[0];
+        if (created || appearance || full) {
+            byte[] currentData = dataCache.computeIfAbsent(mob, OutsideMobsServer::encodeData);
+            if (full || !Arrays.equals(currentData, sent.data)) {
+                data = currentData;
+                sent.data = currentData;
+            }
+            if (mob instanceof LivingEntity living) {
+                byte[] currentEquipment = equipmentCache.computeIfAbsent(mob, ignored -> OutsideMobsServer.encodeEquipment(living));
+                if (full || !Arrays.equals(currentEquipment, sent.equipment)) {
+                    equipment = currentEquipment;
+                    sent.equipment = currentEquipment;
+                }
             }
         }
+        boolean dying = mob instanceof LivingEntity living && living.isDeadOrDying();
+        MobAnimations.Snapshot animation = mob instanceof LivingEntity living && (created || full || dying != sent.dying)
+                ? OutsideMobsServer.snapshot(living) : null;
+        sent.dying = dying;
+        return new MiniLivePayload.Entry(pose.id(), pose.x(), pose.y(), pose.z(), pose.bodyYaw(), pose.headYaw(),
+                pose.pitch(), pose.flags(), mob.getId(), data, equipment, animation, OutsideMobsServer.environment(mob));
     }
 
     private static void hold(MinecraftServer server, ResourceKey<Level> key) {
@@ -209,11 +328,13 @@ public final class MiniLive {
 
     public static void logout(UUID player) {
         WATCHES.remove(player);
+        VIEWERS.remove(player);
     }
 
     /** Arret du serveur : les tickets disparaissent avec lui. */
     static void clear() {
         WATCHES.clear();
+        VIEWERS.clear();
         ACTIVE.clear();
     }
 }

@@ -111,6 +111,7 @@ public final class MobAnimationIntegrationChecks {
         int hurtCalls;
         List<ParticleOptions> effects;
         boolean ambient, invisible;
+        public boolean onFire;
         MobEnvironment environment;
         public VisualMob() { super(null, null); }
         public void planariumview$environment(MobEnvironment state) { environment = state; environment(this, state); }
@@ -118,6 +119,7 @@ public final class MobAnimationIntegrationChecks {
         public List<ParticleOptions> planariumview$effectParticles() { return effects; }
         public boolean planariumview$ambientEffects() { return ambient; }
         @Override public boolean isInvisible() { return invisible; }
+        @Override public void setSharedFlagOnFire(boolean value) { onFire = value; }
         @Override public float getHealth() { return health; }
         @Override public void setHealth(float value) { health = value; }
         @Override public Iterable<ItemStack> getArmorSlots() { return List.of(); }

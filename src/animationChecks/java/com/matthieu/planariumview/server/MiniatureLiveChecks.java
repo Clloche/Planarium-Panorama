@@ -9,6 +9,8 @@ import com.matthieu.planariumview.client.mini.entities.MiniEntities;
 import com.matthieu.planariumview.client.scenery.entities.OutsideAquatic;
 import com.matthieu.planariumview.mixin.entities.SceneryEntityAccessor;
 import com.matthieu.planariumview.network.entities.MobEnvironment;
+import com.matthieu.planariumview.network.entities.MobAnimations;
+import com.matthieu.planariumview.client.scenery.entities.MobAnimationTimeline;
 import com.google.common.collect.ImmutableList;
 import io.netty.buffer.Unpooled;
 import net.minecraft.core.BlockPos;
@@ -81,10 +83,24 @@ public final class MiniatureLiveChecks {
                         && Math.abs(Mth.wrapDegrees(a.headYaw() - b.headYaw())) < 1.407f
                         && Math.abs(Mth.wrapDegrees(a.pitch() - b.pitch())) < 1.407f, "byte angles retain precision across wrap");
             }
-            require(!buf.isReadable() && bytes * 5 < 11 * 1024, "light stream under 11 KiB/s for 64 mobs");
+            require(!buf.isReadable() && bytes * 5 < 13 * 1024, "light stream under 13 KiB/s for 64 mobs");
             System.out.println("PASS: live movement stream = " + bytes * 5 + " B/s for 64 mobs at 5 Hz");
+            UUID id = UUID.randomUUID();
+            var living = new com.matthieu.planariumview.network.entities.MobAnimations.Snapshot(7, 10, true, 3, true, true, 2, 6);
+            var environment = new MobEnvironment(true, false, true, false, .5f, -.25f, 0, null);
+            var hit = new com.matthieu.planariumview.network.entities.MobAnimations.Event(9, 42, 120,
+                    com.matthieu.planariumview.network.entities.MobAnimations.Kind.HURT, false, 10);
+            buf.clear();
+            MiniLivePayload.STREAM_CODEC.encode(buf, new MiniLivePayload(POCKET, 123, true, List.of(new MiniLivePayload.Entry(id,
+                    1, 2, 3, 0, 0, 0, 1, 42, new byte[]{1, 2, 3}, new byte[]{4}, living, environment)), List.of(hit)));
+            var full = MiniLivePayload.STREAM_CODEC.decode(buf);
+            var entry = full.entries().get(0);
+            require(full.tick() == 123 && full.resetAnimations() && full.events().equals(List.of(hit)), "clock, reset and events round trip");
+            require(entry.entityId() == 42 && Arrays.equals(entry.data(), new byte[]{1, 2, 3}) && Arrays.equals(entry.equipment(), new byte[]{4})
+                    && living.equals(entry.living()) && environment.equals(entry.environment()), "appearance, animation and water round trip");
+            require(!buf.isReadable(), "live animation entry fully decoded");
             for (int count : new int[]{-1, 129, Integer.MAX_VALUE}) {
-                buf.clear(); buf.writeResourceLocation(POCKET); buf.writeVarInt(count);
+                buf.clear(); buf.writeResourceLocation(POCKET); buf.writeVarInt(0); buf.writeBoolean(false); buf.writeVarInt(count);
                 boolean rejected = false;
                 try { MiniLivePayload.STREAM_CODEC.decode(buf); } catch (IllegalArgumentException e) { rejected = true; }
                 require(rejected, "invalid entry count rejected before allocation");
@@ -218,7 +234,12 @@ public final class MiniatureLiveChecks {
         require(mob.getDeltaMovement().x == 1 && mob.getDeltaMovement().y == .5, "swimming models receive velocity from pose differences");
         float speed = mob.walkAnimation.speed();
         require(speed > 0, "live movement animates walking");
+        mob.hurtTime = 8; mob.deathTime = 9; mob.attackAnim = .5f;
+        mob.setSharedFlagOnFire(true);
         Method tickIdle = miniType.getDeclaredMethod("tick"); tickIdle.setAccessible(true); tickIdle.invoke(mini);
+        require(mob.hurtTime == 0 && mob.deathTime == 0 && mob.attackAnim == 0
+                        && !((com.matthieu.planariumview.MobAnimationIntegrationChecks.VisualMob) mob).onFire,
+                "idle fallback clears hit, death, attack and fire");
         require(mob.walkAnimation.speed() < speed && mob.getX() == 6, "idle fallback stops walking without moving the final pose");
         accept.invoke(state, new MiniLivePayload.Entry(id, 20, 3, 8, 0, 0, 0, 1), now, true);
         apply.invoke(state, mob, now);
@@ -425,8 +446,128 @@ public final class MiniatureLiveChecks {
         System.out.println("PASS: 15 sheep + 5 cows -> 4 of each at limit 8; stable order and varied replacements");
     }
 
+    @SuppressWarnings("unchecked")
+    private static void emptySnapshotPreservesPlayback() throws Exception {
+        Class<?> type = Class.forName("com.matthieu.planariumview.client.mini.entities.MiniEntities$Mobs");
+        Constructor<?> constructor = type.getDeclaredConstructor(ResourceLocation.class, Level.class);
+        constructor.setAccessible(true);
+        Object playback = constructor.newInstance(POCKET, null);
+        Map<Object, Object> copies = (Map<Object, Object>) field(MiniEntities.class, "MOBS").get(null);
+        Object miniature = new Object();
+        copies.put(miniature, playback);
+        try {
+            MiniEntities.receive(new com.matthieu.planariumview.network.entities.MiniEntitiesPayload(POCKET, new CompoundTag()));
+            require(copies.get(miniature) == playback, "empty snapshot preserves playback until death animation completes");
+        } finally { MiniEntities.clear(); }
+    }
+
+    private static MiniLivePayload.Entry animationEntry(UUID id, int networkId, MobAnimations.Snapshot state) {
+        return new MiniLivePayload.Entry(id, 1, 2, 3, 0, 0, 0, 1, networkId,
+                new byte[0], new byte[0], state, null);
+    }
+
+    private static Map<?, ?> liveMobs() throws Exception {
+        Map<?, ?> scenes = (Map<?, ?>) field(MiniEntities.class, "LIVE").get(null);
+        Object scene = scenes.get(POCKET);
+        return (Map<?, ?>) field(scene.getClass(), "mobs").get(scene);
+    }
+
+    private static MobAnimationTimeline timeline(Object state) throws Exception {
+        return (MobAnimationTimeline) field(state.getClass(), "timeline").get(state);
+    }
+
+    private static void animationRecovery() throws Exception {
+        UUID id = UUID.randomUUID();
+        var alive = new MobAnimations.Snapshot(0, 10, false, 0, false, false, 0, 6);
+        var dying = new MobAnimations.Snapshot(0, 10, true, 3, true, true, 2, 6);
+        try {
+            MiniEntities.clear();
+            MiniEntities.receiveLive(new MiniLivePayload(POCKET, 96, false,
+                    List.of(animationEntry(id, 42, alive)), List.of()));
+            MiniEntities.receiveLive(new MiniLivePayload(POCKET, 100, true,
+                    List.of(animationEntry(id, 42, dying)), List.of()));
+            MobAnimationTimeline clock = timeline(liveMobs().get(id));
+            clock.advance(100);
+            require(clock.state().dying() && clock.state().deathTime() == 3,
+                    "reset retains the replacement death snapshot");
+            require(clock.state().swinging() && clock.state().offHand(),
+                    "reset retains the replacement attack snapshot");
+
+            MiniEntities.clear();
+            MiniEntities.receiveLive(new MiniLivePayload(POCKET, 100, false,
+                    List.of(animationEntry(id, 42, dying)), List.of()));
+            MiniEntities.receiveLive(new MiniLivePayload(POCKET, 104, false, List.of(), List.of(
+                    new MobAnimations.Event(1, 42, 102, MobAnimations.Kind.POOF, false, 0))));
+            require(liveMobs().containsKey(id), "two packets before animation tick retain pending death and poof");
+            clock = timeline(liveMobs().get(id)); clock.advance(104);
+            require(clock.ended() && clock.takePoof() && !clock.takePoof(), "pending death emits exactly one poof");
+            MiniEntities.receiveLive(new MiniLivePayload(POCKET, 108, false, List.of(), List.of()));
+            require(!liveMobs().containsKey(id), "finished death releases its live state");
+
+            MiniEntities.clear();
+            MiniEntities.receiveLive(new MiniLivePayload(POCKET, 100, false,
+                    List.of(animationEntry(id, 42, alive)), List.of()));
+            clock = timeline(liveMobs().get(id)); clock.advance(100);
+            MiniEntities.receiveLive(new MiniLivePayload(POCKET, 104, false, List.of(), List.of(
+                    new MobAnimations.Event(1, 42, 101, MobAnimations.Kind.DEATH, false, 0),
+                    new MobAnimations.Event(2, 42, 102, MobAnimations.Kind.POOF, false, 0))));
+            require(liveMobs().containsKey(id), "removal packet delivers death events before pruning absent mobs");
+            clock.advance(104);
+            require(clock.ended() && clock.takePoof(), "removal packet death and poof are played");
+
+            MiniEntities.clear();
+            MiniEntities.receiveLive(new MiniLivePayload(POCKET, 100, false,
+                    List.of(animationEntry(id, 42, dying)), List.of()));
+            for (int tick = 104; tick <= 144; tick += 4) {
+                MiniEntities.receiveLive(new MiniLivePayload(POCKET, tick, false, List.of(), List.of()));
+                require(liveMobs().containsKey(id), "pending death retained within the two-second grace period");
+            }
+            MiniEntities.receiveLive(new MiniLivePayload(POCKET, 148, false, List.of(), List.of()));
+            require(!liveMobs().containsKey(id), "missing poof cannot retain a dead mob indefinitely");
+        } finally { MiniEntities.clear(); }
+        System.out.println("PASS: animation reset, batched death packets, removal events, unique poof and timeout");
+    }
+
+    private static void dyingPacketQuota() throws Exception {
+        Method create = Class.forName("com.matthieu.planariumview.MobAnimationIntegrationChecks")
+                .getDeclaredMethod("mob", int.class);
+        create.setAccessible(true);
+        List<Entity> active = new ArrayList<>();
+        List<LivingEntity> dying = new ArrayList<>();
+        Set<UUID> sent = new HashSet<>();
+        for (int i = 0; i < 70; i++) {
+            LivingEntity mob = (LivingEntity) create.invoke(null, i);
+            mob.setUUID(UUID.randomUUID()); active.add(mob);
+            Boat boat = fixture(Boat.class); boat.setUUID(UUID.randomUUID()); active.add(boat);
+            LivingEntity dead = (LivingEntity) create.invoke(null, 100 + i);
+            dead.setUUID(UUID.randomUUID()); dying.add(dead); sent.add(dead.getUUID());
+        }
+        for (int deaths : new int[]{0, 1, 32, 64, 70}) {
+            for (int limit : new int[]{0, 8, 32, 64}) {
+                List<Entity> selected = MiniLive.selectForViewer(active, dying.subList(0, deaths), sent, limit, true);
+                int retained = Math.min(deaths, 64);
+                require(selected.size() == 64 + retained + Math.min(limit, 64 - retained),
+                        "dying mobs reserve packet slots before live replacements");
+                require(selected.containsAll(dying.subList(0, retained)), "already displayed deaths keep their slots");
+                var entries = selected.stream().map(entity -> animationEntry(entity.getUUID(), 42, null)).toList();
+                var buf = new FriendlyByteBuf(Unpooled.buffer());
+                try {
+                    MiniLivePayload.STREAM_CODEC.encode(buf, new MiniLivePayload(POCKET, 100, false, entries, List.of()));
+                    var decoded = MiniLivePayload.STREAM_CODEC.decode(buf);
+                    require(decoded.entries().size() == selected.size() && !buf.isReadable(),
+                            "production selection including dying mobs fits the wire limit");
+                } finally { buf.release(); }
+            }
+        }
+        require(MiniLive.selectForViewer(active, dying, Set.of(), 64, true).stream().noneMatch(dying::contains),
+                "unseen dying mobs never consume viewer slots");
+        System.out.println("PASS: packet quotas with 64 vehicles, replacements and up to 70 dying mobs");
+    }
+
     public static void main(String[] args) throws Exception {
         protocol(); snapshots(); tickets(); options(); interpolation(); vehiclesAndCopies(); stableMiniatures(); variedMiniatures();
+        emptySnapshotPreservesPlayback();
+        animationRecovery(); dyingPacketQuota();
         System.out.println("PASS: " + assertions + " live miniature assertions");
     }
 }

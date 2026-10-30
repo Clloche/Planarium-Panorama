@@ -3,7 +3,15 @@ package com.matthieu.planariumview.client.mini.entities;
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer;
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer.StructureRenderData;
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
+import com.matthieu.planariumview.client.mini.MiniParticles;
+import com.matthieu.planariumview.client.scenery.ClientView;
+import com.matthieu.planariumview.client.scenery.entities.AmbientEffects;
+import com.matthieu.planariumview.client.scenery.entities.AquaticEffects;
 import com.matthieu.planariumview.client.scenery.entities.GiantEntities;
+import com.matthieu.planariumview.client.scenery.entities.MobAnimationTimeline;
+import com.matthieu.planariumview.client.scenery.entities.MobAppearance;
+import com.matthieu.planariumview.client.scenery.entities.MobEffects;
+import com.matthieu.planariumview.client.scenery.entities.MobShadows;
 import com.matthieu.planariumview.client.scenery.entities.OutsideWings;
 import com.matthieu.planariumview.client.scenery.LitRenderingWorld;
 import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
@@ -15,6 +23,7 @@ import com.matthieu.planariumview.network.entities.MiniEntityTypes;
 import com.matthieu.planariumview.mixin.entities.SceneryEntityAccessor;
 import com.google.common.collect.ImmutableList;
 import com.matthieu.planariumview.network.entities.MiniWatchPayload;
+import com.matthieu.planariumview.network.entities.MobAnimations;
 import com.matthieu.planariumview.network.entities.MobEnvironment;
 import net.neoforged.neoforge.network.PacketDistributor;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -55,7 +64,9 @@ import java.util.WeakHashMap;
  * comme les blocs.
  *
  * <p>Ces copies ne font pas tourner la poche : elles ont seulement de petites animations de repos calculees ici
- * (respiration et ailes par leur age, regards, tentacules), sans IA ni simulation du serveur.
+ * (respiration et ailes par leur age, regards, tentacules), sans IA ni simulation du serveur. Dans une miniature
+ * vivante (MiniLive), elles recoivent en plus ce que recoivent les mobs du dehors : apparence (en feu, effets...),
+ * coups, attaques, mort, et leurs particules a l'echelle de la miniature (voir MiniParticles).
  */
 public final class MiniEntities {
     /** Ars : le gabarit du bocal commence au bloc (0, 1, 0). */
@@ -108,6 +119,15 @@ public final class MiniEntities {
         /** Ecart du regard par rapport au corps, et temps avant d'en changer. */
         float look;
         int lookTimer = RANDOM.nextInt(60);
+        /** Version de l'apparence vivante deja appliquee (voir LiveMob), -1 apres une relecture de l'instantane. */
+        int appliedData = -1;
+        int appliedEquipment = -1;
+        /** A suivi le serveur (coups, attaque, mort, feu) : a remettre au calme quand le direct s'arrete. */
+        boolean animated;
+        /** Plus dans l'instantane (mort), garde tant que le direct le montre mourir. */
+        boolean orphan;
+        /** Parti en nuage apres sa mort : plus dessine, meme si l'instantane le contient encore un moment. */
+        boolean gone;
 
         MiniMob(UUID id, Entity entity) {
             this.id = id;
@@ -120,21 +140,70 @@ public final class MiniEntities {
          * nage), les tentacules.
          */
         void tickLive(LiveMob state) {
+            tickLive(state, null, System.nanoTime());
+        }
+
+        /** {@code tile} : le Planarium dessine, pour les particules (null : sans particules). */
+        void tickLive(LiveMob state, BlockPos tile, long now) {
             Entity mob = entity;
             mob.tickCount++;
+            if (state.data.length > 0 && state.dataVersion != appliedData) {
+                appliedData = state.dataVersion;
+                MobAppearance.data(mob, state.data, mob.registryAccess());
+            }
+            if (state.equipment.length > 0 && state.equipmentVersion != appliedEquipment && mob instanceof LivingEntity living) {
+                appliedEquipment = state.equipmentVersion;
+                MobAppearance.equipment(living, state.equipment, mob.registryAccess());
+            }
             float vx = (state.x - state.px) / SEND_TICKS;
             float vy = (state.y - state.py) / SEND_TICKS;
             float vz = (state.z - state.pz) / SEND_TICKS;
             // Comme LivingEntity.calculateEntityAnimation : la distance parcourue par tick fait marcher les pattes.
             boolean inWater = (state.flags & MiniLivePayload.Entry.IN_WATER) != 0;
-            OutsideAquatic.apply(mob, new MobEnvironment(inWater,
+            OutsideAquatic.apply(mob, state.environment != null ? state.environment : new MobEnvironment(inWater,
                     (state.flags & MiniLivePayload.Entry.UNDERWATER) != 0, inWater,
                     (state.flags & MiniLivePayload.Entry.ON_GROUND) != 0, vx, vy, vz, null));
             if (mob instanceof LivingEntity living) {
                 living.walkAnimation.update(Math.min(Mth.sqrt(vx * vx + vz * vz) * 4.0F, 1.0F), 0.4F);
                 wings.tick(living);
-                tentacles(living);
+                // Le serveur envoie la vraie pose des calmars avec l'eau ; sinon, la poussee calculee ici.
+                if (state.environment == null || state.environment.squid() == null) tentacles(living);
+                state.timeline.advance((int) Math.floor(state.time(now)));
+                state.timeline.apply(living);
+                animated = true;
+                // Placee pour cet instant (le dessin le refait a chaque image) : les particules partent du mob.
+                state.apply(mob, now);
+                int ink = state.timeline.takeInk();
+                if (tile != null && !state.timeline.ended() && Config.sceneryParticles()) {
+                    effects(living, tile, ink);
+                }
+                if (state.timeline.takePoof() && tile != null && Config.sceneryParticles()) {
+                    MiniParticles.mobDeath(tile, mob.getX(), mob.getY(), mob.getZ(), mob.getBbWidth(), mob.getBbHeight());
+                }
+                if (state.timeline.ended()) gone = true;
             }
+        }
+
+        /** Memes particules que les mobs du dehors (MobEffects, AmbientEffects, AquaticEffects), dans la miniature. */
+        private static void effects(LivingEntity mob, BlockPos tile, int ink) {
+            AquaticEffects.Sink sink = (type, x, y, z, vx, vy, vz) -> MiniParticles.mobParticle(tile, type, x, y, z, vx, vy, vz);
+            MobEffects.Emission potion = MobEffects.sample(mob, mob.getRandom());
+            if (potion != null) {
+                MiniParticles.mobParticle(tile, potion.options(), potion.x(), potion.y(), potion.z(), 1.0, 1.0, 1.0);
+            }
+            AmbientEffects.sample(mob, mob.getRandom(), sink);
+            AquaticEffects.sample(mob, mob.getYRot(), mob.getXRot(), mob.getRandom(), sink);
+            if (ink > 0 && mob instanceof Squid squid) {
+                for (int i = 0; i < ink; i++) AquaticEffects.ink(squid, squid.yBodyRot, mob.getRandom(), sink);
+            }
+        }
+
+        /** Le direct s'arrete : plus de coup, de mort, d'attaque ni de feu laisses sur la copie figee. */
+        void calm() {
+            if (!animated) return;
+            animated = false;
+            if (entity instanceof LivingEntity living) MobAnimationTimeline.calm(living);
+            entity.setSharedFlagOnFire(false);
         }
 
         private static void tentacles(LivingEntity mob) {
@@ -147,6 +216,7 @@ public final class MiniEntities {
         }
 
         void tick() {
+            calm();
             if (!(entity instanceof LivingEntity mob)) {
                 entity.tickCount++;
                 return;
@@ -177,6 +247,8 @@ public final class MiniEntities {
     private static final long LIVE_INTERVAL_NANOS = SEND_TICKS * 50_000_000L;
     /** Plus de nouvelles depuis une seconde : la miniature reprend l'instantane anime. */
     private static final long LIVE_STALE_NANOS = 1_000_000_000L;
+    /** Un mob mort sans nuage recu (retire autrement) n'est pas garde plus de 2 secondes. */
+    private static final int MAX_DEPARTING_TICKS = 40;
     /** La miniature regardee est renvoyee au serveur toutes les 2 secondes (il l'oublie apres 3). */
     private static final int WATCH_REFRESH_TICKS = 40;
 
@@ -196,6 +268,8 @@ public final class MiniEntities {
 
     private static final class LiveScene {
         final Map<UUID, LiveMob> mobs = new HashMap<>();
+        /** Identifiant reseau -> UUID, pour les evenements (coup, mort...). */
+        final Map<Integer, UUID> ids = new HashMap<>();
         long receivedAt;
     }
 
@@ -205,6 +279,43 @@ public final class MiniEntities {
         float x, y, z, body, head, pitch;
         int flags;
         long at;
+        /** Tick du serveur du dernier envoi : l'horloge des animations (voir time). */
+        int tick;
+        /** Tick du serveur depuis lequel il n'est plus envoye (mort), ou -1. */
+        int heldSince = -1;
+        MobEnvironment environment;
+        /** Derniere apparence recue (donnees synchronisees, equipement) et son numero de version. */
+        byte[] data = new byte[0];
+        byte[] equipment = new byte[0];
+        int dataVersion;
+        int equipmentVersion;
+        final MobAnimationTimeline timeline = new MobAnimationTimeline();
+
+        /**
+         * Instant dessine, en ticks du serveur : la position est interpolee entre l'avant-dernier et le dernier envoi,
+         * donc un intervalle d'envoi en retard sur le dernier tick recu.
+         */
+        double time(long now) {
+            return tick - SEND_TICKS + Mth.clamp((now - at) / 50_000_000.0, 0.0, SEND_TICKS);
+        }
+
+        /** Mort (ou sa mort recue, pas encore jouee) et pas encore parti en nuage. */
+        boolean departing() {
+            return timeline.departing();
+        }
+
+        /** Plus de position : reste sur place, mais son horloge avance avec les envois (fin de l'animation de mort). */
+        void hold(long now, int serverTick) {
+            if (heldSince < 0) heldSince = serverTick;
+            px = x;
+            py = y;
+            pz = z;
+            pBody = body;
+            pHead = head;
+            pPitch = pitch;
+            at = now;
+            tick = serverTick;
+        }
 
         void accept(MiniLivePayload.Entry entry, long now, boolean first) {
             if (first) {
@@ -228,6 +339,16 @@ public final class MiniEntities {
             head = entry.headYaw();
             pitch = entry.pitch();
             flags = entry.flags();
+            heldSince = -1;
+            environment = entry.environment();
+            if (entry.data() != null && entry.data().length > 0) {
+                data = entry.data();
+                dataVersion++;
+            }
+            if (entry.equipment() != null && entry.equipment().length > 0) {
+                equipment = entry.equipment();
+                equipmentVersion++;
+            }
             at = now;
         }
 
@@ -267,6 +388,9 @@ public final class MiniEntities {
     public static void receiveLive(MiniLivePayload payload) {
         long now = System.nanoTime();
         LiveScene scene = LIVE.computeIfAbsent(payload.pocketDim(), key -> new LiveScene());
+        // Debordement cote serveur : l'historique en attente est remplace par les etats de ce paquet. Vide avant
+        // d'ajouter ces etats, sinon ils seraient effaces avec lui.
+        if (payload.resetAnimations()) scene.mobs.values().forEach(mob -> mob.timeline.resetPending());
         Set<UUID> seen = new HashSet<>();
         for (MiniLivePayload.Entry entry : payload.entries()) {
             LiveMob mob = scene.mobs.get(entry.id());
@@ -276,9 +400,25 @@ public final class MiniEntities {
                 scene.mobs.put(entry.id(), mob);
             }
             mob.accept(entry, now, first);
+            mob.tick = payload.tick();
+            if (entry.living() != null) mob.timeline.snapshot(payload.tick(), entry.living());
+            if (entry.entityId() >= 0) scene.ids.put(entry.entityId(), entry.id());
             seen.add(entry.id());
         }
-        scene.mobs.keySet().retainAll(seen);
+        // Evenements avant le menage : un mob absent de ce paquet (parti apres sa mort) recoit encore sa mort et son nuage.
+        for (MobAnimations.Event event : payload.events()) {
+            UUID id = scene.ids.get(event.entityId());
+            LiveMob mob = id == null ? null : scene.mobs.get(id);
+            if (mob != null) mob.timeline.event(event);
+        }
+        // Un mob qui vient de mourir n'est plus envoye apres son nuage : il reste jusqu'a la fin de son animation,
+        // immobile, sur l'horloge des envois.
+        scene.mobs.entrySet().removeIf(item -> !seen.contains(item.getKey()) && (!item.getValue().departing()
+                || item.getValue().heldSince >= 0 && payload.tick() - item.getValue().heldSince > MAX_DEPARTING_TICKS));
+        for (Map.Entry<UUID, LiveMob> item : scene.mobs.entrySet()) {
+            if (!seen.contains(item.getKey())) item.getValue().hold(now, payload.tick());
+        }
+        scene.ids.values().retainAll(scene.mobs.keySet());
         scene.receivedAt = now;
     }
 
@@ -300,9 +440,6 @@ public final class MiniEntities {
         CompoundTag tag = payload.entities();
         if (tag.getList("entities", Tag.TAG_COMPOUND).isEmpty() && tag.getList("mobs", Tag.TAG_COMPOUND).isEmpty()) {
             RECEIVED.remove(payload.pocketDim());
-            synchronized (MOBS) {
-                MOBS.values().removeIf(mobs -> mobs.pocket.equals(payload.pocketDim()));
-            }
         } else {
             RECEIVED.put(payload.pocketDim(), tag);
         }
@@ -337,6 +474,9 @@ public final class MiniEntities {
         if (built.entities().isEmpty() && (mobs == null || mobs.mobs.isEmpty())) {
             return;
         }
+        // Flammes face a la camera, autour de la verticale de la miniature (inclinee sur une structure Sable).
+        var flameRotation = MobEffects.flameRotation(poseStack.last().pose(),
+                Minecraft.getInstance().gameRenderer.getMainCamera().rotation());
         // Meme pose que les blocs de la miniature (PlanariumRenderer d'Ars).
         float pad = 0.0025F;
         float scale = (1.0F - 2.0F * pad) / 32.0F;
@@ -359,15 +499,23 @@ public final class MiniEntities {
             if (mobs != null && mobs.selected) {
                 long now = System.nanoTime();
                 LiveScene live = live(mobs.pocket, now);
+                // Ombres comme dans le decor geant ; leur fondu suit la vraie distance (32 fois plus petite).
+                MobShadows.Frame shadows = MobShadows.frame(poseStack.last().pose(), ClientView.ARS_SCALE, fakeLighting);
                 for (MiniMob mob : mobs.mobs.values()) {
                     try {
                         LiveMob state = live == null ? null : live.mobs.get(mob.id);
+                        if (mob.gone) continue; // Parti en nuage : il ne reste que les particules.
                         if (state != null) {
+                            if (state.timeline.ended()) continue;
                             state.apply(mob.entity, now);
+                        } else if (mob.orphan) {
+                            continue;
                         }
                         Integer light = fakeLighting ? mob.light : Integer.valueOf(packedLight);
-                        GiantEntities.render(mob.entity, data.fakeRenderingWorld, partialTick,
-                                GiantEntities.copyPose(poseStack.last()), buffers, light);
+                        PoseStack pose = GiantEntities.copyPose(poseStack.last());
+                        GiantEntities.render(mob.entity, data.fakeRenderingWorld, partialTick, pose, buffers, light,
+                                flameRotation);
+                        MobShadows.render(shadows, mob.entity, data.fakeRenderingWorld, pose, buffers);
                     } catch (Exception ignored) {
                         // un mob modde qui suppose un vrai monde : on le saute
                     }
@@ -434,6 +582,17 @@ public final class MiniEntities {
                 next.put(id, mob);
             }
         }
+        // Un mob mort quitte l'instantane avant la fin de son animation : le direct le garde jusqu'a son nuage.
+        LiveScene live = live(pocket, System.nanoTime());
+        if (live != null) {
+            for (MiniMob mob : previous.values()) {
+                LiveMob state = live.mobs.get(mob.id);
+                if (state != null && !state.timeline.ended()) {
+                    mob.orphan = true;
+                    next.put(mob.id, mob);
+                }
+            }
+        }
         linkMounts(next);
         if (fakeLighting) {
             ColorCompat.begin(data.fakeRenderingWorld);
@@ -469,6 +628,9 @@ public final class MiniEntities {
                     ? Mth.clamp(Mth.wrapDegrees(living.yHeadRot - living.yBodyRot), -50.0F, 50.0F) : 0;
             mob.entity.load(tag);
             faceSaved(mob.entity);
+            mob.appliedData = -1;
+            mob.appliedEquipment = -1;
+            mob.orphan = false;
             if (mob.entity instanceof LivingEntity living) {
                 living.yHeadRot = living.yBodyRot + headOffset;
                 living.yHeadRotO = living.yHeadRot;
@@ -566,8 +728,14 @@ public final class MiniEntities {
             for (MiniMob mob : animated) {
                 try {
                     LiveMob state = live == null ? null : live.mobs.get(mob.id);
+                    if (mob.orphan && (state == null || state.timeline.ended())) {
+                        synchronized (MOBS) {
+                            mobs.mobs.remove(mob.id);
+                        }
+                        continue;
+                    }
                     if (state != null) {
-                        mob.tickLive(state);
+                        mob.tickLive(state, mobs.tilePos, now);
                     } else {
                         mob.tick();
                     }

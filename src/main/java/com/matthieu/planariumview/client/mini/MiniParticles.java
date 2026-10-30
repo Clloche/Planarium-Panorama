@@ -13,6 +13,8 @@ import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -127,7 +129,8 @@ public final class MiniParticles {
         }
     }
 
-    private static void animate(Minecraft mc, BlockPos tile, Seen seen, StructureRenderData data, Mini mini) {
+    /** Repere des particules d'une miniature : 32 fois plus petites, dans le Planarium a {@code tile}. */
+    private static SceneryParticles.Space space(BlockPos tile, Seen seen, StructureRenderData data, Mini mini) {
         float scale = ClientView.ARS_SCALE;
         // Lumiere : celle du bocal (avec sa couleur) si la vraie lumiere de la miniature est connue, sans depasser le
         // ciel de l'endroit du Planarium ; sinon celle de l'endroit du Planarium.
@@ -140,9 +143,14 @@ public final class MiniParticles {
             int sky = Math.min((packed >> 20) & 15, tileSky);
             return (packed & ~0x00F000F0) | block << 4 | sky << 20;
         };
-        SceneryParticles.Space space = new SceneryParticles.Space(lit != null ? lit : mini.world(), scale,
+        return new SceneryParticles.Space(lit != null ? lit : mini.world(), scale,
                 tile.getX() + ClientView.ARS_OFFSET, tile.getY() + ClientView.ARS_OFFSET + 26 * scale,
                 tile.getZ() + ClientView.ARS_OFFSET, PARTICLE_BOUNDS, lit != null, adjust);
+    }
+
+    private static void animate(Minecraft mc, BlockPos tile, Seen seen, StructureRenderData data, Mini mini) {
+        int tileLight = seen.light();
+        SceneryParticles.Space space = space(tile, seen, data, mini);
         LitRenderingWorld.captureSceneryParticles((world, options, x, y, z, vx, vy, vz) -> {
             if (options == null || !SceneryParticles.allowed()) {
                 return;
@@ -177,6 +185,42 @@ public final class MiniParticles {
             LitRenderingWorld.captureSceneryParticles(null);
             SceneryParticles.animatingMini(false);
         }
+    }
+
+    /**
+     * Particule d'un mob de la miniature (effets de potion, portail des endermen, dauphins, encre...), position et
+     * vitesse dans le gabarit du bocal, comme les mobs vivants (voir MiniEntities). Seulement pour un Planarium dessine
+     * recemment et proche, dans le budget de particules de Minecraft.
+     */
+    public static void mobParticle(BlockPos tile, ParticleOptions options, double x, double y, double z,
+                                   double vx, double vy, double vz) {
+        SceneryParticles.Space space = mobSpace(tile);
+        if (space != null && options != null && SceneryParticles.allowed()) {
+            SceneryParticles.spawn(space, options, x, y, z, vx, vy, vz, SEEN.get(tile).light());
+        }
+    }
+
+    /** Les vingt nuages d'un mob qui disparait apres sa mort, comme vanilla (LivingEntity.makePoofParticles). */
+    public static void mobDeath(BlockPos tile, double x, double y, double z, float width, float height) {
+        SceneryParticles.Space space = mobSpace(tile);
+        if (space == null) return;
+        int light = SEEN.get(tile).light();
+        for (int i = 0; i < 20; i++) {
+            if (!SceneryParticles.allowed()) continue;
+            SceneryParticles.spawn(space, ParticleTypes.POOF, x + (RANDOM.nextDouble() * 2 - 1) * width,
+                    y + RANDOM.nextDouble() * height, z + (RANDOM.nextDouble() * 2 - 1) * width,
+                    RANDOM.nextGaussian() * 0.02, RANDOM.nextGaussian() * 0.02, RANDOM.nextGaussian() * 0.02, light);
+        }
+    }
+
+    private static SceneryParticles.Space mobSpace(BlockPos tile) {
+        if (tile == null || !Config.sceneryParticles()) return null;
+        Seen seen = SEEN.get(tile);
+        if (seen == null) return null;
+        StructureRenderData data = PlanariumRenderer.structureRenderData.get(seen.key());
+        if (data == null || data.statePosCache == null) return null;
+        Mini mini = MINIS.computeIfAbsent(data, MiniParticles::create);
+        return mini == null ? null : space(tile, seen, data, mini);
     }
 
     /** Pendant la construction de la miniature (Contraption Lights lit son faux monde) : voir SceneryParticles.readHues. */

@@ -160,7 +160,7 @@ public record OutsideMobsPayload(ResourceLocation pocketDim, int resync, BlockPo
         return new OutsideMobsPayload(pocket, resync, origin, tick, full, entries, removed, events, resetAnimations);
     }
 
-    private static void writeLiving(FriendlyByteBuf buf, MobAnimations.Snapshot state) {
+    static void writeLiving(FriendlyByteBuf buf, MobAnimations.Snapshot state) {
         buf.writeVarInt(state.hurtTime());
         buf.writeVarInt(state.hurtDuration());
         buf.writeBoolean(state.dying());
@@ -171,7 +171,7 @@ public record OutsideMobsPayload(ResourceLocation pocketDim, int resync, BlockPo
         buf.writeVarInt(state.swingDuration());
     }
 
-    private static MobAnimations.Snapshot readLiving(FriendlyByteBuf buf) {
+    static MobAnimations.Snapshot readLiving(FriendlyByteBuf buf) {
         return new MobAnimations.Snapshot(buf.readVarInt(), buf.readVarInt(), buf.readBoolean(), buf.readVarInt(),
                 buf.readBoolean(), buf.readBoolean(), buf.readVarInt() - 1, buf.readVarInt());
     }
