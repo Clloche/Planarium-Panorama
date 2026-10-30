@@ -20,6 +20,7 @@ import net.minecraft.world.phys.Vec3;
  * (voir JarWalls) dessine donc un degrade sur les parois et le plancher, comme sur un bloc normal.
  */
 public final class ProjectorLighting {
+    private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(ProjectorLighting.class);
     /** Interieur du bocal (les parois sont juste autour). */
     private static final int MIN_XZ = 0;
     private static final int MAX_XZ = 31;
@@ -52,6 +53,43 @@ public final class ProjectorLighting {
     private static int frame;
 
     /**
+     * Cache GPU : les sommets des quadrilateres restent dans un VertexBuffer, autour d'une origine fixe, et ne sont
+     * renvoyes a la carte graphique que quand l'un d'eux change. Avant, ils etaient recopies un par un dans le tampon de
+     * rendu a chaque image (Subdivider.replay : 40 % du rendu dans un bocal). Seulement pour la couche du modele d'Ars
+     * (opaque ou decoupee, sans tri), depuis la source de tampons normale de Minecraft et sans pack de shaders ; sinon,
+     * l'ancien renvoi par image (voir gpuAllowed).
+     */
+    private static com.mojang.blaze3d.vertex.VertexBuffer gpuBuffer;
+    private static com.mojang.blaze3d.vertex.ByteBufferBuilder gpuBytes;
+    private static net.minecraft.client.renderer.RenderType gpuType;
+    /** Couche du maillage envoye (le dessin doit employer la meme). */
+    private static net.minecraft.client.renderer.RenderType builtType;
+    /** Origine des sommets du VertexBuffer (coordonnees du monde). */
+    private static double originX, originY, originZ;
+    private static boolean gpuHasMesh;
+    /** Un quadrilatere du cache GPU a change pendant ce dessin : le VertexBuffer est refait une fois, a la fin. */
+    private static boolean gpuDirty = true;
+    /** Ce dessin passe par le cache GPU (voir wrap et afterRender). */
+    private static boolean gpuFrame;
+    private static boolean wrapped;
+    private static MultiBufferSource frameSource;
+    private static boolean uploadedThisFrame;
+
+    /** Budget partage par tous les projecteurs de cette image. */
+    public static void beginFrame() {
+        uploadedThisFrame = false;
+    }
+    /**
+     * La fin du dessin a deja ete vue une fois (crochet de PlanariumProjectorRendererMixin) : sans elle, le cache GPU
+     * n'est jamais dessine, et les parois disparaitraient. Le premier dessin passe donc toujours par l'ancien renvoi.
+     */
+    private static boolean afterRenderWorks;
+    private static boolean gpuFailed;
+    private static Boolean irisPresent;
+    private static java.lang.reflect.Method irisInstance;
+    private static java.lang.reflect.Method irisShaders;
+
+    /**
      * Un quadrilatere du modele, deja decoupe : ses sommets finaux en coordonnees du monde (fixes, le projecteur ne
      * bouge pas). Chaque image, on les renvoie tels quels, decales de la camera : plus de decoupage, de fusion ni
      * d'interpolation a refaire. Refait seulement quand la lumiere de sa grille change, ou quand le modele change
@@ -69,6 +107,8 @@ public final class ProjectorLighting {
         int color;
         int overlay;
         float nx, ny, nz;
+        /** Ce quadrilatere va dans le cache GPU (sinon, il est renvoye au tampon de rendu a chaque image). */
+        boolean gpu;
         /** Sommets : x, y, z du monde (3 par sommet), u, v (2 par sommet), lumiere (1 par sommet). */
         double[] xyz = new double[96];
         float[] uv = new float[64];
@@ -95,6 +135,9 @@ public final class ProjectorLighting {
 
     /** Remplace le MultiBufferSource du dessin du projecteur, si la vraie luminosite est active dans ce bocal. */
     public static MultiBufferSource wrap(MultiBufferSource source) {
+        wrapped = false;
+        gpuFrame = false;
+        frameSource = null;
         if (!SkySync.projectorFollowsOutside()) {
             return source;
         }
@@ -106,7 +149,167 @@ public final class ProjectorLighting {
         quadIndex = 0;
         frame++;
         Vec3 camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
-        return type -> new Subdivider(source.getBuffer(type), level, camera);
+        wrapped = true;
+        frameSource = source;
+        gpuFrame = afterRenderWorks && gpuAllowed(source);
+        return type -> {
+            // Une seule couche dans le cache GPU (la premiere acceptee) ; les autres gardent l'ancien renvoi.
+            if (gpuFrame && supported(type) && (gpuType == null || gpuType == type)) {
+                if (gpuType != type) gpuDirty = true;
+                gpuType = type;
+                return new Subdivider(null, level, camera);
+            }
+            return new Subdivider(source.getBuffer(type), level, camera);
+        };
+    }
+
+    /**
+     * Fin du dessin du modele (PlanariumProjectorRendererMixin) : refait le VertexBuffer si un quadrilatere a change,
+     * puis le dessine tout de suite, avec la vue de la camera. La couche est opaque ou decoupee : l'ordre par rapport au
+     * reste du lot de Minecraft ne change pas l'image.
+     */
+    public static void afterRender() {
+        if (!wrapped) return;
+        wrapped = false;
+        afterRenderWorks = true;
+        if (QUADS.size() > quadIndex) {
+            // Le modele a perdu des quadrilateres (nouvelle ressource) : les anciens ne doivent plus etre dessines.
+            QUADS.subList(quadIndex, QUADS.size()).clear();
+            gpuDirty = true;
+        }
+        if (!gpuFrame || gpuType == null) return;
+        try {
+            if (gpuDirty || builtType != gpuType) {
+                if (uploadedThisFrame) {
+                    replayGpu(frameSource, gpuType);
+                    return;
+                }
+                uploadedThisFrame = true;
+                upload();
+                gpuDirty = false;
+            }
+            if (gpuHasMesh) draw();
+        } catch (RuntimeException | LinkageError e) {
+            gpuFailed = true;
+            net.minecraft.client.renderer.RenderType fallbackType = gpuType;
+            try { closeGpu(); }
+            catch (RuntimeException | LinkageError cleanup) { e.addSuppressed(cleanup); }
+            replayGpu(frameSource, fallbackType);
+            LOGGER.debug("[Planarium Panorama] Cache GPU des parois du bocal desactive", e);
+        }
+    }
+
+    /** Une erreur GPU ou le budget epuise ne doit pas faire disparaitre les quads de cette image. */
+    private static void replayGpu(MultiBufferSource source, net.minecraft.client.renderer.RenderType type) {
+        if (source == null || type == null) return;
+        Vec3 camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+        VertexConsumer out = source.getBuffer(type);
+        for (QuadCache c : QUADS) {
+            if (!c.gpu) continue;
+            for (int i = 0; i < c.count; i++) {
+                out.addVertex((float) (c.xyz[i * 3] - camera.x), (float) (c.xyz[i * 3 + 1] - camera.y),
+                        (float) (c.xyz[i * 3 + 2] - camera.z), c.color, c.uv[i * 2], c.uv[i * 2 + 1], c.overlay,
+                        c.lights[i], c.nx, c.ny, c.nz);
+            }
+        }
+    }
+
+    private static void upload() {
+        java.util.List<QuadCache> entries = new java.util.ArrayList<>();
+        for (QuadCache entry : QUADS) {
+            if (entry.gpu && entry.count > 0) entries.add(entry);
+        }
+        builtType = gpuType;
+        gpuHasMesh = false;
+        if (entries.isEmpty()) return;
+        // Origine fixe pres des sommets : des float relatifs, precis meme loin de l'origine du monde.
+        originX = Math.floor(entries.get(0).xyz[0]);
+        originY = Math.floor(entries.get(0).xyz[1]);
+        originZ = Math.floor(entries.get(0).xyz[2]);
+        if (gpuBytes == null) gpuBytes = new com.mojang.blaze3d.vertex.ByteBufferBuilder(1 << 16);
+        com.mojang.blaze3d.vertex.BufferBuilder builder = new com.mojang.blaze3d.vertex.BufferBuilder(gpuBytes,
+                gpuType.mode(), gpuType.format());
+        for (QuadCache c : entries) {
+            for (int i = 0; i < c.count; i++) {
+                builder.addVertex((float) (c.xyz[i * 3] - originX), (float) (c.xyz[i * 3 + 1] - originY),
+                        (float) (c.xyz[i * 3 + 2] - originZ), c.color, c.uv[i * 2], c.uv[i * 2 + 1], c.overlay,
+                        c.lights[i], c.nx, c.ny, c.nz);
+            }
+        }
+        com.mojang.blaze3d.vertex.MeshData mesh = builder.build();
+        if (mesh == null) return;
+        if (gpuBuffer == null) gpuBuffer = new com.mojang.blaze3d.vertex.VertexBuffer(com.mojang.blaze3d.vertex.VertexBuffer.Usage.STATIC);
+        gpuBuffer.bind();
+        try { gpuBuffer.upload(mesh); }
+        finally { com.mojang.blaze3d.vertex.VertexBuffer.unbind(); }
+        gpuHasMesh = true;
+    }
+
+    private static void draw() {
+        Vec3 camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+        org.joml.Matrix4f view = new org.joml.Matrix4f(com.mojang.blaze3d.systems.RenderSystem.getModelViewMatrix())
+                .translate((float) (originX - camera.x), (float) (originY - camera.y), (float) (originZ - camera.z));
+        builtType.setupRenderState();
+        try {
+            gpuBuffer.bind();
+            gpuBuffer.drawWithShader(view, com.mojang.blaze3d.systems.RenderSystem.getProjectionMatrix(),
+                    com.mojang.blaze3d.systems.RenderSystem.getShader());
+        } finally {
+            com.mojang.blaze3d.vertex.VertexBuffer.unbind();
+            builtType.clearRenderState();
+        }
+    }
+
+    /**
+     * Cache GPU permis pour ce dessin : la source normale de Minecraft (pas celle des fissures d'un bloc qu'on casse,
+     * qui doit recevoir les sommets), et pas de pack de shaders (Iris/Oculus ont leurs propres passes, ombres comprises).
+     */
+    private static boolean gpuAllowed(MultiBufferSource source) {
+        return !gpuFailed && source == Minecraft.getInstance().renderBuffers().bufferSource() && !shaderPack();
+    }
+
+    /** Couches sans tri des faces : le modele d'Ars est dessine en "cutout" (entite ou bloc). */
+    private static boolean supported(net.minecraft.client.renderer.RenderType type) {
+        return type == net.minecraft.client.renderer.Sheets.cutoutBlockSheet()
+                || type == net.minecraft.client.renderer.Sheets.solidBlockSheet()
+                || type == net.minecraft.client.renderer.RenderType.cutout()
+                || type == net.minecraft.client.renderer.RenderType.cutoutMipped()
+                || type == net.minecraft.client.renderer.RenderType.solid();
+    }
+
+    private static boolean shaderPack() {
+        if (irisPresent == null) {
+            irisPresent = false;
+            try {
+                Class<?> api = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
+                irisInstance = api.getMethod("getInstance");
+                irisShaders = api.getMethod("isShaderPackInUse");
+                irisPresent = true;
+            } catch (Throwable ignored) {
+                // sans Iris ni Oculus : pas de pack de shaders
+            }
+        }
+        if (!irisPresent) return false;
+        try {
+            return (boolean) irisShaders.invoke(irisInstance.invoke(null));
+        } catch (Throwable e) {
+            return true; // Inconnu : l'ancien renvoi, toujours correct.
+        }
+    }
+
+    private static void closeGpu() {
+        if (gpuBuffer != null) {
+            gpuBuffer.close();
+            gpuBuffer = null;
+        }
+        if (gpuBytes != null) {
+            gpuBytes.close();
+            gpuBytes = null;
+        }
+        gpuHasMesh = false;
+        gpuType = null;
+        builtType = null;
+        gpuDirty = true;
     }
 
     /**
@@ -122,6 +325,14 @@ public final class ProjectorLighting {
         QUADS.clear();
         quadIndex = 0;
         lightGeneration++;
+        wrapped = false;
+        frameSource = null;
+        // Les objets OpenGL ne se liberent que sur le fil de rendu (rechargement des ressources, sortie du bocal).
+        if (com.mojang.blaze3d.systems.RenderSystem.isOnRenderThread()) {
+            closeGpu();
+        } else {
+            com.mojang.blaze3d.systems.RenderSystem.recordRenderCall(ProjectorLighting::closeGpu);
+        }
     }
 
     private static void refreshCache(ClientLevel level) {
@@ -377,7 +588,7 @@ public final class ProjectorLighting {
             int index = quadIndex++;
             QuadCache cached = index < QUADS.size() ? QUADS.get(index) : null;
             boolean valid = cached != null && cached.stepsA == stepsA && cached.stepsB == stepsB
-                    && sameShape(cached) && sameLook(cached);
+                    && cached.gpu == (out == null) && sameShape(cached) && sameLook(cached);
             // Deja verifie avec cette lumiere, ou pas son tour dans cette image : les sommets gardes.
             if (valid && (cached.generation == lightGeneration || (index + frame) % ROLLING != 0)) {
                 replay(cached);
@@ -417,6 +628,8 @@ public final class ProjectorLighting {
             entry.nx = normal[0][0];
             entry.ny = normal[0][1];
             entry.nz = normal[0][2];
+            if (entry.gpu || out == null) gpuDirty = true; // Entre, sort ou change dans le cache GPU.
+            entry.gpu = out == null;
             entry.count = 0;
             building = entry;
             emitMerged(stepsA, stepsB, light, merge(stepsA, stepsB, light));
@@ -453,6 +666,7 @@ public final class ProjectorLighting {
 
         /** Renvoie les sommets gardes, relatifs a la camera de cette image (methode complete : chemin rapide). */
         private void replay(QuadCache c) {
+            if (out == null) return; // Cache GPU : deja dans le VertexBuffer (ou refait a la fin du dessin).
             double[] xyz = c.xyz;
             float[] uvs = c.uv;
             int[] lights = c.lights;

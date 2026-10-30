@@ -80,11 +80,16 @@ public final class ClientView {
         WeatherView.init();
         LightningView.init();
         LunarClient.init();
+        NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.client.event.RenderFrameEvent.Pre.class,
+                event -> com.matthieu.planariumview.client.jar.ProjectorLighting.beginFrame());
         SeasonColors.init();
         // Rechargement des ressources (F3+T, pack change) : les sommets gardes des parois du bocal sont a refaire.
         container.getEventBus().addListener(net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent.class,
                 event -> event.registerReloadListener((net.minecraft.server.packs.resources.ResourceManagerReloadListener)
-                        manager -> com.matthieu.planariumview.client.jar.ProjectorLighting.clear()));
+                        manager -> {
+                            com.matthieu.planariumview.client.jar.ProjectorLighting.clear();
+                            com.matthieu.planariumview.client.mini.PlanariumFloor.resourcesReloaded();
+                        }));
         container.getEventBus().addListener(net.neoforged.fml.event.lifecycle.FMLClientSetupEvent.class,
                 event -> event.enqueueWork(() -> {
                     WallColors.register();
