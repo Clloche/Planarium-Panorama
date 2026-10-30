@@ -35,6 +35,10 @@ public final class SpellScopeMixinChecks {
 
     /** Supply only class/resource lookup to the real Mixin engine, without starting ModLauncher or a window. */
     private static IMixinTransformer transformer() throws Exception {
+        return transformer("planariumview.spell-scope-checks.mixins.json", node -> {});
+    }
+
+    static IMixinTransformer transformer(String config, java.util.function.Consumer<ClassNode> prepare) throws Exception {
         Method allocate = MobAnimationIntegrationChecks.class.getDeclaredMethod("fixture", Class.class);
         allocate.setAccessible(true);
         Object singleton = allocate.invoke(null, MixinService.class);
@@ -53,6 +57,7 @@ public final class SpellScopeMixinChecks {
         Object bytecode = proxy(IClassBytecodeProvider.class, (p, method, a) -> {
             ClassNode node = new ClassNode();
             new ClassReader(bytes((String) a[0])).accept(node, a.length == 3 ? (int) a[2] : 0);
+            prepare.accept(node);
             return node;
         });
         Object tracker = proxy(IClassTracker.class, (p, method, a) -> switch (method.getName()) {
@@ -82,7 +87,7 @@ public final class SpellScopeMixinChecks {
         field(MixinService.class, "instance").set(null, singleton);
         org.spongepowered.asm.launch.MixinBootstrap.init();
         MixinEnvironment.getDefaultEnvironment().setSide(MixinEnvironment.Side.CLIENT);
-        Mixins.addConfiguration("planariumview.spell-scope-checks.mixins.json");
+        Mixins.addConfiguration(config);
         Constructor<?> ctor = Class.forName("org.spongepowered.asm.mixin.transformer.MixinTransformer").getDeclaredConstructor();
         ctor.setAccessible(true); return (IMixinTransformer) ctor.newInstance();
     }

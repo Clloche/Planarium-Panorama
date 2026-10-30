@@ -94,6 +94,11 @@ final class SceneryAmbience {
             if (particles) {
                 SceneryBubbles.tick(lit, radius);
             }
+            // Spawners : rotation meme sans particules (les sons d'ambiance des trial spawners suivent "sounds").
+            int spawnerView = viewRadius();
+            String spawnerScope = "giant:" + currentDim + ":" + radius + ":" + (lastInfo != null ? lastInfo.origin().asLong() : 0L);
+            SpawnerView.tick(lit, spawnerScope, new net.minecraft.world.phys.Vec3(radius + 0.5, radius + 0.5, radius + 0.5),
+                    at -> visibleSceneryPos(at, radius, spawnerView));
             if (particles) {
                 campfireSmoke(lit, radius);
                 int view = viewRadius();

@@ -1203,12 +1203,21 @@ public final class SceneryParticles {
         }
     }
 
+    /** Ticks du client (hors pause) : la lumiere des particules est relue une fois par tick (ParticleLightMixin). */
+    private static long tickCount;
+
+    public static long tickCount() {
+        return tickCount;
+    }
+
     /** Chaque tick client (hors pause). */
     public static void tick() {
+        tickCount++;
         // Release expired slots each tick, without waiting for a garbage collection.
         synchronized (WRAPPED) { WRAPPED.keySet().removeIf(particle -> !particle.isAlive()); }
         synchronized (SCENERY_WRAPPED) { SCENERY_WRAPPED.keySet().removeIf(particle -> !particle.isAlive()); }
         ArsParticles.beginTick();
+        SpawnerView.beginTick();
         if (EMITTERS.isEmpty()) {
             return;
         }
@@ -1246,9 +1255,11 @@ public final class SceneryParticles {
     }
 
     public static void clear() {
+        tickCount++; // Invalide aussi les valeurs gardees par les particules dans le tick courant.
         SceneryHooks.clearSceneryFrame();
         SceneryWaterParticles.clear();
         ArsParticles.clear();
+        SpawnerView.clear();
         com.matthieu.planariumview.compat.dynamic_surroundings.DsFirefliesCompat.clear();
         LIGHT.clear();
         SPACE.clear();

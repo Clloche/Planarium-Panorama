@@ -11,6 +11,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -35,11 +36,26 @@ public abstract class ParticleLightMixin {
         return result != null ? result : original.call(entity, motion, box, level, shapes);
     }
 
+    /** Tick de SceneryParticles ou la lumiere ci-dessous a ete lue (voir planariumview$sceneryLight). */
+    @Unique private long planariumview$lightTick = Long.MIN_VALUE;
+    @Unique private boolean planariumview$hasLight;
+    @Unique private int planariumview$light;
+
+    /**
+     * Une seule lecture par tick et par particule : une particule ne bouge qu'a chaque tick, et sa lumiere suit encore
+     * celle des blocs autour d'elle (relue au tick suivant, meme immobile). Avant, chaque image relisait le faux monde.
+     */
     @Inject(method = "getLightColor", at = @At("HEAD"), cancellable = true, require = 0)
     private void planariumview$sceneryLight(float partialTick, CallbackInfoReturnable<Integer> cir) {
-        Integer light = SceneryParticles.lightOf((Particle) (Object) this);
-        if (light != null) {
-            cir.setReturnValue(light);
+        long tick = SceneryParticles.tickCount();
+        if (tick != planariumview$lightTick) {
+            planariumview$lightTick = tick;
+            Integer light = SceneryParticles.lightOf((Particle) (Object) this);
+            planariumview$hasLight = light != null;
+            if (light != null) planariumview$light = light;
+        }
+        if (planariumview$hasLight) {
+            cir.setReturnValue(planariumview$light);
         }
     }
 

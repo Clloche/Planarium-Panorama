@@ -137,6 +137,9 @@ public final class SkySync {
     }
 
     public static void clear() {
+        sourceTypeLevel.clear();
+        sourceTypeKey = null;
+        sourceTypeCached = null;
         dim = null;
         outsideSky = -1;
         outsideBlock = -1;
@@ -699,12 +702,27 @@ public final class SkySync {
         return dim != null ? sourceTypeId : null;
     }
 
+    /** Dernier type cherche par monde et identifiant ; la reference faible ne retient pas l'ancien monde. */
+    private static java.lang.ref.WeakReference<ClientLevel> sourceTypeLevel = new java.lang.ref.WeakReference<>(null);
+    private static ResourceLocation sourceTypeKey;
+    private static net.minecraft.world.level.dimension.DimensionType sourceTypeCached;
+
     /** Le type de dimension du Planarium, ou null si inconnu. */
     private static net.minecraft.world.level.dimension.DimensionType sourceType(ClientLevel level) {
         ResourceLocation id = sourceTypeId;
         if (id == null) {
             return null;
         }
+        if (level == sourceTypeLevel.get() && id.equals(sourceTypeKey)) {
+            return sourceTypeCached;
+        }
+        sourceTypeCached = lookupSourceType(level, id);
+        sourceTypeLevel = new java.lang.ref.WeakReference<>(level);
+        sourceTypeKey = id;
+        return sourceTypeCached;
+    }
+
+    private static net.minecraft.world.level.dimension.DimensionType lookupSourceType(ClientLevel level, ResourceLocation id) {
         net.minecraft.world.level.dimension.DimensionType type = level.registryAccess()
                 .registry(net.minecraft.core.registries.Registries.DIMENSION_TYPE)
                 .map(registry -> registry.get(id)).orElse(null);

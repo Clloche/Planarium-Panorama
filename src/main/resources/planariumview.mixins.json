@@ -43,6 +43,8 @@
     "BubbleParticleMixin",
     "SquidInkParticleMixin",
     "SpellParticleScopeMixin",
+    "BaseSpawnerAccessor",
+    "TrialSpawnerDataAccessor",
     "LeavesBlockMixin",
     "ParticleEngineTickMixin",
     "ClientLevelParticleMixin",

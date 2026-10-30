@@ -146,6 +146,19 @@ tasks.register('checkMiniatureSpellScope', JavaExec) {
     }
 }
 
+tasks.register('checkParticleLightCache', JavaExec) {
+    group = 'verification'
+    description = 'Checks the production particle light mixin cache across frames, ticks and world clears.'
+    dependsOn tasks.named('mobAnimationFixtureAgent')
+    classpath = sourceSets.animationChecks.runtimeClasspath
+    mainClass = 'com.matthieu.planariumview.ParticleLightCacheChecks'
+    workingDir = layout.buildDirectory.dir('particle-light-checks').get().asFile
+    doFirst {
+        workingDir.mkdirs()
+        jvmArgs '-javaagent:' + tasks.named('mobAnimationFixtureAgent').get().archiveFile.get().asFile.absolutePath + '=spell-scope'
+    }
+}
+
 tasks.register('checkSceneryOcclusion', JavaExec) {
     group = 'verification'
     description = 'Checks conservative scenery mob occlusion, transforms and cached visibility.'
@@ -162,6 +175,7 @@ tasks.named('check') {
     dependsOn tasks.named('checkOutsideMobIntegration')
     dependsOn tasks.named('checkMiniatureLive')
     dependsOn tasks.named('checkMiniatureSpellScope')
+    dependsOn tasks.named('checkParticleLightCache')
     dependsOn tasks.named('checkSceneryOcclusion')
 }
 

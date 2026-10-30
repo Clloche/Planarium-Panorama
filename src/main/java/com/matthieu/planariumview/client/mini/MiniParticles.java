@@ -51,6 +51,8 @@ public final class MiniParticles {
             JarWalls.MAX, JarWalls.MAX_Y, JarWalls.MAX).move(0.0, -1.0, 0.0);
     /** Distance maximale entre le joueur et le Planarium. */
     private static final double RANGE = 24.0;
+    /** Centre de l'interieur du bocal, dans le gabarit (y du gabarit = y du bocal - 1). */
+    private static final net.minecraft.world.phys.Vec3 MINI_VIEWER = new net.minecraft.world.phys.Vec3(16.0, 15.0, 16.0);
     private static final int MAX_MINIS = 4;
     private static long ticks;
 
@@ -181,6 +183,12 @@ public final class MiniParticles {
             }
             com.matthieu.planariumview.compat.ars_nouveau.ArsParticles.tick(mini.world(),
                     at -> PARTICLE_BOUNDS.contains(at.getCenter()));
+            // Spawners du bocal, vus depuis son centre (en blocs du bocal) : voir SpawnerView.
+            if (data.fakeRenderingWorld != null) {
+                com.matthieu.planariumview.client.scenery.SpawnerView.tick(mini.world(),
+                        data.fakeRenderingWorld.blockEntityMap.values(), "mini:" + seen.key().location(),
+                        MINI_VIEWER, at -> PARTICLE_BOUNDS.contains(at.getCenter()));
+            }
         } finally {
             LitRenderingWorld.captureSceneryParticles(null);
             SceneryParticles.animatingMini(false);

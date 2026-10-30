@@ -896,6 +896,8 @@ public final class MobAnimationIntegrationChecks {
         CopyAnimationChecks.run();
         LunarNotificationChecks.run();
         RenderingCacheChecks.run();
+        SkyTypeCacheChecks.run();
+        SpawnerViewChecks.run();
         mobLimits(); server(); client(); aquatic(); effects(); aquaticParticles(); underwaterEmission(); biomeParticles(); particleBudget(); wings(); waterParticleLifecycle(); capturedWater(); shadows(); modelLighting(); camera();
         System.out.println("PASS: production capture, independent observers, world isolation, stationary readiness, delayed removals, mount links, hurt playback, aquatic poses/particles, ink, biome ambience, wings, captured water, particle lifecycle, potion particles, flame orientation, scenery shadows, scaled model lighting and camera alignment");
     }
