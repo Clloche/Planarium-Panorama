@@ -90,12 +90,13 @@ public final class MiniatureLiveChecks {
             var environment = new MobEnvironment(true, false, true, false, .5f, -.25f, 0, null);
             var hit = new com.matthieu.planariumview.network.entities.MobAnimations.Event(9, 42, 120,
                     com.matthieu.planariumview.network.entities.MobAnimations.Kind.HURT, false, 10);
+            var nativeAttack = new MobAnimations.Event(10, 42, 121, MobAnimations.Kind.EVENT, false, 4);
             buf.clear();
             MiniLivePayload.STREAM_CODEC.encode(buf, new MiniLivePayload(POCKET, 123, true, List.of(new MiniLivePayload.Entry(id,
-                    1, 2, 3, 0, 0, 0, 1, 42, new byte[]{1, 2, 3}, new byte[]{4}, living, environment)), List.of(hit)));
+                    1, 2, 3, 0, 0, 0, 1, 42, new byte[]{1, 2, 3}, new byte[]{4}, living, environment)), List.of(hit, nativeAttack)));
             var full = MiniLivePayload.STREAM_CODEC.decode(buf);
             var entry = full.entries().get(0);
-            require(full.tick() == 123 && full.resetAnimations() && full.events().equals(List.of(hit)), "clock, reset and events round trip");
+            require(full.tick() == 123 && full.resetAnimations() && full.events().equals(List.of(hit, nativeAttack)), "clock, reset and events round trip");
             require(entry.entityId() == 42 && Arrays.equals(entry.data(), new byte[]{1, 2, 3}) && Arrays.equals(entry.equipment(), new byte[]{4})
                     && living.equals(entry.living()) && environment.equals(entry.environment()), "appearance, animation and water round trip");
             require(!buf.isReadable(), "live animation entry fully decoded");
@@ -564,10 +565,38 @@ public final class MiniatureLiveChecks {
         System.out.println("PASS: packet quotas with 64 vehicles, replacements and up to 70 dying mobs");
     }
 
+    private static void sharedNativeAnimations() throws Exception {
+        Class<?> liveType = Class.forName(MiniEntities.class.getName() + "$LiveMob");
+        Constructor<?> liveCtor = liveType.getDeclaredConstructor(); liveCtor.setAccessible(true);
+        Object state = liveCtor.newInstance();
+        MobAnimationTimeline clock = timeline(state);
+        clock.event(new MobAnimations.Event(1, 42, 100, MobAnimations.Kind.EVENT, false, 4));
+        clock.advance(99);
+        require(clock.takeEntityEvents().isEmpty(), "native event waits for the delayed animation clock");
+        clock.advance(100);
+        Class<?> copyType = Class.forName(MiniEntities.class.getName() + "$MiniMob");
+        Constructor<?> copyCtor = copyType.getDeclaredConstructor(UUID.class, Entity.class); copyCtor.setAccessible(true);
+        Object first = copyCtor.newInstance(UUID.randomUUID(), null), second = copyCtor.newInstance(UUID.randomUUID(), null);
+        Method events = copyType.getDeclaredMethod("entityEvents", liveType); events.setAccessible(true);
+        require(events.invoke(first, state).equals(List.of(4)) && events.invoke(second, state).equals(List.of(4)),
+                "two Planariums sharing one live scene both receive native events");
+        require(events.invoke(first, state).equals(List.of()) && events.invoke(second, state).equals(List.of()),
+                "each copy plays each native event exactly once");
+        Object resumed = liveCtor.newInstance();
+        clock = timeline(resumed); clock.event(new MobAnimations.Event(2, 42, 104, MobAnimations.Kind.EVENT, false, 11));
+        clock.advance(104);
+        require(events.invoke(first, resumed).equals(List.of(11)), "new live scene resets per-copy event tracking");
+        field(liveType, "tick").setInt(resumed, 20);
+        Object lateCopy = copyCtor.newInstance(UUID.randomUUID(), null);
+        require(events.invoke(lateCopy, resumed).equals(List.of()), "rebuilt miniature does not replay an expired cached event");
+        System.out.println("PASS: delayed native events reach both Planariums exactly once and survive scene replacement");
+    }
+
     public static void main(String[] args) throws Exception {
         protocol(); snapshots(); tickets(); options(); interpolation(); vehiclesAndCopies(); stableMiniatures(); variedMiniatures();
         emptySnapshotPreservesPlayback();
         animationRecovery(); dyingPacketQuota();
+        sharedNativeAnimations();
         System.out.println("PASS: " + assertions + " live miniature assertions");
     }
 }

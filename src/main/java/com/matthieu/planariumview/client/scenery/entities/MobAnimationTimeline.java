@@ -17,6 +17,8 @@ public final class MobAnimationTimeline {
     private int swingDuration = 6;
     private boolean dying, swinging, offHand, ended, poof, hurtStarted;
     private int inkBursts;
+    /** Evenements d'entite visuels arrives a l'instant dessine (voir MobAnimations.visualEvent). */
+    private final java.util.List<Integer> entityEvents = new java.util.ArrayList<>();
     private float attack, previousAttack;
 
     public void event(MobAnimations.Event event) {
@@ -29,7 +31,7 @@ public final class MobAnimationTimeline {
         pending.add(new Change(at, Long.MAX_VALUE, null, snapshot));
     }
 
-    public void resetPending() { pending.clear(); inkBursts = 0; }
+    public void resetPending() { pending.clear(); inkBursts = 0; entityEvents.clear(); }
 
     public void advance(int target) {
         target = Math.max(target, tick);
@@ -56,6 +58,7 @@ public final class MobAnimationTimeline {
                     case DEATH -> { dying = true; deathTime = age; }
                     case POOF -> { ended = true; poof = true; }
                     case INK -> { if ((long) target - event.tick() < 10) inkBursts++; }
+                    case EVENT -> { if ((long) target - event.tick() < 10) entityEvents.add(event.duration()); }
                 }
             }
         }
@@ -112,6 +115,13 @@ public final class MobAnimationTimeline {
         }
         return false;
     }
+    public java.util.List<Integer> takeEntityEvents() {
+        if (entityEvents.isEmpty()) return java.util.List.of();
+        java.util.List<Integer> result = java.util.List.copyOf(entityEvents);
+        entityEvents.clear();
+        return result;
+    }
+
     public int takeInk() {
         int result = inkBursts;
         inkBursts = 0;

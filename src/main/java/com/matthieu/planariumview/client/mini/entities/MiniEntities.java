@@ -11,6 +11,7 @@ import com.matthieu.planariumview.client.scenery.entities.GiantEntities;
 import com.matthieu.planariumview.client.scenery.entities.MobAnimationTimeline;
 import com.matthieu.planariumview.client.scenery.entities.MobAppearance;
 import com.matthieu.planariumview.client.scenery.entities.MobEffects;
+import com.matthieu.planariumview.client.scenery.entities.MobEventAnimations;
 import com.matthieu.planariumview.client.scenery.entities.MobShadows;
 import com.matthieu.planariumview.client.scenery.entities.OutsideWings;
 import com.matthieu.planariumview.client.scenery.LitRenderingWorld;
@@ -122,6 +123,8 @@ public final class MiniEntities {
         /** Version de l'apparence vivante deja appliquee (voir LiveMob), -1 apres une relecture de l'instantane. */
         int appliedData = -1;
         int appliedEquipment = -1;
+        int appliedEntityEvents;
+        LiveMob eventSource;
         /** A suivi le serveur (coups, attaque, mort, feu) : a remettre au calme quand le direct s'arrete. */
         boolean animated;
         /** Plus dans l'instantane (mort), garde tant que le direct le montre mourir. */
@@ -170,6 +173,7 @@ public final class MiniEntities {
                 if (state.environment == null || state.environment.squid() == null) tentacles(living);
                 state.timeline.advance((int) Math.floor(state.time(now)));
                 state.timeline.apply(living);
+                MobEventAnimations.tick(living, entityEvents(state));
                 animated = true;
                 // Placee pour cet instant (le dessin le refait a chaque image) : les particules partent du mob.
                 state.apply(mob, now);
@@ -182,6 +186,18 @@ public final class MiniEntities {
                 }
                 if (state.timeline.ended()) gone = true;
             }
+        }
+
+        List<Integer> entityEvents(LiveMob state) {
+            if (eventSource != state) {
+                eventSource = state;
+                appliedEntityEvents = 0;
+            }
+            state.collectEntityEvents();
+            List<Integer> events = appliedEntityEvents != state.entityEventsVersion && state.tick - state.entityEventsTick < 10
+                    ? state.entityEvents : List.of();
+            appliedEntityEvents = state.entityEventsVersion;
+            return events;
         }
 
         /** Memes particules que les mobs du dehors (MobEffects, AmbientEffects, AquaticEffects), dans la miniature. */
@@ -202,7 +218,10 @@ public final class MiniEntities {
         void calm() {
             if (!animated) return;
             animated = false;
-            if (entity instanceof LivingEntity living) MobAnimationTimeline.calm(living);
+            if (entity instanceof LivingEntity living) {
+                MobAnimationTimeline.calm(living);
+                MobEventAnimations.calm(living);
+            }
             entity.setSharedFlagOnFire(false);
         }
 
@@ -290,6 +309,18 @@ public final class MiniEntities {
         int dataVersion;
         int equipmentVersion;
         final MobAnimationTimeline timeline = new MobAnimationTimeline();
+        List<Integer> entityEvents = List.of();
+        int entityEventsVersion;
+        int entityEventsTick;
+
+        void collectEntityEvents() {
+            List<Integer> events = timeline.takeEntityEvents();
+            if (!events.isEmpty()) {
+                entityEvents = events;
+                entityEventsVersion++;
+                entityEventsTick = tick;
+            }
+        }
 
         /**
          * Instant dessine, en ticks du serveur : la position est interpolee entre l'avant-dernier et le dernier envoi,

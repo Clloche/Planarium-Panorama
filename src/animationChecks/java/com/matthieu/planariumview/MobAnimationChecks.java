@@ -158,7 +158,8 @@ public final class MobAnimationChecks {
         var dry = new OutsideMobsPayload.Entry(72, 1, 2, 3, 0, 0, 0, 0, -1, 0, null, null, new byte[0], new byte[0], snapshot, land);
         var vehicle = new OutsideMobsPayload.Entry(70, 1, 2, 3, 0, 0, 0, 0, -1, 0, null, null, new byte[0], new byte[0]);
         var events = List.of(event(300, 100, MobAnimations.Kind.HURT), event(301, 101, MobAnimations.Kind.DEATH),
-                new MobAnimations.Event(302, 71, 102, MobAnimations.Kind.SWING, true, 12), event(303, 102, MobAnimations.Kind.INK));
+                new MobAnimations.Event(302, 71, 102, MobAnimations.Kind.SWING, true, 12), event(303, 102, MobAnimations.Kind.INK),
+                new MobAnimations.Event(304, 71, 102, MobAnimations.Kind.EVENT, false, 4));
         var packet = new OutsideMobsPayload(ResourceLocation.parse("test:pocket"), 14, new BlockPos(-100, 64, 200), 102,
                 true, List.of(entry, dry, vehicle), new int[]{91}, events, true);
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());

@@ -342,6 +342,7 @@ public final class OutsideMobs {
                 if (entity instanceof LivingEntity living) {
                     copy.livingAnimation.advance((int) Math.floor(time));
                     copy.livingAnimation.apply(living);
+                    MobEventAnimations.tick(living, copy.livingAnimation.takeEntityEvents());
                     if (state.vehicleId() >= 0) living.walkAnimation.update(0, 0.4F);
                     else living.calculateEntityAnimation(state.environment() != null && state.environment().waterOrBubble());
                     if (copy.livingAnimation.takePoof() && warmedUp && copy.ready && copy.rendered != null) {

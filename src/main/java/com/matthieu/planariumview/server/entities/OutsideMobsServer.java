@@ -172,6 +172,9 @@ public final class OutsideMobsServer {
             duration = Math.clamp(living.getCurrentSwingDuration(), 1, MobAnimations.MAX_DURATION);
         } else if (packet instanceof ClientboundEntityEventPacket event && (event.getEventId() == 3 || event.getEventId() == 60)) {
             kind = event.getEventId() == 3 ? MobAnimations.Kind.DEATH : MobAnimations.Kind.POOF;
+        } else if (packet instanceof ClientboundEntityEventPacket event && MobAnimations.visualEvent(entity, event.getEventId())) {
+            kind = MobAnimations.Kind.EVENT;
+            duration = event.getEventId() & 0xFF;
         } else return;
         emit(entity, source, kind, offHand, duration);
     }

@@ -222,6 +222,10 @@ public final class GiantEntities {
         int packed = light != null ? light
                 : packedLight(fakeWorld, entity, partialTick);
         poseStack.pushPose();
+        Entity previousEntity = renderingEntity;
+        Level previousWorld = renderingWorld;
+        renderingEntity = entity;
+        renderingWorld = fakeWorld;
         try {
             poseStack.translate(entity.getX() + offset.x, entity.getY() + offset.y, entity.getZ() + offset.z);
             renderer.render(entity, entity.getYRot(), partialTick, poseStack, buffers, packed);
@@ -230,8 +234,30 @@ public final class GiantEntities {
                         .planariumview$renderFlame(poseStack, buffers, entity, flameRotation);
             }
         } finally {
+            renderingEntity = previousEntity;
+            renderingWorld = previousWorld;
             poseStack.popPose();
         }
+    }
+
+    /** Copie en cours de dessin et son faux monde (voir bedOrientation). Fil de rendu seulement. */
+    private static Entity renderingEntity;
+    private static Level renderingWorld;
+
+    /**
+     * Lit d'un mob qui dort, pendant son dessin (voir CopyBedMixin). Vanilla le cherche a sa position de sommeil, en
+     * coordonnees du monde d'origine, dans le monde du client : il n'y trouvait pas de lit, et le mob restait couche de
+     * travers, decale d'environ un bloc et demi. Ici : le lit sous la copie, dans le faux monde du decor ou de la
+     * miniature (la copie y est deja placee).
+     */
+    public static net.minecraft.core.Direction bedOrientation(Entity entity) {
+        BlockPos pos = BlockPos.containing(entity.getX(), entity.getY(), entity.getZ());
+        return net.minecraft.world.level.block.BedBlock.getBedOrientation(renderingWorld, pos);
+    }
+
+    /** Vrai pendant le dessin de cette copie dans un faux monde. */
+    public static boolean renderingCopy(Entity entity) {
+        return entity == renderingEntity && renderingWorld != null;
     }
 
     /**

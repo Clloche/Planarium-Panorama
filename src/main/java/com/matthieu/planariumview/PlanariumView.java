@@ -66,7 +66,7 @@ public class PlanariumView {
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
         // Facultatif : miniatures vivantes (le client dit laquelle il regarde ; le serveur envoie ses mobs).
-        event.registrar(NETWORK_VERSION + ".mini3").optional().playToServer(
+        event.registrar(NETWORK_VERSION + ".mini4").optional().playToServer(
                 com.matthieu.planariumview.network.entities.MiniWatchPayload.TYPE,
                 com.matthieu.planariumview.network.entities.MiniWatchPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
@@ -74,7 +74,7 @@ public class PlanariumView {
                         com.matthieu.planariumview.server.MiniLive.watch(player, payload);
                     }
                 }));
-        event.registrar(NETWORK_VERSION + ".mini3").optional().playToClient(
+        event.registrar(NETWORK_VERSION + ".mini4").optional().playToClient(
                 com.matthieu.planariumview.network.entities.MiniLivePayload.TYPE,
                 com.matthieu.planariumview.network.entities.MiniLivePayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(
@@ -105,11 +105,11 @@ public class PlanariumView {
                 (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.FlightView.receive(payload)));
         // Facultatif : mobs du dehors (rayon detaille), et ce que le client veut voir en plus des blocs.
         // La preference contient maintenant une limite de mobs : version commune aux deux sens de ce flux facultatif.
-        event.registrar(NETWORK_VERSION + ".entities7").optional().playToClient(
+        event.registrar(NETWORK_VERSION + ".entities8").optional().playToClient(
                 com.matthieu.planariumview.network.entities.OutsideMobsPayload.TYPE,
                 com.matthieu.planariumview.network.entities.OutsideMobsPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.entities.OutsideMobs.receive(payload)));
-        event.registrar(NETWORK_VERSION + ".entities7").optional().playToServer(
+        event.registrar(NETWORK_VERSION + ".entities8").optional().playToServer(
                 com.matthieu.planariumview.network.entities.ViewPrefsPayload.TYPE,
                 com.matthieu.planariumview.network.entities.ViewPrefsPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
