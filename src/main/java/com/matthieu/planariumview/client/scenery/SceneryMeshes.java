@@ -400,7 +400,10 @@ final class SceneryMeshes {
                 }
             }
 
-            for (RenderType renderType : model.getRenderTypes(renderState, random, ModelData.EMPTY)) {
+            // Textures connectees et blocs imitateurs : les donnees du modele, comme pour un vrai chunk (BlockModelData).
+            ModelData blockData = isModel ? BlockModelData.of(model, data.fakeRenderingWorld, pos.pos, renderState, ModelData.EMPTY)
+                    : ModelData.EMPTY;
+            for (RenderType renderType : model.getRenderTypes(renderState, random, blockData)) {
                 RenderType target = renderType;
                 // Ars passe les blocs pleins "cutout" en translucide pour la miniature. Dans le decor geant, on garde le
                 // cutout : en translucide, les pixels transparents (racines de Spelunkery...) laissaient voir le ciel.
@@ -434,7 +437,7 @@ final class SceneryMeshes {
                         if (neighbor) faces = NeighborPlanariumModel.light(faces, snapped);
                         PlanariumRenderer.tesselateBlock(pos, modelRenderer, data.fakeRenderingWorld, model, renderState,
                                 pos.pos, matrix, faces, random, renderState.getSeed(pos.pos),
-                                OverlayTexture.NO_OVERLAY, ModelData.EMPTY, renderType);
+                                OverlayTexture.NO_OVERLAY, blockData, renderType);
                     } catch (Exception e) {
                         LOGGER.debug("[Planarium View] Bloc ignore", e);
                     }

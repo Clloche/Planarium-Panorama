@@ -516,13 +516,14 @@ public final class FarRing {
                     BakedModel model = dispatcher.getBlockModel(state);
                     long seed = state.getSeed(world.worldPos(pos));
                     random.setSeed(seed);
-                    for (RenderType type : model.getRenderTypes(state, random, ModelData.EMPTY)) {
+                    ModelData blockData = BlockModelData.of(model, world, pos, state, ModelData.EMPTY);
+                    for (RenderType type : model.getRenderTypes(state, random, blockData)) {
                         BufferBuilder builder = buffers.computeIfAbsent(type,
                                 layer -> new BufferBuilder(bytes(layer), layer.mode(), layer.format()));
                         VertexConsumer target = builder;
                         VertexConsumer faces = ColorCompat.building() ? new FaceHueConsumer(target, world, pos) : target;
                         modelRenderer.tesselateBlock(world, model, state, pos, matrix, faces, true, random, seed,
-                                OverlayTexture.NO_OVERLAY, ModelData.EMPTY, type);
+                                OverlayTexture.NO_OVERLAY, blockData, type);
                     }
                 } catch (RuntimeException e) {
                     LOGGER.debug("[Planarium Panorama] Bloc de l'anneau lointain ignore", e);

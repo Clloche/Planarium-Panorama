@@ -114,15 +114,45 @@ public abstract class PlanariumRendererMixin {
                                                   BakedModel model, BlockState state, BlockPos worldPos, PoseStack poseStack,
                                                   VertexConsumer consumer, RandomSource random, long seed, int overlay,
                                                   ModelData modelData, RenderType renderType) {
+        // Textures connectees et blocs imitateurs : les donnees du modele lues dans la miniature (voir BlockModelData).
+        if (com.matthieu.planariumview.config.Config.enabled()) {
+            modelData = com.matthieu.planariumview.client.scenery.BlockModelData.of(model, level, tile.pos, state, modelData);
+        }
         // Bloc couvert de neige de Snow! Real Magic : le vrai bloc, puis la neige (voir SnowRealMagicCompat).
         if (com.matthieu.planariumview.config.Config.enabled()
                 && com.matthieu.planariumview.compat.snow_real_magic.SnowRealMagicCompat.render(level, state, tile.pos, renderType, poseStack,
                 (partState, partModel, pose) -> PlanariumRenderer.tesselateBlock(tile, renderer, level, partModel, partState,
-                        tile.pos, pose, consumer, random, seed, overlay, ModelData.EMPTY, renderType))) {
+                        tile.pos, pose, consumer, random, seed, overlay, ModelData.EMPTY,
+                        planariumview$quadLayer(partModel, partState, seed, ModelData.EMPTY, renderType)))) {
             return;
         }
+        RenderType quadLayer = com.matthieu.planariumview.config.Config.enabled()
+                ? planariumview$quadLayer(model, state, seed, modelData, renderType) : renderType;
         PlanariumRenderer.tesselateBlock(tile, renderer, level, model, state, tile.pos, poseStack, consumer, random,
-                seed, overlay, modelData, renderType);
+                seed, overlay, modelData, quadLayer);
+    }
+
+    /**
+     * Ars range les blocs pleins en cutout (le verre) dans la couche translucent, et demande ensuite au modele les faces
+     * de cette couche. Les modeles qui trient leurs faces par couche (Fusion, textures connectees) n'en ont aucune :
+     * le bloc disparaissait. Les faces sont demandees dans la couche du modele ; elles restent ecrites dans le tampon
+     * translucent choisi par Ars.
+     */
+    @org.spongepowered.asm.mixin.Unique
+    private static RenderType planariumview$quadLayer(BakedModel model, BlockState state, long seed, ModelData modelData,
+                                                      RenderType renderType) {
+        if (renderType != RenderType.translucent()) {
+            return renderType;
+        }
+        try {
+            var layers = model.getRenderTypes(state, RandomSource.create(seed), modelData);
+            if (!layers.contains(RenderType.translucent()) && layers.contains(RenderType.cutout())) {
+                return RenderType.cutout();
+            }
+        } catch (RuntimeException e) {
+            return renderType;
+        }
+        return renderType;
     }
 
     /** Ajoute la couleur de Contraption Lights a la copie d'Ars de getLightColor (voir ClTag). */

@@ -782,12 +782,13 @@ public final class SubLevelView {
                     // particules (le coffre d'Ars est un cube de planches) et cacherait le vrai rendu.
                     if (state.state.getRenderShape() != net.minecraft.world.level.block.RenderShape.MODEL) continue;
                     var model = dispatcher.getBlockModel(state.state);
-                    for (RenderType layer : model.getRenderTypes(state.state, random, ModelData.EMPTY)) {
+                    ModelData blockData = BlockModelData.of(model, data.fakeRenderingWorld, state.pos, state.state, ModelData.EMPTY);
+                    for (RenderType layer : model.getRenderTypes(state.state, random, blockData)) {
                         VertexConsumer target = ColorCompat.building()
                                 ? new FaceHueConsumer(builder(layer), data.fakeRenderingWorld, state.pos) : builder(layer);
                         PlanariumRenderer.tesselateBlock(state, dispatcher.getModelRenderer(), data.fakeRenderingWorld,
                                 model, state.state, state.pos, pose, target, random, state.state.getSeed(state.pos),
-                                OverlayTexture.NO_OVERLAY, ModelData.EMPTY, layer);
+                                OverlayTexture.NO_OVERLAY, blockData, layer);
                     }
                 } finally {
                     pose.popPose();
