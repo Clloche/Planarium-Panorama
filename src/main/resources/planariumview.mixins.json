@@ -5,6 +5,7 @@
   "plugin": "com.matthieu.planariumview.diagnostics.PlanariumMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "DevGameTestMixin",
     "entities.SynchedEntityDataAccessor",
     "entities.RandomStrollGoalMixin",
     "entities.SquidRandomMovementGoalMixin",

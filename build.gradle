@@ -37,6 +37,11 @@ neoForge {
     }
 
     runs {
+        configureEach {
+            // Comme en modpack, les lancements ordinaires ne chargent pas les GameTests des mods tiers.
+            // Ceux d'Ars Sable 1.2.0 referencent une classe supprimee dans Ars Nouveau 5.13.4.
+            systemProperty 'planariumview.disableGameTests', 'true'
+        }
         client {
             client()
             gameDirectory = project.file('run')

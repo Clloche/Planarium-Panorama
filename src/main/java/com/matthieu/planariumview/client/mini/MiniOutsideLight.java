@@ -10,7 +10,6 @@ import com.matthieu.planariumview.config.Config;
 
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer;
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
-import com.mojang.blaze3d.vertex.VertexBuffer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
@@ -106,14 +105,7 @@ public final class MiniOutsideLight {
     private static void rebuild(ResourceKey<Level> key) {
         PlanariumRenderer.StructureRenderData old = PlanariumRenderer.structureRenderData.remove(key);
         if (old != null) {
-            try {
-                PlanariumRenderer.clearByteBuffers(old);
-                for (VertexBuffer buffer : old.vertexBuffers.values()) {
-                    buffer.close();
-                }
-            } catch (Exception ignored) {
-                // la miniature sera simplement reconstruite
-            }
+            com.matthieu.planariumview.compat.ars_nouveau.ArsRenderData.free(old);
         }
     }
 

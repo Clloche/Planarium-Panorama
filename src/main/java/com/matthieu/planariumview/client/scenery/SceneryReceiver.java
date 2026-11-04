@@ -18,7 +18,6 @@ import com.matthieu.planariumview.client.sound.OutsideSoundClient;
 import com.matthieu.planariumview.compat.puddle_flood.PuddlesCompat;
 import com.matthieu.planariumview.network.OutsideViewDeltaPayload;
 import com.matthieu.planariumview.network.OutsideViewPayload;
-import com.mojang.blaze3d.vertex.VertexBuffer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -361,14 +360,7 @@ final class SceneryReceiver {
         if (data == null) {
             return;
         }
-        try {
-            PlanariumRenderer.clearByteBuffers(data);
-            for (VertexBuffer buffer : data.vertexBuffers.values()) {
-                buffer.close();
-            }
-        } catch (Exception e) {
-            LOGGER.warn("[Planarium View] Erreur en liberant le rendu", e);
-        }
+        com.matthieu.planariumview.compat.ars_nouveau.ArsRenderData.free(data);
     }
 
     /** A neighbor snapshot arrived: only rebuild sections containing giant Planarium shells. */

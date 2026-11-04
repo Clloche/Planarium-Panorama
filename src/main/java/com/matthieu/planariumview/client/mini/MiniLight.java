@@ -8,7 +8,6 @@ import com.matthieu.planariumview.network.MiniLightPayload;
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer;
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer.StructureRenderData;
-import com.mojang.blaze3d.vertex.VertexBuffer;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.Registries;
@@ -38,14 +37,7 @@ public final class MiniLight {
         ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION, payload.pocketDim());
         StructureRenderData old = PlanariumRenderer.structureRenderData.remove(key);
         if (old != null) {
-            try {
-                PlanariumRenderer.clearByteBuffers(old);
-                for (VertexBuffer buffer : old.vertexBuffers.values()) {
-                    buffer.close();
-                }
-            } catch (Exception e) {
-                LOGGER.debug("[Planarium View] Erreur en liberant la miniature", e);
-            }
+            com.matthieu.planariumview.compat.ars_nouveau.ArsRenderData.free(old);
         }
     }
 
@@ -93,14 +85,7 @@ public final class MiniLight {
             if (old == null) {
                 continue;
             }
-            try {
-                PlanariumRenderer.clearByteBuffers(old);
-                for (VertexBuffer buffer : old.vertexBuffers.values()) {
-                    buffer.close();
-                }
-            } catch (Exception e) {
-                LOGGER.debug("[Planarium View] Erreur en liberant la miniature", e);
-            }
+            com.matthieu.planariumview.compat.ars_nouveau.ArsRenderData.free(old);
         }
     }
 }
