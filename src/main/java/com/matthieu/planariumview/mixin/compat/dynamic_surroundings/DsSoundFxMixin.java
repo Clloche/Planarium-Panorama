@@ -18,7 +18,8 @@ import org.spongepowered.asm.mixin.injection.At;
  *
  * SoundFXUtils jusqu'a DS 0.4.6, SourceAcoustics en 0.4.7 (ou les blocs sont lus par {@code ctx.blocks}). Le monde
  * ({@code ctx.world}) sert aussi de cle aux resultats gardes et partages : remplace aussi, pour ne jamais melanger
- * les rayons du decor et ceux du bocal.
+ * les rayons du decor et ceux du bocal. En 0.4.9, les rayons lisent une vue attachee a {@code ctx.world} au lieu de
+ * {@code ctx.blocks} : DsChunkViewMixin la fait lire dans le decor.
  */
 @Pseudo
 @Mixin(targets = {"org.orecruncher.dsurround.runtime.audio.SoundFXUtils",
@@ -34,6 +35,7 @@ public abstract class DsSoundFxMixin {
         return context != null ? context.world() : original;
     }
 
+    @Alternative("ds_fx_blocks")
     @ExpectIn("org.orecruncher.dsurround.runtime.audio.SourceAcoustics")
     @ModifyExpressionValue(method = {"calculate", "traceReverb", "calculateOcclusion"}, at = @At(value = "FIELD",
             target = "Lorg/orecruncher/dsurround/runtime/audio/WorldContext;blocks:Lnet/minecraft/world/level/BlockGetter;"),

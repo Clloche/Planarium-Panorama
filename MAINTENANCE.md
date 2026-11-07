@@ -19,7 +19,7 @@ nom du JAR, et mettre ce tableau à jour après chaque test.
 | Create / Flywheel | 6.0.10 / 1.0.6 |
 | Create Aeronautics / Simulated / Offroad | 1.3.2 |
 | Contraption Lights (+ Compat 2.4.0, Fixes 1.5.0) | 1.5.2 |
-| Dynamic Surroundings | 0.4.6 et 0.4.7 |
+| Dynamic Surroundings | 0.4.6, 0.4.7 ; 0.4.9 : code vérifié, test en jeu à faire |
 | Enhanced Celestials 2 (Core / Default Lunar Events) | 2.0.3.3 / 2.0.1.3 |
 | Puddles & Floods | 1.1.6 |
 | YetAnotherConfigLib | 3.8.2 |
@@ -248,11 +248,18 @@ lucioles, dimensions, réverbération `DsSoundFxMixin`) et champs privés lus pa
 - 0.4.7 : `DsPointLightsMixin` adapte le rayon des lucioles copiées dans `PointLights.add` (le chemin
   `FireflyLights` reste pour 0.4.6) ; `DsWeatherSimulationMixin` fournit la pluie synchronisée à `WeatherSimulation`
   et au vent ; `DsDimensionInfoMixin` force `particleWeather()` à faux dans les poches.
+- 0.4.9 : les rayons de réverbération lisent les blocs par `ChunkCachingView` (`level.getChunk`), que le faux monde
+  du décor n'a pas ; `DsChunkViewMixin` la fait lire directement dans le décor (alternative `ds_fx_blocks` du champ
+  `ctx.blocks` de 0.4.7).
+  Le cache acoustique de DS suit les changements du vrai monde : si seul un bloc du décor change, un son et un
+  joueur immobiles peuvent garder l'ancien écho jusqu'à leur changement de bloc ou à une invalidation du cache.
 - Les nouveaux effets 0.4.7 (pluie sur les vitres, givre, brouillard au sol) ne sont pas projetés dans le décor.
 
 Tests : ambiance du biome du dehors, silence sous abri, sons de grotte, lucioles aux deux échelles, cascades, pluie et
 orage puis retour au sec, vent, réverbération des sons du dehors, immersion eau/lave, pas de spam de brouillard,
 pas de pluie DS à taille normale dans une poche sans pluie réelle.
+Pour 0.4.9 : écouter les sons du dehors depuis le bocal, avec le Planarium près d'une grotte ou d'un mur ; vérifier
+la réverbération et l'occlusion, puis l'absence d'erreur `ChunkCachingView` et de « Mixin inactif » dans le log.
 
 ### AmbientSounds
 

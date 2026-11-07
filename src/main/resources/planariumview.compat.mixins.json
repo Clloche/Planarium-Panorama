@@ -41,6 +41,7 @@
     "dynamic_surroundings.DsSoundBlockMixin",
     "dynamic_surroundings.DsSourceContextMixin",
     "dynamic_surroundings.DsSoundFxMixin",
+    "dynamic_surroundings.DsChunkViewMixin",
     "dynamic_surroundings.DsSoundProcessorMixin",
     "puddle_flood.PfPlacementMixin"
   ],
