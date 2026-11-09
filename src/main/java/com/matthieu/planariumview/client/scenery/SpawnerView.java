@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.client.scenery;
 
-import com.matthieu.planariumview.mixin.BaseSpawnerAccessor;
-import com.matthieu.planariumview.mixin.TrialSpawnerDataAccessor;
+import com.matthieu.planariumview.mixin.client.BaseSpawnerAccessor;
+import com.matthieu.planariumview.mixin.client.TrialSpawnerDataAccessor;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;

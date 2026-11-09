@@ -1,8 +1,8 @@
 package com.matthieu.planariumview.client.sky;
 
 import com.matthieu.planariumview.client.scenery.ClientView;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.LightningPayload;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.LightningPayload;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;

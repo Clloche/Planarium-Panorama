@@ -51,9 +51,22 @@ Quatre cas, du plus visible au plus dangereux :
 4. **Écriture en mémoire native** (Flywheel) : un mauvais calcul n'est pas une exception récupérable.
    Affichage corrompu ou plantage possible.
 
+### Organisation du code
+
+- `PlanariumView` : point d'entrée du mod.
+- `core/config`, `core/network` : configuration et protocole réseau commun.
+- `core/diagnostics` : sélection des mixins et bilan avant/après injection.
+- `client` : rendu, miniatures, ciel, sons et scènes côté client.
+- `server` : capture, synchronisation et suivi des scènes côté serveur.
+- `integration/<mod>` : adaptations et accès aux API des autres mods.
+- `integration/bootstrap` : contrats de bytecode pour les compatibilités optionnelles, sans initialiser leurs classes.
+- `mixin/common`, `mixin/client` : injections communes et injections réservées au client.
+- `mixin/integration/<mod>` : injections sur les autres mods ; les listes `mixins` et `client` des JSON restent
+  responsables du côté de chargement. Ars Nouveau reste dans la configuration obligatoire.
+
 ### Bilan des mixins
 
-Package `diagnostics` : `PlanariumMixinPlugin` fait l'inventaire des crochets en lisant nos mixins avant le chargement
+Package `core/diagnostics` : `PlanariumMixinPlugin` fait l'inventaire des crochets en lisant nos mixins avant le chargement
 des cibles ; `MixinHealthExtension` vérifie chaque classe finale (après MixinExtras) ; `MixinHealthReport` écrit
 au premier monde ouvert une ligne par mod :
 
@@ -68,6 +81,30 @@ au premier monde ouvert une ligne par mod :
 - `-Dplanariumview.strictMixins=true` (développement) : un échec confirmé arrête le jeu.
 - Nouveau mixin : vérifier qu'il apparaît dans le bilan, et ajouter `@ExpectIn` / `@Alternative` au besoin plutôt
   que de laisser un faux échec.
+
+Avant application, le plugin consulte `integration/bootstrap/OptionalMixinSupport` pour les mixins optionnels :
+
+- Cible absente : ne pas appliquer ; état « non applicable », sans avertissement (cela couvre aussi les variantes
+  de classes selon les versions).
+- Cible présente : vérifier les contrats ciblés de `OptionalMixinLayouts` (champs `@Shadow` de YACL et DS,
+  signatures sensibles de Flywheel, Contraption Lights, Puddles, PointLights et Ambersol).
+- Contrat incompatible ou bytecode illisible : ne pas appliquer ; avertissement unique avec cible et raison,
+  état « désactivé avant injection ». Le mode strict arrête le chargement dans ce cas aussi.
+- Contrat accepté : état « pas encore chargé », puis contrôle habituel du crochet dans le bytecode exporté.
+
+Le cache de sélection est propre à chaque couple mixin/cible. Un refus préalable n'est jamais remplacé par un échec
+d'injection si la classe cible est exportée pour un autre mixin. Les variantes gardent leur regroupement existant.
+Ars Nouveau et les mixins Minecraft/NeoForge restent obligatoires : aucun refus automatique pour ces injections.
+
+Ces contrats sont délibérément ciblés : ils ne simulent pas le moteur de Mixin. Lorsqu'un mixin optionnel dépend
+d'un nouveau champ `@Shadow` ou d'une signature fragile, ajouter son contrat et un cas de vérification.
+Un contrôle réussi ne prouve pas l'exécution en jeu, et l'export observé ne couvre pas les transformeurs ultérieurs.
+Une cible absente ne suffit pas à distinguer un mod absent d'une classe renommée dans un mod installé.
+
+`./gradlew checkMixinCompatibility` vérifie les chemins des configurations, les contrats YACL sur le vrai bytecode,
+les refus sur changement de signature ou de `static`, l'absence de cible, le cache multi-cibles, le mode strict et le
+bilan après injection. Si `run/mods` existe, il contrôle aussi les JAR de référence disponibles, y compris Flywheel
+embarqué dans Create. Cette tâche fait partie de `check` et de `build`.
 
 ### Avertissements : règles
 

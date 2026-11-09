@@ -4,7 +4,7 @@ import com.matthieu.planariumview.client.jar.JarWalls;
 import com.matthieu.planariumview.client.scenery.ClientView;
 import com.matthieu.planariumview.client.scenery.LitRenderingWorld;
 import com.matthieu.planariumview.client.scenery.SceneryParticles;
-import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.core.config.Config;
 
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer;
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer.StructureRenderData;
@@ -175,13 +175,13 @@ public final class MiniParticles {
                 BlockState state = mini.world().getBlockState(pos);
                 if (!state.isAir()) {
                     ClientView.animateBlock(mini.world(), pos.immutable(), state);
-                    com.matthieu.planariumview.compat.dynamic_surroundings.DsFirefliesCompat.animate(mini.world(), pos, state, RANDOM, tile);
+                    com.matthieu.planariumview.integration.dynamic_surroundings.DsFirefliesCompat.animate(mini.world(), pos, state, RANDOM, tile);
                 }
             }
             for (BlockPos at : mini.campfires()) {
                 ClientView.campfireTick(mini.world(), at, mini.world().getBlockState(at));
             }
-            com.matthieu.planariumview.compat.ars_nouveau.ArsParticles.tick(mini.world(),
+            com.matthieu.planariumview.integration.ars_nouveau.ArsParticles.tick(mini.world(),
                     at -> PARTICLE_BOUNDS.contains(at.getCenter()));
             // Spawners du bocal, vus depuis son centre (en blocs du bocal) : voir SpawnerView.
             if (data.fakeRenderingWorld != null) {

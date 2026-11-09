@@ -1,11 +1,11 @@
 package com.matthieu.planariumview.server;
 
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.entities.MiniEntityTypes;
-import com.matthieu.planariumview.network.entities.MiniLivePayload;
-import com.matthieu.planariumview.network.entities.MiniWatchPayload;
-import com.matthieu.planariumview.network.entities.MobAnimations;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.entities.MiniEntityTypes;
+import com.matthieu.planariumview.core.network.entities.MiniLivePayload;
+import com.matthieu.planariumview.core.network.entities.MiniWatchPayload;
+import com.matthieu.planariumview.core.network.entities.MobAnimations;
 import com.matthieu.planariumview.server.entities.MobEventQueue;
 import com.matthieu.planariumview.server.entities.OutsideMobsServer;
 import net.minecraft.core.BlockPos;
@@ -123,14 +123,14 @@ public final class MiniLive {
             WATCHES.remove(id);
             return;
         }
-        Vec3 where = com.matthieu.planariumview.compat.sable.SubLevelCompat.worldPosition(level, Vec3.atCenterOf(pos));
+        Vec3 where = com.matthieu.planariumview.integration.sable.SubLevelCompat.worldPosition(level, Vec3.atCenterOf(pos));
         if (where.distanceToSqr(player.position()) > MAX_DISTANCE_SQUARED
                 || !(level.getBlockEntity(pos) instanceof PlanariumTile tile) || tile.key == null) {
             WATCHES.remove(id);
             return;
         }
         if (!player.connection.hasChannel(MiniLivePayload.TYPE)
-                || !player.connection.hasChannel(com.matthieu.planariumview.network.entities.MiniEntitiesPayload.TYPE)) {
+                || !player.connection.hasChannel(com.matthieu.planariumview.core.network.entities.MiniEntitiesPayload.TYPE)) {
             WATCHES.remove(id);
             return;
         }
@@ -145,7 +145,7 @@ public final class MiniLive {
         if (player == null || !player.level().dimension().equals(watch.source())) return false;
         Level level = player.level();
         if (!level.isLoaded(watch.pos())) return false;
-        Vec3 where = com.matthieu.planariumview.compat.sable.SubLevelCompat.worldPosition(level, watch.pos().getCenter());
+        Vec3 where = com.matthieu.planariumview.integration.sable.SubLevelCompat.worldPosition(level, watch.pos().getCenter());
         return where.distanceToSqr(player.position()) <= MAX_DISTANCE_SQUARED
                 && level.getBlockEntity(watch.pos()) instanceof PlanariumTile tile && watch.pocket().equals(tile.key);
     }

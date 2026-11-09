@@ -1,8 +1,8 @@
 package com.matthieu.planariumview.server;
 
-import com.matthieu.planariumview.network.FarRingPayload;
-import com.matthieu.planariumview.network.FlightPayload;
-import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.core.network.FarRingPayload;
+import com.matthieu.planariumview.core.network.FlightPayload;
+import com.matthieu.planariumview.core.config.Config;
 
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;

@@ -1,6 +1,6 @@
 package com.matthieu.planariumview.server;
 
-import com.matthieu.planariumview.network.LunarPayload;
+import com.matthieu.planariumview.core.network.LunarPayload;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.nbt.CompoundTag;
@@ -24,8 +24,8 @@ import java.util.UUID;
 public final class LunarServer {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static Boolean present;
-    private static com.matthieu.planariumview.compat.SafeReflect.Call forecastOf;
-    private static com.matthieu.planariumview.compat.SafeReflect.Call save;
+    private static com.matthieu.planariumview.integration.SafeReflect.Call forecastOf;
+    private static com.matthieu.planariumview.integration.SafeReflect.Call save;
     private static final Map<UUID, CompoundTag> LAST_SENT = new HashMap<>();
 
     private LunarServer() {
@@ -37,8 +37,8 @@ public final class LunarServer {
             if (ModList.get() != null && ModList.get().isLoaded("enhancedcelestials2core")) {
                 try {
                     Class<?> main = Class.forName("dev.corgitaco.enhancedcelestials2core.EnhancedCelestials");
-                    forecastOf = com.matthieu.planariumview.compat.SafeReflect.find(main, "lunarForecastWorldData", Level.class);
-                    save = com.matthieu.planariumview.compat.SafeReflect.find(Class.forName("dev.corgitaco.enhancedcelestials2core.api.lunarevent.LunarForecast"), "save");
+                    forecastOf = com.matthieu.planariumview.integration.SafeReflect.find(main, "lunarForecastWorldData", Level.class);
+                    save = com.matthieu.planariumview.integration.SafeReflect.find(Class.forName("dev.corgitaco.enhancedcelestials2core.api.lunarevent.LunarForecast"), "save");
                     present = true;
                 } catch (Throwable e) {
                     LOGGER.info("[Planarium Panorama] Enhanced Celestials : version non reconnue, evenements lunaires ignores");

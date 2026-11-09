@@ -1,8 +1,8 @@
 package com.matthieu.planariumview;
 
-import com.matthieu.planariumview.network.entities.MobAnimations;
-import com.matthieu.planariumview.network.entities.MobEnvironment;
-import com.matthieu.planariumview.network.entities.OutsideMobsPayload;
+import com.matthieu.planariumview.core.network.entities.MobAnimations;
+import com.matthieu.planariumview.core.network.entities.MobEnvironment;
+import com.matthieu.planariumview.core.network.entities.OutsideMobsPayload;
 import com.matthieu.planariumview.server.entities.MobEventQueue;
 import com.matthieu.planariumview.server.entities.OutsideMobsServer;
 import com.google.common.collect.ImmutableList;
@@ -27,9 +27,9 @@ import net.minecraft.client.renderer.texture.TextureManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.mixin.entities.SceneryEntityAccessor;
-import com.matthieu.planariumview.network.*;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.mixin.client.entities.SceneryEntityAccessor;
+import com.matthieu.planariumview.core.network.*;
 import com.matthieu.planariumview.server.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -244,17 +244,17 @@ public final class MobAnimationIntegrationChecks {
         require(chosen.equals(List.of(independent)), "retention cannot split passenger groups or exceed quota");
 
         UUID viewer = UUID.randomUUID();
-        OutsideMobsServer.setPrefs(viewer, new com.matthieu.planariumview.network.entities.ViewPrefsPayload(32, false, 1));
+        OutsideMobsServer.setPrefs(viewer, new com.matthieu.planariumview.core.network.entities.ViewPrefsPayload(32, false, 1));
         Class<?> stateType = Class.forName(OutsideMobsServer.class.getName() + "$State");
         Object state = construct(stateType);
         Map<UUID, Object> states = (Map<UUID, Object>) field(OutsideMobsServer.class, "STATES").get(null);
         Set<Integer> stateRetained = (Set<Integer>) field(stateType, "retained").get(state);
         stateRetained.addAll(retained); states.put(viewer, state);
-        OutsideMobsServer.setPrefs(viewer, new com.matthieu.planariumview.network.entities.ViewPrefsPayload(32, false, 2));
+        OutsideMobsServer.setPrefs(viewer, new com.matthieu.planariumview.core.network.entities.ViewPrefsPayload(32, false, 2));
         require(states.get(viewer) == state && stateRetained.equals(retained), "network resync preserves the admission list");
-        OutsideMobsServer.setPrefs(viewer, new com.matthieu.planariumview.network.entities.ViewPrefsPayload(8, true, 2));
+        OutsideMobsServer.setPrefs(viewer, new com.matthieu.planariumview.core.network.entities.ViewPrefsPayload(8, true, 2));
         require(states.get(viewer) == state && stateRetained.equals(retained), "preference changes preserve incumbents for the next selection");
-        OutsideMobsServer.setPrefs(viewer, new com.matthieu.planariumview.network.entities.ViewPrefsPayload(0, false, 2));
+        OutsideMobsServer.setPrefs(viewer, new com.matthieu.planariumview.core.network.entities.ViewPrefsPayload(0, false, 2));
         require(!states.containsKey(viewer), "turning the whole stream OFF releases the selection");
         OutsideMobsServer.logout(viewer);
         System.out.println("PASS: stable crowded selections, nearest replacements, resync, limit changes and whole passenger groups");

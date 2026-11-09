@@ -1,10 +1,10 @@
 package com.matthieu.planariumview.server;
 
-import com.matthieu.planariumview.compat.serene_seasons.SeasonCompat;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.OutsideViewDeltaPayload;
-import com.matthieu.planariumview.network.OutsideViewPayload;
-import com.matthieu.planariumview.network.SkyPayload;
+import com.matthieu.planariumview.integration.serene_seasons.SeasonCompat;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.OutsideViewDeltaPayload;
+import com.matthieu.planariumview.core.network.OutsideViewPayload;
+import com.matthieu.planariumview.core.network.SkyPayload;
 import com.matthieu.planariumview.server.SceneryCapture.Snapshot;
 import com.matthieu.planariumview.server.ServerView.Track;
 import net.minecraft.core.BlockPos;
@@ -73,7 +73,7 @@ final class TrackUpdater {
             track = new Track(id, level.dimension(), source);
             ServerLevel sourceLevel = player.server.getLevel(source.dimension());
             track.body = sourceLevel == null ? null
-                    : com.matthieu.planariumview.compat.sable.SubLevelCompat.ownerId(sourceLevel, source.pos());
+                    : com.matthieu.planariumview.integration.sable.SubLevelCompat.ownerId(sourceLevel, source.pos());
             LOGGER.debug("[Planarium Panorama] Planarium trouve en {} (vaisseau {})", source.pos(), track.body);
             tracks.put(id, track);
             force = true;

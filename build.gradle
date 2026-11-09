@@ -188,6 +188,7 @@ tasks.register('checkSceneryOcclusion', JavaExec) {
 }
 
 tasks.named('check') {
+    dependsOn tasks.named('checkMixinCompatibility')
     dependsOn tasks.named('checkSubLevels')
     dependsOn tasks.named('checkOutsideMobAnimations')
     dependsOn tasks.named('checkOutsideMobIntegration')
@@ -196,6 +197,30 @@ tasks.named('check') {
     dependsOn tasks.named('checkParticleLightCache')
     dependsOn tasks.named('checkFlightShaderBatch')
     dependsOn tasks.named('checkSceneryOcclusion')
+}
+
+tasks.register('checkMixinCompatibility', JavaExec) {
+    group = 'verification'
+    description = 'Checks optional mixin contracts, package paths, early selection and final bytecode diagnostics.'
+    dependsOn tasks.named('animationChecksClasses')
+    dependsOn tasks.named('checkStrictMixinCompatibility')
+    classpath = sourceSets.animationChecks.runtimeClasspath
+    mainClass = 'com.matthieu.planariumview.core.diagnostics.MixinCompatibilityChecks'
+    args projectDir.absolutePath
+    workingDir = layout.buildDirectory.dir('mixin-compatibility-checks').get().asFile
+    doFirst { workingDir.mkdirs() }
+}
+
+tasks.register('checkStrictMixinCompatibility', JavaExec) {
+    group = 'verification'
+    description = 'Checks that strict mixin selection propagates an incompatible-layout failure.'
+    dependsOn tasks.named('animationChecksClasses')
+    classpath = sourceSets.animationChecks.runtimeClasspath
+    mainClass = 'com.matthieu.planariumview.core.diagnostics.MixinCompatibilityChecks'
+    args projectDir.absolutePath, '--strict'
+    systemProperty 'planariumview.strictMixins', 'true'
+    workingDir = layout.buildDirectory.dir('mixin-compatibility-checks').get().asFile
+    doFirst { workingDir.mkdirs() }
 }
 
 // La version affichee dans la liste des mods vient de gradle.properties (mod_version).

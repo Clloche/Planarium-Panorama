@@ -2,8 +2,8 @@ package com.matthieu.planariumview.client.mini;
 
 import com.matthieu.planariumview.client.scenery.GiantSprites;
 import com.matthieu.planariumview.client.scenery.LitRenderingWorld;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.MiniLightPayload;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.MiniLightPayload;
 
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer;
@@ -37,7 +37,7 @@ public final class MiniLight {
         ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION, payload.pocketDim());
         StructureRenderData old = PlanariumRenderer.structureRenderData.remove(key);
         if (old != null) {
-            com.matthieu.planariumview.compat.ars_nouveau.ArsRenderData.free(old);
+            com.matthieu.planariumview.integration.ars_nouveau.ArsRenderData.free(old);
         }
     }
 
@@ -85,7 +85,7 @@ public final class MiniLight {
             if (old == null) {
                 continue;
             }
-            com.matthieu.planariumview.compat.ars_nouveau.ArsRenderData.free(old);
+            com.matthieu.planariumview.integration.ars_nouveau.ArsRenderData.free(old);
         }
     }
 }

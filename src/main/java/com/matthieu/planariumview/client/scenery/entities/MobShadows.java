@@ -1,9 +1,9 @@
 package com.matthieu.planariumview.client.scenery.entities;
 
 import com.matthieu.planariumview.client.sky.SkySync;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.mixin.entities.EntityRenderDispatcherInvoker;
-import com.matthieu.planariumview.mixin.entities.EntityRendererShadowAccessor;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.mixin.client.entities.EntityRenderDispatcherInvoker;
+import com.matthieu.planariumview.mixin.client.entities.EntityRendererShadowAccessor;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Minecraft;

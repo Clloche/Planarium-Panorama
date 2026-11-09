@@ -4,11 +4,11 @@ import com.matthieu.planariumview.client.scenery.ClientView;
 import com.matthieu.planariumview.client.scenery.FlightView;
 import com.matthieu.planariumview.client.scenery.SubLevelView;
 import com.matthieu.planariumview.client.sound.entities.OutsideMinecartSound;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.entities.OutsideMobsPayload;
-import com.matthieu.planariumview.network.entities.MobAnimations;
-import com.matthieu.planariumview.network.entities.MobEnvironment;
-import com.matthieu.planariumview.mixin.entities.SceneryEntityAccessor;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.entities.OutsideMobsPayload;
+import com.matthieu.planariumview.core.network.entities.MobAnimations;
+import com.matthieu.planariumview.core.network.entities.MobEnvironment;
+import com.matthieu.planariumview.mixin.client.entities.SceneryEntityAccessor;
 
 import com.google.common.collect.ImmutableList;
 import com.mojang.logging.LogUtils;

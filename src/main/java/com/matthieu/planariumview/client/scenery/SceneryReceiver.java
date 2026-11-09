@@ -15,9 +15,9 @@ import com.matthieu.planariumview.client.sky.WeatherView;
 import com.matthieu.planariumview.client.sound.OutsideAmbience;
 import com.matthieu.planariumview.client.sound.OutsideRecordClient;
 import com.matthieu.planariumview.client.sound.OutsideSoundClient;
-import com.matthieu.planariumview.compat.puddle_flood.PuddlesCompat;
-import com.matthieu.planariumview.network.OutsideViewDeltaPayload;
-import com.matthieu.planariumview.network.OutsideViewPayload;
+import com.matthieu.planariumview.integration.puddle_flood.PuddlesCompat;
+import com.matthieu.planariumview.core.network.OutsideViewDeltaPayload;
+import com.matthieu.planariumview.core.network.OutsideViewPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -360,7 +360,7 @@ final class SceneryReceiver {
         if (data == null) {
             return;
         }
-        com.matthieu.planariumview.compat.ars_nouveau.ArsRenderData.free(data);
+        com.matthieu.planariumview.integration.ars_nouveau.ArsRenderData.free(data);
     }
 
     /** A neighbor snapshot arrived: only rebuild sections containing giant Planarium shells. */

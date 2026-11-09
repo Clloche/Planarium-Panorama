@@ -6,11 +6,11 @@ import com.matthieu.planariumview.client.jar.WallColors;
 import com.matthieu.planariumview.client.sky.LightningView;
 import com.matthieu.planariumview.client.sky.LunarClient;
 import com.matthieu.planariumview.client.sky.WeatherView;
-import com.matthieu.planariumview.compat.serene_seasons.SeasonColors;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.config.ConfigScreen;
-import com.matthieu.planariumview.network.OutsideViewDeltaPayload;
-import com.matthieu.planariumview.network.OutsideViewPayload;
+import com.matthieu.planariumview.integration.serene_seasons.SeasonColors;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.config.ConfigScreen;
+import com.matthieu.planariumview.core.network.OutsideViewDeltaPayload;
+import com.matthieu.planariumview.core.network.OutsideViewPayload;
 
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer.StructureRenderData;
 import com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos;
@@ -73,7 +73,7 @@ public final class ClientView {
         com.matthieu.planariumview.client.mini.entities.MiniEntities.init();
         // Bilan des mixins a la premiere connexion (aussi a un serveur distant, sans ServerStartedEvent).
         NeoForge.EVENT_BUS.addListener(ClientPlayerNetworkEvent.LoggingIn.class,
-                event -> com.matthieu.planariumview.diagnostics.MixinHealthReport.summary());
+                event -> com.matthieu.planariumview.core.diagnostics.MixinHealthReport.summary());
         NeoForge.EVENT_BUS.addListener(ClientView::sendToggle);
         NeoForge.EVENT_BUS.addListener(ClientView::tickSceneryAmbience);
         JarInteriorBiome.init();
@@ -150,7 +150,7 @@ public final class ClientView {
     static void updateRoundDetail() {
         net.minecraft.client.multiplayer.ClientPacketListener connection = Minecraft.getInstance().getConnection();
         roundDetail = connection != null
-                && connection.hasChannel(com.matthieu.planariumview.network.NeighborPocketsPayload.TYPE);
+                && connection.hasChannel(com.matthieu.planariumview.core.network.NeighborPocketsPayload.TYPE);
     }
 
     /** Colonne (dx, dz) du decor detaille : cercle (voir DetailShape), ou carre avec un ancien serveur. */

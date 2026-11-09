@@ -2,10 +2,10 @@ package com.matthieu.planariumview.server;
 
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
 import com.matthieu.planariumview.client.scenery.entities.GiantEntities;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.MiniLightPayload;
-import com.matthieu.planariumview.network.entities.MiniEntitiesPayload;
-import com.matthieu.planariumview.network.entities.MiniEntityTypes;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.MiniLightPayload;
+import com.matthieu.planariumview.core.network.entities.MiniEntitiesPayload;
+import com.matthieu.planariumview.core.network.entities.MiniEntityTypes;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.DoubleTag;

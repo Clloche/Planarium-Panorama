@@ -2,8 +2,8 @@ package com.matthieu.planariumview.server;
 
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
 import com.matthieu.planariumview.DetailShape;
-import com.matthieu.planariumview.network.FarRingPayload;
-import com.matthieu.planariumview.network.NeighborPocketsPayload;
+import com.matthieu.planariumview.core.network.FarRingPayload;
+import com.matthieu.planariumview.core.network.NeighborPocketsPayload;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;

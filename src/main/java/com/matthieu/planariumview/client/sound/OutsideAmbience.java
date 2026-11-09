@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.client.sound;
 
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.AmbiencePayload;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.AmbiencePayload;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;

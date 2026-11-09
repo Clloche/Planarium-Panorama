@@ -1,9 +1,9 @@
 package com.matthieu.planariumview.server;
 
-import com.matthieu.planariumview.network.AmbiencePayload;
-import com.matthieu.planariumview.network.OutsideRecordPayload;
-import com.matthieu.planariumview.network.OutsideSoundPayload;
-import com.matthieu.planariumview.network.SoundPrefsPayload;
+import com.matthieu.planariumview.core.network.AmbiencePayload;
+import com.matthieu.planariumview.core.network.OutsideRecordPayload;
+import com.matthieu.planariumview.core.network.OutsideSoundPayload;
+import com.matthieu.planariumview.core.network.SoundPrefsPayload;
 import com.matthieu.planariumview.server.ServerView.Track;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -158,7 +158,7 @@ final class OutsideSounds {
     /** Debut ("" = fin) d'un morceau de jukebox, pour les joueurs dont le Planarium est a portee (64 blocs). */
     private static void sendOutsideRecord(ServerLevel level, BlockPos pos, String song,
                                           Map<UUID, Track> tracks, Set<UUID> disabled) {
-        Vec3 position = com.matthieu.planariumview.compat.sable.SubLevelCompat.worldPosition(level, Vec3.atCenterOf(pos));
+        Vec3 position = com.matthieu.planariumview.integration.sable.SubLevelCompat.worldPosition(level, Vec3.atCenterOf(pos));
         for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
             Track track = tracks.get(player.getUUID());
             if (track == null || disabled.contains(player.getUUID())
@@ -204,7 +204,7 @@ final class OutsideSounds {
                             || !jukebox.getSongPlayer().isPlaying() || jukebox.getSongPlayer().getSong() == null) {
                         continue;
                     }
-                    Vec3 position = com.matthieu.planariumview.compat.sable.SubLevelCompat.worldPosition(level, Vec3.atCenterOf(jukebox.getBlockPos()));
+                    Vec3 position = com.matthieu.planariumview.integration.sable.SubLevelCompat.worldPosition(level, Vec3.atCenterOf(jukebox.getBlockPos()));
                     Vec3 relative = PlanariumAnchor.relative(track, position);
                     double dx = relative.x;
                     double dy = relative.y;
@@ -277,7 +277,7 @@ final class OutsideSounds {
             return;
         }
         long now = System.nanoTime();
-        position = com.matthieu.planariumview.compat.sable.SubLevelCompat.worldPosition(level, position);
+        position = com.matthieu.planariumview.integration.sable.SubLevelCompat.worldPosition(level, position);
         for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
             Track track = tracks.get(player.getUUID());
             if (track == null || disabled.contains(player.getUUID())
@@ -285,7 +285,7 @@ final class OutsideSounds {
                     || !player.serverLevel().dimension().equals(track.pocket)
                     || !player.connection.hasChannel(OutsideSoundPayload.TYPE)
                     || !prefsOf(player.getUUID()).allows(category)
-                    || category == OutsideSoundPayload.MOBS && !com.matthieu.planariumview.config.Config.outsideLive()) {
+                    || category == OutsideSoundPayload.MOBS && !com.matthieu.planariumview.core.config.Config.outsideLive()) {
                 continue;
             }
             Vec3 relative = PlanariumAnchor.relative(track, position);

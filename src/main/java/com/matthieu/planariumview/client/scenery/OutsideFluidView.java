@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.client.scenery;
 
 import com.matthieu.planariumview.client.sky.SkySync;
-import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.core.config.Config;
 import com.mojang.blaze3d.shaders.FogShape;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Camera;

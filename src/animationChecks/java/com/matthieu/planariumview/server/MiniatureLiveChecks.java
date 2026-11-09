@@ -1,15 +1,15 @@
 package com.matthieu.planariumview.server;
 
 import com.electronwill.nightconfig.core.CommentedConfig;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.entities.MiniLivePayload;
-import com.matthieu.planariumview.network.entities.MiniWatchPayload;
-import com.matthieu.planariumview.network.entities.MiniEntityTypes;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.entities.MiniLivePayload;
+import com.matthieu.planariumview.core.network.entities.MiniWatchPayload;
+import com.matthieu.planariumview.core.network.entities.MiniEntityTypes;
 import com.matthieu.planariumview.client.mini.entities.MiniEntities;
 import com.matthieu.planariumview.client.scenery.entities.OutsideAquatic;
-import com.matthieu.planariumview.mixin.entities.SceneryEntityAccessor;
-import com.matthieu.planariumview.network.entities.MobEnvironment;
-import com.matthieu.planariumview.network.entities.MobAnimations;
+import com.matthieu.planariumview.mixin.client.entities.SceneryEntityAccessor;
+import com.matthieu.planariumview.core.network.entities.MobEnvironment;
+import com.matthieu.planariumview.core.network.entities.MobAnimations;
 import com.matthieu.planariumview.client.scenery.entities.MobAnimationTimeline;
 import com.google.common.collect.ImmutableList;
 import io.netty.buffer.Unpooled;
@@ -86,10 +86,10 @@ public final class MiniatureLiveChecks {
             require(!buf.isReadable() && bytes * 5 < 13 * 1024, "light stream under 13 KiB/s for 64 mobs");
             System.out.println("PASS: live movement stream = " + bytes * 5 + " B/s for 64 mobs at 5 Hz");
             UUID id = UUID.randomUUID();
-            var living = new com.matthieu.planariumview.network.entities.MobAnimations.Snapshot(7, 10, true, 3, true, true, 2, 6);
+            var living = new com.matthieu.planariumview.core.network.entities.MobAnimations.Snapshot(7, 10, true, 3, true, true, 2, 6);
             var environment = new MobEnvironment(true, false, true, false, .5f, -.25f, 0, null);
-            var hit = new com.matthieu.planariumview.network.entities.MobAnimations.Event(9, 42, 120,
-                    com.matthieu.planariumview.network.entities.MobAnimations.Kind.HURT, false, 10);
+            var hit = new com.matthieu.planariumview.core.network.entities.MobAnimations.Event(9, 42, 120,
+                    com.matthieu.planariumview.core.network.entities.MobAnimations.Kind.HURT, false, 10);
             var nativeAttack = new MobAnimations.Event(10, 42, 121, MobAnimations.Kind.EVENT, false, 4);
             buf.clear();
             MiniLivePayload.STREAM_CODEC.encode(buf, new MiniLivePayload(POCKET, 123, true, List.of(new MiniLivePayload.Entry(id,
@@ -457,7 +457,7 @@ public final class MiniatureLiveChecks {
         Object miniature = new Object();
         copies.put(miniature, playback);
         try {
-            MiniEntities.receive(new com.matthieu.planariumview.network.entities.MiniEntitiesPayload(POCKET, new CompoundTag()));
+            MiniEntities.receive(new com.matthieu.planariumview.core.network.entities.MiniEntitiesPayload(POCKET, new CompoundTag()));
             require(copies.get(miniature) == playback, "empty snapshot preserves playback until death animation completes");
         } finally { MiniEntities.clear(); }
     }

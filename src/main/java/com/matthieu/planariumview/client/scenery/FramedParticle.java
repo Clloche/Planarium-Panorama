@@ -1,8 +1,8 @@
 package com.matthieu.planariumview.client.scenery;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.SubLevelTransforms;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.SubLevelTransforms;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.Particle;

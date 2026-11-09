@@ -1,9 +1,9 @@
 package com.matthieu.planariumview.client.jar;
 
 import com.matthieu.planariumview.client.sky.SkySync;
-import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.WallPayload;
+import com.matthieu.planariumview.integration.contraption_lights.ColorCompat;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.WallPayload;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.logging.LogUtils;

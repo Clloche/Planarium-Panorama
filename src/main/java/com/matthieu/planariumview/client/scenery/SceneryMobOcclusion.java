@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.client.scenery;
 
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer.StructureRenderData;
-import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.core.config.Config;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;

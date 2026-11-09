@@ -5,14 +5,14 @@ import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer;
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer.StructureRenderData;
 import com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos;
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
-import com.matthieu.planariumview.compat.create.BearingAngles;
-import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
-import com.matthieu.planariumview.compat.swinging_lanterns.SwingingLanternsCompat;
+import com.matthieu.planariumview.integration.create.BearingAngles;
+import com.matthieu.planariumview.integration.contraption_lights.ColorCompat;
+import com.matthieu.planariumview.integration.swinging_lanterns.SwingingLanternsCompat;
 import com.matthieu.planariumview.client.mini.MiniOutsideLight;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.SubLevelPayload;
-import com.matthieu.planariumview.network.SubLevelTransforms;
-import com.matthieu.planariumview.network.OutsideFluids;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.SubLevelPayload;
+import com.matthieu.planariumview.core.network.SubLevelTransforms;
+import com.matthieu.planariumview.core.network.OutsideFluids;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import com.mojang.logging.LogUtils;
@@ -843,7 +843,7 @@ public final class SubLevelView {
                     try {
                         pose.translate(at.getX(), at.getY(), at.getZ());
                         int light = entityLight.getOrDefault(at, 0x00F000F0);
-                        com.matthieu.planariumview.compat.create.CreateCopies.render(renderer, entity, data.fakeRenderingWorld,
+                        com.matthieu.planariumview.integration.create.CreateCopies.render(renderer, entity, data.fakeRenderingWorld,
                                 partialTick, pose, HueKeepingBuffers.of(buffers, light), light, OverlayTexture.NO_OVERLAY);
                     } catch (RuntimeException e) {
                         LOGGER.debug("[Planarium Panorama] Sub-level block entity skipped", e);

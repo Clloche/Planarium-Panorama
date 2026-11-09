@@ -4,10 +4,10 @@ import com.hollingsworth.arsnouveau.client.renderer.LiquidBlockVertexConsumer;
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer;
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer.StructureRenderData;
 import com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos;
-import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
-import com.matthieu.planariumview.compat.puddle_flood.PuddlesCompat;
-import com.matthieu.planariumview.compat.snow_real_magic.SnowRealMagicCompat;
-import com.matthieu.planariumview.network.OutsideViewPayload;
+import com.matthieu.planariumview.integration.contraption_lights.ColorCompat;
+import com.matthieu.planariumview.integration.puddle_flood.PuddlesCompat;
+import com.matthieu.planariumview.integration.snow_real_magic.SnowRealMagicCompat;
+import com.matthieu.planariumview.core.network.OutsideViewPayload;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -432,7 +432,7 @@ final class SceneryMeshes {
                 if (isModel) {
                     try {
                         // Couleur de Contraption Lights prise devant chaque face (voir FaceHueConsumer).
-                        com.mojang.blaze3d.vertex.VertexConsumer faces = com.matthieu.planariumview.compat.contraption_lights.ColorCompat.building()
+                        com.mojang.blaze3d.vertex.VertexConsumer faces = com.matthieu.planariumview.integration.contraption_lights.ColorCompat.building()
                                 ? new FaceHueConsumer(snapped, data.fakeRenderingWorld, pos.pos) : snapped;
                         if (neighbor) faces = NeighborPlanariumModel.light(faces, snapped);
                         PlanariumRenderer.tesselateBlock(pos, modelRenderer, data.fakeRenderingWorld, model, renderState,

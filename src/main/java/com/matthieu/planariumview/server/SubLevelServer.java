@@ -1,11 +1,11 @@
 package com.matthieu.planariumview.server;
 
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
-import com.matthieu.planariumview.compat.sable.SubLevelCompat;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.SubLevelPayload;
-import com.matthieu.planariumview.network.SubLevelTransforms;
-import com.matthieu.planariumview.network.OutsideFluids;
+import com.matthieu.planariumview.integration.sable.SubLevelCompat;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.SubLevelPayload;
+import com.matthieu.planariumview.core.network.SubLevelTransforms;
+import com.matthieu.planariumview.core.network.OutsideFluids;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.core.Vec3i;

@@ -1,10 +1,10 @@
 package com.matthieu.planariumview.client.scenery.entities;
 
-import com.matthieu.planariumview.mixin.entities.HoglinAnimationAccessor;
-import com.matthieu.planariumview.mixin.entities.IronGolemAnimationAccessor;
-import com.matthieu.planariumview.mixin.entities.RavagerAnimationAccessor;
-import com.matthieu.planariumview.mixin.entities.SheepAnimationAccessor;
-import com.matthieu.planariumview.network.entities.MobAnimations;
+import com.matthieu.planariumview.mixin.client.entities.HoglinAnimationAccessor;
+import com.matthieu.planariumview.mixin.client.entities.IronGolemAnimationAccessor;
+import com.matthieu.planariumview.mixin.client.entities.RavagerAnimationAccessor;
+import com.matthieu.planariumview.mixin.client.entities.SheepAnimationAccessor;
+import com.matthieu.planariumview.core.network.entities.MobAnimations;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.world.entity.LivingEntity;

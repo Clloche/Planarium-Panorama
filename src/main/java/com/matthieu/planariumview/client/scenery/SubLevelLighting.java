@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.client.scenery;
 
-import com.matthieu.planariumview.compat.contraption_lights.SourceView;
-import com.matthieu.planariumview.network.SubLevelTransforms;
+import com.matthieu.planariumview.integration.contraption_lights.SourceView;
+import com.matthieu.planariumview.core.network.SubLevelTransforms;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;

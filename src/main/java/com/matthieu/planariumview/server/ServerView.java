@@ -1,9 +1,9 @@
 package com.matthieu.planariumview.server;
 
 import com.matthieu.planariumview.server.entities.OutsideMobsServer;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.LightningPayload;
-import com.matthieu.planariumview.network.SoundPrefsPayload;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.LightningPayload;
+import com.matthieu.planariumview.core.network.SoundPrefsPayload;
 
 import com.hollingsworth.arsnouveau.ArsNouveau;
 import net.minecraft.core.BlockPos;
@@ -237,7 +237,7 @@ public final class ServerView {
             }
             if (previous != null && (isPocket(previous) || isPocket(player.serverLevel()))) {
                 // The client has already discarded that dimension. Do not let Sable send its removals to the new one.
-                com.matthieu.planariumview.compat.sable.SubLevelCompat.forgetTracking(previous, player.getUUID());
+                com.matthieu.planariumview.integration.sable.SubLevelCompat.forgetTracking(previous, player.getUUID());
             }
             SubLevelServer.dimensionChanged(player.getUUID(), player.server.getTickCount());
             TrackUpdater.update(player, true, TRACKS, DISABLED);
@@ -272,7 +272,7 @@ public final class ServerView {
      * Ce que le client veut voir en plus des blocs (mobs du dehors). Afficher les mobs garde la zone autour du Planarium
      * active, meme avec les sons du monde exterieur coupes (sinon ils resteraient figes) : les tickets sont revus.
      */
-    public static void setViewPrefs(ServerPlayer player, com.matthieu.planariumview.network.entities.ViewPrefsPayload prefs) {
+    public static void setViewPrefs(ServerPlayer player, com.matthieu.planariumview.core.network.entities.ViewPrefsPayload prefs) {
         UUID id = player.getUUID();
         if (!OutsideMobsServer.setPrefs(id, prefs)) {
             return;
@@ -375,7 +375,7 @@ public final class ServerView {
         // Filet de securite si un appel de son a leve une exception avant l'injection RETURN du mixin.
         PlayerSoundCause.clear();
         MinecraftServer server = event.getServer();
-        if (server.getTickCount() % 2 == 0 && com.matthieu.planariumview.compat.sable.SubLevelCompat.available()) {
+        if (server.getTickCount() % 2 == 0 && com.matthieu.planariumview.integration.sable.SubLevelCompat.available()) {
             try {
                 updateSubLevels(server);
             } catch (Exception e) {
@@ -476,7 +476,7 @@ public final class ServerView {
     @SubscribeEvent
     public static void onServerStarted(net.neoforged.neoforge.event.server.ServerStartedEvent event) {
         for (ServerLevel level : event.getServer().getAllLevels()) {
-            com.matthieu.planariumview.compat.sable.SubLevelCompat.clearVisitorTickets(level);
+            com.matthieu.planariumview.integration.sable.SubLevelCompat.clearVisitorTickets(level);
         }
     }
 
@@ -497,7 +497,7 @@ public final class ServerView {
         // Un autre monde solo peut s'ouvrir ensuite : ne pas lui montrer les miniatures de celui-ci.
         MiniatureSync.clear();
         MiniLive.clear();
-        com.matthieu.planariumview.compat.sable.SubLevelCompat.clearRestoreFailures();
+        com.matthieu.planariumview.integration.sable.SubLevelCompat.clearRestoreFailures();
         TRACKS.clear();
     }
 
@@ -514,7 +514,7 @@ public final class ServerView {
         }
         ServerLevel source = server.getLevel(track.source.dimension());
         if (source != null) {
-            com.matthieu.planariumview.compat.sable.SubLevelCompat.releaseAnchor(source, id, track.anchorBody);
+            com.matthieu.planariumview.integration.sable.SubLevelCompat.releaseAnchor(source, id, track.anchorBody);
             ViewTickets.releaseTickets(source, track);
         }
         track.ticketChunks = -1;

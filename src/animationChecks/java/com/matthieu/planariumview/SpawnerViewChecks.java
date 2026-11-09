@@ -1,7 +1,7 @@
 package com.matthieu.planariumview;
 
 import com.matthieu.planariumview.client.scenery.*;
-import com.matthieu.planariumview.mixin.*;
+import com.matthieu.planariumview.mixin.client.*;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.*;
 import net.minecraft.util.RandomSource;

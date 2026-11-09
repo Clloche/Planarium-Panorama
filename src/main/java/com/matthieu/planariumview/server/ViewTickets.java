@@ -35,7 +35,7 @@ final class ViewTickets {
     static void keepLoaded(MinecraftServer server, UUID player, Track track, int radius) {
         // Zone active pour les sons du monde exterieur, ou pour que les mobs affiches bougent, seulement si le monde le
         // permet (option du serveur "Faire vivre le dehors"). Sinon : chargee et lisible, sans rien y faire tourner.
-        boolean live = com.matthieu.planariumview.config.Config.outsideLive();
+        boolean live = com.matthieu.planariumview.core.config.Config.outsideLive();
         boolean mobs = live && OutsideMobsServer.wants(player);
         boolean active = live && (prefsOf(player).world() || mobs);
         int chunks = active

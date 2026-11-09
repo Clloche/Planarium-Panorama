@@ -1,8 +1,8 @@
 package com.matthieu.planariumview.client.scenery.entities;
 
-import com.matthieu.planariumview.mixin.entities.SceneryEntityAccessor;
-import com.matthieu.planariumview.mixin.entities.TntMinecartAccessor;
-import com.matthieu.planariumview.network.entities.OutsideMobsPayload.VehicleState;
+import com.matthieu.planariumview.mixin.client.entities.SceneryEntityAccessor;
+import com.matthieu.planariumview.mixin.client.entities.TntMinecartAccessor;
+import com.matthieu.planariumview.core.network.entities.OutsideMobsPayload.VehicleState;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.util.Mth;

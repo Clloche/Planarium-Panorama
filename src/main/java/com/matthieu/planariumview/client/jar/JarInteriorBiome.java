@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.client.jar;
 
 import com.matthieu.planariumview.client.sound.OutsideAmbience;
-import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.core.config.Config;
 
 import com.hollingsworth.arsnouveau.ArsNouveau;
 import com.mojang.logging.LogUtils;

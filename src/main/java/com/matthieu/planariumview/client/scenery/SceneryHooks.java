@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.client.scenery;
 
 import com.matthieu.planariumview.client.sound.OutsideSoundClient;
-import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.core.config.Config;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;

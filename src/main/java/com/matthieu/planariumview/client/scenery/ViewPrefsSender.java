@@ -1,10 +1,10 @@
 package com.matthieu.planariumview.client.scenery;
 
 import com.matthieu.planariumview.client.scenery.entities.OutsideMobs;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.SoundPrefsPayload;
-import com.matthieu.planariumview.network.SubLevelPrefsPayload;
-import com.matthieu.planariumview.network.ViewTogglePayload;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.SoundPrefsPayload;
+import com.matthieu.planariumview.core.network.SubLevelPrefsPayload;
+import com.matthieu.planariumview.core.network.ViewTogglePayload;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import org.slf4j.Logger;
@@ -18,7 +18,7 @@ final class ViewPrefsSender {
     /** Dernieres options des sons du monde exterieur envoyees au serveur (null : rien d'envoye sur cette connexion). */
     private static SoundPrefsPayload sentSoundPrefs;
     /** Dernieres options de vue envoyees au serveur (mobs du dehors), null : rien d'envoye sur cette connexion. */
-    private static com.matthieu.planariumview.network.entities.ViewPrefsPayload sentViewPrefs;
+    private static com.matthieu.planariumview.core.network.entities.ViewPrefsPayload sentViewPrefs;
     private static Boolean sentSubLevelViews;
     /** Nombre de Planariums voisins envoye au serveur (null : rien d'envoye sur cette connexion). */
     private static Integer sentNeighbors;
@@ -48,9 +48,9 @@ final class ViewPrefsSender {
         if (sentNeighbors == null || sentNeighbors != neighbors) {
             sentNeighbors = neighbors;
             try {
-                if (connection.hasChannel(com.matthieu.planariumview.network.NeighborPrefsPayload.TYPE)) {
+                if (connection.hasChannel(com.matthieu.planariumview.core.network.NeighborPrefsPayload.TYPE)) {
                     net.neoforged.neoforge.network.PacketDistributor.sendToServer(
-                            new com.matthieu.planariumview.network.NeighborPrefsPayload(neighbors));
+                            new com.matthieu.planariumview.core.network.NeighborPrefsPayload(neighbors));
                 }
             } catch (Exception e) {
                 LOGGER.debug("[Planarium Panorama] Neighbor preference could not be sent", e);
@@ -68,12 +68,12 @@ final class ViewPrefsSender {
                 LOGGER.debug("[Planarium Panorama] Options des sons non envoyees au serveur", e);
             }
         }
-        com.matthieu.planariumview.network.entities.ViewPrefsPayload view = new com.matthieu.planariumview.network.entities.ViewPrefsPayload(
+        com.matthieu.planariumview.core.network.entities.ViewPrefsPayload view = new com.matthieu.planariumview.core.network.entities.ViewPrefsPayload(
                 Config.outsideMobLimit(), Config.outsideVehicles(), OutsideMobs.resyncCounter());
         if (!view.equals(sentViewPrefs)) {
             sentViewPrefs = view;
             try {
-                if (connection.hasChannel(com.matthieu.planariumview.network.entities.ViewPrefsPayload.TYPE)) {
+                if (connection.hasChannel(com.matthieu.planariumview.core.network.entities.ViewPrefsPayload.TYPE)) {
                     net.neoforged.neoforge.network.PacketDistributor.sendToServer(view);
                 }
             } catch (Exception e) {

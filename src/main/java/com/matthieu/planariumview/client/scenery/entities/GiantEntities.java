@@ -1,9 +1,9 @@
 package com.matthieu.planariumview.client.scenery.entities;
 
 import com.matthieu.planariumview.client.scenery.FaceHueConsumer;
-import com.matthieu.planariumview.compat.contraption_lights.ClTag;
-import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
-import com.matthieu.planariumview.mixin.entities.EntityRenderDispatcherInvoker;
+import com.matthieu.planariumview.integration.contraption_lights.ClTag;
+import com.matthieu.planariumview.integration.contraption_lights.ColorCompat;
+import com.matthieu.planariumview.mixin.client.entities.EntityRenderDispatcherInvoker;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;

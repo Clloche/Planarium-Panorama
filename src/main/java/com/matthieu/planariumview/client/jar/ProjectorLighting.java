@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.client.jar;
 
 import com.matthieu.planariumview.client.sky.SkySync;
-import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.core.config.Config;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Minecraft;

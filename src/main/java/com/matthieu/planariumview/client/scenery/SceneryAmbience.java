@@ -4,9 +4,9 @@ import com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos;
 import com.matthieu.planariumview.client.mini.MiniParticles;
 import com.matthieu.planariumview.client.scenery.entities.OutsideMobs;
 import com.matthieu.planariumview.client.sound.OutsideSoundClient;
-import com.matthieu.planariumview.compat.puddle_flood.PuddlesCompat;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.OutsideViewPayload;
+import com.matthieu.planariumview.integration.puddle_flood.PuddlesCompat;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.OutsideViewPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
@@ -102,7 +102,7 @@ final class SceneryAmbience {
             if (particles) {
                 campfireSmoke(lit, radius);
                 int view = viewRadius();
-                com.matthieu.planariumview.compat.ars_nouveau.ArsParticles.tick(lit, at -> visibleSceneryPos(at, radius, view));
+                com.matthieu.planariumview.integration.ars_nouveau.ArsParticles.tick(lit, at -> visibleSceneryPos(at, radius, view));
             }
         } finally {
             LitRenderingWorld.captureAmbientSounds(false);
@@ -124,7 +124,7 @@ final class SceneryAmbience {
         if (windChecks && !state.isCollisionShapeFullBlock(lit, pos)) {
             SceneryAmbientParticles.tick(lit, pos, AMBIENT_RANDOM);
             OutsideViewPayload info = lastInfo;
-            com.matthieu.planariumview.compat.windy.WindyCompat.tryWind(lit, pos.immutable(), radius,
+            com.matthieu.planariumview.integration.windy.WindyCompat.tryWind(lit, pos.immutable(), radius,
                     info != null ? info.origin() : null, AMBIENT_RANDOM);
         }
         if (state.isAir() || AMBIENT_BROKEN.contains(state.getBlock())) {
@@ -134,7 +134,7 @@ final class SceneryAmbience {
         if (windChecks && Config.outsideAmbience()) {
             SceneryBubbles.tryStart(lit, pos, state);
             OutsideViewPayload info = lastInfo;
-            com.matthieu.planariumview.compat.dynamic_surroundings.DsFirefliesCompat.animate(lit, pos, state, AMBIENT_RANDOM,
+            com.matthieu.planariumview.integration.dynamic_surroundings.DsFirefliesCompat.animate(lit, pos, state, AMBIENT_RANDOM,
                     info != null ? info.origin() : BlockPos.ZERO);
         }
         animateBlock(lit, pos.immutable(), state);
@@ -154,7 +154,7 @@ final class SceneryAmbience {
         boolean leaves = false;
         try {
             // Feuilles de Falling Leaves (integration).
-            leaves = com.matthieu.planariumview.compat.falling_leaves.FallingLeavesCompat.animate(lit, at, state, AMBIENT_RANDOM);
+            leaves = com.matthieu.planariumview.integration.falling_leaves.FallingLeavesCompat.animate(lit, at, state, AMBIENT_RANDOM);
             state.getBlock().animateTick(state, lit, at, AMBIENT_RANDOM);
             FluidState fluid = state.getFluidState();
             if (!fluid.isEmpty()) {

@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.client.sky;
 
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.LunarPayload;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.LunarPayload;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;

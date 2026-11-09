@@ -40,11 +40,11 @@ final class PlanariumAnchor {
      * memorisee par Ars Nouveau (JarDimData.enteredFrom).
      */
     static GlobalPos findPlanarium(ServerPlayer player, ServerLevel pocket) {
-        var entry = com.matthieu.planariumview.compat.ars_sable.ArsSableCompat.entry(pocket, player.getUUID());
+        var entry = com.matthieu.planariumview.integration.ars_sable.ArsSableCompat.entry(pocket, player.getUUID());
         if (entry != null && entry.body() != null) {
             ServerLevel source = player.server.getLevel(entry.position().dimension());
             if (source == null) return null;
-            BlockPos found = com.matthieu.planariumview.compat.sable.SubLevelCompat.findPlanarium(source,
+            BlockPos found = com.matthieu.planariumview.integration.sable.SubLevelCompat.findPlanarium(source,
                     pocket.dimension(), null, entry.body(), 0);
             // A known vessel may still be loading. Never substitute another Planarium near the stale world position.
             return found == null ? null : GlobalPos.of(source.dimension(), found);
@@ -77,7 +77,7 @@ final class PlanariumAnchor {
             }
         }
         if (best == null) {
-            best = com.matthieu.planariumview.compat.sable.SubLevelCompat.findPlanarium(sourceLevel, pocket.dimension(),
+            best = com.matthieu.planariumview.integration.sable.SubLevelCompat.findPlanarium(sourceLevel, pocket.dimension(),
                     Vec3.atLowerCornerOf(center), SEARCH_RADIUS);
         }
         return best == null ? null : GlobalPos.of(sourceLevel.dimension(), best);
@@ -97,7 +97,7 @@ final class PlanariumAnchor {
         // Planarium embarque : son plot doit toujours appartenir a son vaisseau. Sinon (vaisseau recharge sous un autre
         // plot, ou retire), la position du plot etait prise pour une position dans le monde et la vue ne suivait plus.
         if (here) {
-            if (body == null) body = com.matthieu.planariumview.compat.sable.SubLevelCompat.ownerId(source, track.source.pos());
+            if (body == null) body = com.matthieu.planariumview.integration.sable.SubLevelCompat.ownerId(source, track.source.pos());
             anchor = trackedAnchor(source, track.source.pos(), body);
             here = anchor != null;
         }
@@ -107,7 +107,7 @@ final class PlanariumAnchor {
                 LOGGER.debug("[Planarium Panorama] Planarium perdu en {} (vaisseau {}) : recherche", track.source.pos(),
                         track.body);
             }
-            if (track.body != null && !com.matthieu.planariumview.compat.sable.SubLevelCompat.available()) return false;
+            if (track.body != null && !com.matthieu.planariumview.integration.sable.SubLevelCompat.available()) return false;
             // Planarium casse ou introuvable : au plus une recherche par seconde (sinon 17^3 blocs toutes les 2 ticks).
             // La vue garde sa derniere position pendant ce temps.
             long tick = source.getServer().getTickCount();
@@ -116,26 +116,26 @@ final class PlanariumAnchor {
             BlockPos found = null;
             if (track.body != null) {
                 // Par le vaisseau, n'importe ou sur lui : son nouveau plot peut etre loin de l'ancien.
-                found = com.matthieu.planariumview.compat.sable.SubLevelCompat.findPlanarium(source, track.pocket, null,
+                found = com.matthieu.planariumview.integration.sable.SubLevelCompat.findPlanarium(source, track.pocket, null,
                         track.body, 0);
             }
-            if (found == null) found = com.matthieu.planariumview.compat.sable.SubLevelCompat.findPlanarium(source, track.pocket,
+            if (found == null) found = com.matthieu.planariumview.integration.sable.SubLevelCompat.findPlanarium(source, track.pocket,
                     new Vec3(track.anchor.m30(), track.anchor.m31(), track.anchor.m32()), SEARCH_RADIUS);
             if (found == null) {
                 for (BlockPos at : BlockPos.betweenClosed(track.center.offset(-SEARCH_RADIUS, -SEARCH_RADIUS, -SEARCH_RADIUS),
                         track.center.offset(SEARCH_RADIUS, SEARCH_RADIUS, SEARCH_RADIUS))) {
                     if (source.hasChunkAt(at) && source.getBlockEntity(at) instanceof PlanariumTile candidate
                             && track.pocket.equals(candidate.key)
-                            && !com.matthieu.planariumview.compat.sable.SubLevelCompat.isPlotSpace(source, at)) {
+                            && !com.matthieu.planariumview.integration.sable.SubLevelCompat.isPlotSpace(source, at)) {
                         found = at.immutable();
                         break;
                     }
                 }
             }
             if (found == null) return false;
-            body = com.matthieu.planariumview.compat.sable.SubLevelCompat.ownerId(source, found);
+            body = com.matthieu.planariumview.integration.sable.SubLevelCompat.ownerId(source, found);
             anchor = trackedAnchor(source, found, body);
-            if (anchor == null || track.body != null && !com.matthieu.planariumview.compat.sable.SubLevelCompat.available()) return false;
+            if (anchor == null || track.body != null && !com.matthieu.planariumview.integration.sable.SubLevelCompat.available()) return false;
             track.source = GlobalPos.of(source.dimension(), found);
         }
         track.body = body;
@@ -143,7 +143,7 @@ final class PlanariumAnchor {
             track.lost = false;
             LOGGER.debug("[Planarium Panorama] Planarium retrouve en {} (vaisseau {})", track.source.pos(), track.body);
         }
-        track.anchorBody = com.matthieu.planariumview.compat.sable.SubLevelCompat.holdAnchor(source, track.source.pos(),
+        track.anchorBody = com.matthieu.planariumview.integration.sable.SubLevelCompat.holdAnchor(source, track.source.pos(),
                 track.owner, track.anchorBody);
         BlockPos center = BlockPos.containing(anchor.m30(), anchor.m31(), anchor.m32());
         // Pas de capture complete a chaque bloc parcouru : le client recale l'ancienne photo autour du bocal
@@ -154,8 +154,8 @@ final class PlanariumAnchor {
     }
 
     private static org.joml.Matrix4d trackedAnchor(ServerLevel source, BlockPos pos, UUID body) {
-        if (body != null) return com.matthieu.planariumview.compat.sable.SubLevelCompat.anchorOnBody(source, pos, body);
-        return com.matthieu.planariumview.compat.sable.SubLevelCompat.isPlotSpace(source, pos) ? null
-                : com.matthieu.planariumview.compat.sable.SubLevelCompat.anchor(source, pos);
+        if (body != null) return com.matthieu.planariumview.integration.sable.SubLevelCompat.anchorOnBody(source, pos, body);
+        return com.matthieu.planariumview.integration.sable.SubLevelCompat.isPlotSpace(source, pos) ? null
+                : com.matthieu.planariumview.integration.sable.SubLevelCompat.anchor(source, pos);
     }
 }

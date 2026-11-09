@@ -1,6 +1,6 @@
 package com.matthieu.planariumview.client.scenery.entities;
 
-import com.matthieu.planariumview.network.entities.MobEnvironment;
+import com.matthieu.planariumview.core.network.entities.MobEnvironment;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.animal.Squid;

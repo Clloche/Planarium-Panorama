@@ -1,8 +1,8 @@
 package com.matthieu.planariumview.client.scenery;
 
 import com.matthieu.planariumview.client.sky.SkySync;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.OutsideViewPayload;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.OutsideViewPayload;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;

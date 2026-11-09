@@ -15,17 +15,17 @@ import com.matthieu.planariumview.client.scenery.entities.MobEventAnimations;
 import com.matthieu.planariumview.client.scenery.entities.MobShadows;
 import com.matthieu.planariumview.client.scenery.entities.OutsideWings;
 import com.matthieu.planariumview.client.scenery.LitRenderingWorld;
-import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
-import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.integration.contraption_lights.ColorCompat;
+import com.matthieu.planariumview.core.config.Config;
 import com.matthieu.planariumview.client.scenery.entities.OutsideAquatic;
-import com.matthieu.planariumview.network.entities.MiniEntitiesPayload;
-import com.matthieu.planariumview.network.entities.MiniLivePayload;
-import com.matthieu.planariumview.network.entities.MiniEntityTypes;
-import com.matthieu.planariumview.mixin.entities.SceneryEntityAccessor;
+import com.matthieu.planariumview.core.network.entities.MiniEntitiesPayload;
+import com.matthieu.planariumview.core.network.entities.MiniLivePayload;
+import com.matthieu.planariumview.core.network.entities.MiniEntityTypes;
+import com.matthieu.planariumview.mixin.client.entities.SceneryEntityAccessor;
 import com.google.common.collect.ImmutableList;
-import com.matthieu.planariumview.network.entities.MiniWatchPayload;
-import com.matthieu.planariumview.network.entities.MobAnimations;
-import com.matthieu.planariumview.network.entities.MobEnvironment;
+import com.matthieu.planariumview.core.network.entities.MiniWatchPayload;
+import com.matthieu.planariumview.core.network.entities.MobAnimations;
+import com.matthieu.planariumview.core.network.entities.MobEnvironment;
 import net.neoforged.neoforge.network.PacketDistributor;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
@@ -491,7 +491,7 @@ public final class MiniEntities {
         boolean coloredLighting = fakeLighting && Config.coloredLight();
         Built built = decorations(data, received.getList("entities", Tag.TAG_COMPOUND), fakeLighting, coloredLighting);
         double distance = tile.getLevel() == null ? Double.POSITIVE_INFINITY
-                : com.matthieu.planariumview.compat.sable.SubLevelCompat.worldPosition(tile.getLevel(), tile.getBlockPos().getCenter())
+                : com.matthieu.planariumview.integration.sable.SubLevelCompat.worldPosition(tile.getLevel(), tile.getBlockPos().getCenter())
                         .distanceToSqr(Minecraft.getInstance().gameRenderer.getMainCamera().getPosition());
         Mobs mobs = Config.miniatureEntities() && distance <= RANGE_SQUARED
                 ? mobs(tile.key.location(), data, received.getList("mobs", Tag.TAG_COMPOUND), fakeLighting, coloredLighting) : null;

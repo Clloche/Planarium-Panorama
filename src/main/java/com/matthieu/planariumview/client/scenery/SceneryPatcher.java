@@ -5,10 +5,10 @@ import com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos;
 import com.matthieu.planariumview.client.scenery.SceneryMeshes.SectionMesh;
 import com.matthieu.planariumview.client.scenery.SceneryMeshes.SectionPos;
 import com.matthieu.planariumview.client.scenery.entities.GiantEntities;
-import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
-import com.matthieu.planariumview.compat.puddle_flood.PuddlesCompat;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.OutsideViewPayload;
+import com.matthieu.planariumview.integration.contraption_lights.ColorCompat;
+import com.matthieu.planariumview.integration.puddle_flood.PuddlesCompat;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.OutsideViewPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.core.BlockPos;
@@ -356,7 +356,7 @@ final class SceneryPatcher {
             BlockPos pos = entry.getKey();
             if (isOpaque(lit, pos)) opaqueBefore.add(pos);
             if (lit.blockEntityMap.containsKey(pos)) blockEntitiesChanged = true;
-            if (com.matthieu.planariumview.compat.contraption_lights.ColorCompat.present() && Config.coloredLight()) {
+            if (com.matthieu.planariumview.integration.contraption_lights.ColorCompat.present() && Config.coloredLight()) {
                 BlockState before = lit.getBlockState(pos);
                 BlockState after = entry.getValue().state();
                 if (!java.util.Objects.equals(before, after) && (before.getLightEmission(lit, pos) > 0
@@ -518,7 +518,7 @@ final class SceneryPatcher {
             if (blockEntity == null) {
                 return;
             }
-            com.matthieu.planariumview.compat.create.CreateCopies.attach(blockEntity, world, Minecraft.getInstance().level);
+            com.matthieu.planariumview.integration.create.CreateCopies.attach(blockEntity, world, Minecraft.getInstance().level);
             blockEntity.onLoad();
             blockEntity.loadWithComponents(data, world.registryAccess());
             world.blockEntityMap.put(pos, blockEntity);
@@ -540,7 +540,7 @@ final class SceneryPatcher {
             if (!visibleSceneryPos(pos, currentRadius, viewRadius())) continue;
             try {
                 int light = LevelRenderer.getLightColor(data.fakeRenderingWorld, pos);
-                if (com.matthieu.planariumview.compat.contraption_lights.ColorCompat.building() && (light & 0xF0) != 0
+                if (com.matthieu.planariumview.integration.contraption_lights.ColorCompat.building() && (light & 0xF0) != 0
                         && (light & ~0x00F000F0) == 0) {
                     // Pas de couleur dans la case du bloc (boite a outils de Create...) : celle d'une case voisine.
                     light |= FaceHueConsumer.hueAround(data.fakeRenderingWorld, pos);

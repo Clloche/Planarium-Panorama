@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.server;
 
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.FarRingPayload;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.FarRingPayload;
 
 import com.mojang.logging.LogUtils;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -144,7 +144,7 @@ public final class FarRingServer {
             return;
         }
         // Un client qui connait les Planariums voisins coupe aussi son decor detaille en cylindre (voir DetailShape).
-        boolean round = player.connection.hasChannel(com.matthieu.planariumview.network.NeighborPocketsPayload.TYPE);
+        boolean round = player.connection.hasChannel(com.matthieu.planariumview.core.network.NeighborPocketsPayload.TYPE);
         Key want = new Key(source.dimension(), center, near, far, Math.max(near, far), round);
         if (state.job != null) {
             if (!state.job.key.equals(want)) {

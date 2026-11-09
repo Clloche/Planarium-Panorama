@@ -3,7 +3,7 @@ package com.matthieu.planariumview.server;
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
 import com.matthieu.planariumview.client.scenery.BiomeGrid;
 import com.matthieu.planariumview.client.scenery.entities.GiantEntities;
-import com.matthieu.planariumview.compat.serene_seasons.SeasonCompat;
+import com.matthieu.planariumview.integration.serene_seasons.SeasonCompat;
 import com.matthieu.planariumview.server.ServerView.Track;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;

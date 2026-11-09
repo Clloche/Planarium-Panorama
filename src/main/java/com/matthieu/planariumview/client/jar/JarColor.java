@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.client.jar;
 
-import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
-import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.integration.contraption_lights.ColorCompat;
+import com.matthieu.planariumview.core.config.Config;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.util.Mth;

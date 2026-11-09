@@ -1,6 +1,6 @@
 package com.matthieu.planariumview.server;
 
-import com.matthieu.planariumview.network.FarRingPayload;
+import com.matthieu.planariumview.core.network.FarRingPayload;
 
 import it.unimi.dsi.fastutil.bytes.ByteArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrayList;

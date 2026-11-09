@@ -1,9 +1,9 @@
 package com.matthieu.planariumview.client.scenery;
 
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.FarRingPayload;
-import com.matthieu.planariumview.network.FlightPayload;
-import com.matthieu.planariumview.network.FlightCoverage;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.FarRingPayload;
+import com.matthieu.planariumview.core.network.FlightPayload;
+import com.matthieu.planariumview.core.network.FlightCoverage;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;

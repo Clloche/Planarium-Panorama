@@ -10,22 +10,22 @@ import com.matthieu.planariumview.client.sky.SkySync;
 import com.matthieu.planariumview.client.sound.OutsideAmbience;
 import com.matthieu.planariumview.client.sound.OutsideRecordClient;
 import com.matthieu.planariumview.client.sound.OutsideSoundClient;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.AmbiencePayload;
-import com.matthieu.planariumview.network.LightningPayload;
-import com.matthieu.planariumview.network.LunarPayload;
-import com.matthieu.planariumview.network.entities.MiniEntitiesPayload;
-import com.matthieu.planariumview.network.MiniLightPayload;
-import com.matthieu.planariumview.network.OutsideRecordPayload;
-import com.matthieu.planariumview.network.OutsideSoundPayload;
-import com.matthieu.planariumview.network.OutsideViewDeltaPayload;
-import com.matthieu.planariumview.network.OutsideViewPayload;
-import com.matthieu.planariumview.network.SkyPayload;
-import com.matthieu.planariumview.network.SoundPrefsPayload;
-import com.matthieu.planariumview.network.ViewTogglePayload;
-import com.matthieu.planariumview.network.WallPayload;
-import com.matthieu.planariumview.network.SubLevelPayload;
-import com.matthieu.planariumview.network.SubLevelPrefsPayload;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.AmbiencePayload;
+import com.matthieu.planariumview.core.network.LightningPayload;
+import com.matthieu.planariumview.core.network.LunarPayload;
+import com.matthieu.planariumview.core.network.entities.MiniEntitiesPayload;
+import com.matthieu.planariumview.core.network.MiniLightPayload;
+import com.matthieu.planariumview.core.network.OutsideRecordPayload;
+import com.matthieu.planariumview.core.network.OutsideSoundPayload;
+import com.matthieu.planariumview.core.network.OutsideViewDeltaPayload;
+import com.matthieu.planariumview.core.network.OutsideViewPayload;
+import com.matthieu.planariumview.core.network.SkyPayload;
+import com.matthieu.planariumview.core.network.SoundPrefsPayload;
+import com.matthieu.planariumview.core.network.ViewTogglePayload;
+import com.matthieu.planariumview.core.network.WallPayload;
+import com.matthieu.planariumview.core.network.SubLevelPayload;
+import com.matthieu.planariumview.core.network.SubLevelPrefsPayload;
 import com.matthieu.planariumview.client.scenery.SubLevelView;
 import com.matthieu.planariumview.server.ServerView;
 
@@ -57,8 +57,8 @@ public class PlanariumView {
         modBus.addListener(PlanariumView::registerPayloads);
         modBus.addListener(PlanariumView::addPacks);
         NeoForge.EVENT_BUS.register(ServerView.class);
-        com.matthieu.planariumview.diagnostics.MixinHealthReport.init(modBus);
-        com.matthieu.planariumview.compat.sable.SubLevelCompat.available();
+        com.matthieu.planariumview.core.diagnostics.MixinHealthReport.init(modBus);
+        com.matthieu.planariumview.integration.sable.SubLevelCompat.available();
         if (FMLEnvironment.dist == Dist.CLIENT) {
             ClientView.init(container);
         }
@@ -67,16 +67,16 @@ public class PlanariumView {
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
         // Facultatif : miniatures vivantes (le client dit laquelle il regarde ; le serveur envoie ses mobs).
         event.registrar(NETWORK_VERSION + ".mini4").optional().playToServer(
-                com.matthieu.planariumview.network.entities.MiniWatchPayload.TYPE,
-                com.matthieu.planariumview.network.entities.MiniWatchPayload.STREAM_CODEC,
+                com.matthieu.planariumview.core.network.entities.MiniWatchPayload.TYPE,
+                com.matthieu.planariumview.core.network.entities.MiniWatchPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof net.minecraft.server.level.ServerPlayer player) {
                         com.matthieu.planariumview.server.MiniLive.watch(player, payload);
                     }
                 }));
         event.registrar(NETWORK_VERSION + ".mini4").optional().playToClient(
-                com.matthieu.planariumview.network.entities.MiniLivePayload.TYPE,
-                com.matthieu.planariumview.network.entities.MiniLivePayload.STREAM_CODEC,
+                com.matthieu.planariumview.core.network.entities.MiniLivePayload.TYPE,
+                com.matthieu.planariumview.core.network.entities.MiniLivePayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(
                         () -> com.matthieu.planariumview.client.mini.entities.MiniEntities.receiveLive(payload)));
         event.registrar(NETWORK_VERSION).optional().playToServer(
@@ -100,18 +100,18 @@ public class PlanariumView {
                 (payload, context) -> context.enqueueWork(() -> ClientView.receiveDelta(payload)));
         // Facultatif : decor en vol (sections du rayon detaille pendant qu'un Planarium bouge).
         event.registrar(NETWORK_VERSION).optional().playToClient(
-                com.matthieu.planariumview.network.FlightPayload.TYPE,
-                com.matthieu.planariumview.network.FlightPayload.STREAM_CODEC,
+                com.matthieu.planariumview.core.network.FlightPayload.TYPE,
+                com.matthieu.planariumview.core.network.FlightPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.FlightView.receive(payload)));
         // Facultatif : mobs du dehors (rayon detaille), et ce que le client veut voir en plus des blocs.
         // La preference contient maintenant une limite de mobs : version commune aux deux sens de ce flux facultatif.
         event.registrar(NETWORK_VERSION + ".entities8").optional().playToClient(
-                com.matthieu.planariumview.network.entities.OutsideMobsPayload.TYPE,
-                com.matthieu.planariumview.network.entities.OutsideMobsPayload.STREAM_CODEC,
+                com.matthieu.planariumview.core.network.entities.OutsideMobsPayload.TYPE,
+                com.matthieu.planariumview.core.network.entities.OutsideMobsPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.entities.OutsideMobs.receive(payload)));
         event.registrar(NETWORK_VERSION + ".entities8").optional().playToServer(
-                com.matthieu.planariumview.network.entities.ViewPrefsPayload.TYPE,
-                com.matthieu.planariumview.network.entities.ViewPrefsPayload.STREAM_CODEC,
+                com.matthieu.planariumview.core.network.entities.ViewPrefsPayload.TYPE,
+                com.matthieu.planariumview.core.network.entities.ViewPrefsPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof net.minecraft.server.level.ServerPlayer player) {
                         com.matthieu.planariumview.server.ServerView.setViewPrefs(player, payload);
@@ -119,13 +119,13 @@ public class PlanariumView {
                 }));
         // Facultatif : anneau lointain du decor (un serveur sans cette version n'en envoie pas).
         event.registrar(NETWORK_VERSION).optional().playToClient(
-                com.matthieu.planariumview.network.FarRingPayload.TYPE,
-                com.matthieu.planariumview.network.FarRingPayload.STREAM_CODEC,
+                com.matthieu.planariumview.core.network.FarRingPayload.TYPE,
+                com.matthieu.planariumview.core.network.FarRingPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.FarRing.receive(payload)));
         // Facultatif : nombre de Planariums voisins dessines par le client (le serveur ne capture que ceux-la).
         event.registrar(NETWORK_VERSION).optional().playToServer(
-                com.matthieu.planariumview.network.NeighborPrefsPayload.TYPE,
-                com.matthieu.planariumview.network.NeighborPrefsPayload.STREAM_CODEC,
+                com.matthieu.planariumview.core.network.NeighborPrefsPayload.TYPE,
+                com.matthieu.planariumview.core.network.NeighborPrefsPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
                     if (context.player() instanceof net.minecraft.server.level.ServerPlayer player) {
                         com.matthieu.planariumview.server.NeighborPocketsServer.setCount(player.getUUID(), payload.count());
@@ -133,8 +133,8 @@ public class PlanariumView {
                 }));
         // Facultatif : interieur des Planariums voisins (photo figee, purement visuelle).
         event.registrar(NETWORK_VERSION).optional().playToClient(
-                com.matthieu.planariumview.network.NeighborPocketsPayload.TYPE,
-                com.matthieu.planariumview.network.NeighborPocketsPayload.STREAM_CODEC,
+                com.matthieu.planariumview.core.network.NeighborPocketsPayload.TYPE,
+                com.matthieu.planariumview.core.network.NeighborPocketsPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> com.matthieu.planariumview.client.scenery.NeighborPockets.receive(payload)));
         event.registrar(NETWORK_VERSION).playToClient(
                 SkyPayload.TYPE,

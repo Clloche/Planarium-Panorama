@@ -10,10 +10,10 @@ import com.matthieu.planariumview.client.scenery.entities.MobShadows;
 import com.matthieu.planariumview.client.scenery.entities.OutsideMobs;
 import com.matthieu.planariumview.client.scenery.entities.OutsideVehicles;
 import com.matthieu.planariumview.client.sky.SkySync;
-import com.matthieu.planariumview.compat.alexs_caves.AmbersolCompat;
-import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.OutsideViewPayload;
+import com.matthieu.planariumview.integration.alexs_caves.AmbersolCompat;
+import com.matthieu.planariumview.integration.contraption_lights.ColorCompat;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.OutsideViewPayload;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -472,7 +472,7 @@ final class SceneryRenderer {
                 }
                 BlockEntityRenderer<BlockEntity> renderer = dispatcher.getRenderer(blockEntity);
                 // Lanterne de Swinging Lanterns : immobile dans le decor (voir SwingingLanternsCompat).
-                if (renderer == null || com.matthieu.planariumview.compat.swinging_lanterns.SwingingLanternsCompat.skip(renderer)) {
+                if (renderer == null || com.matthieu.planariumview.integration.swinging_lanterns.SwingingLanternsCompat.skip(renderer)) {
                     continue;
                 }
                 // Hors du champ de la camera : pas dessine. Boite de rendu du renderer (NeoForge), avec un bloc de
@@ -497,7 +497,7 @@ final class SceneryRenderer {
                 try {
                     if (!AmbersolCompat.render(blockEntity, partialTick, poseStack, blockEntityBuffers)) {
                         // Couleur de Contraption Lights gardee meme si le rendu recalcule la lumiere (voir HueKeepingBuffers).
-                        com.matthieu.planariumview.compat.create.CreateCopies.render(renderer, blockEntity, data.fakeRenderingWorld,
+                        com.matthieu.planariumview.integration.create.CreateCopies.render(renderer, blockEntity, data.fakeRenderingWorld,
                                 partialTick, poseStack, HueKeepingBuffers.of(blockEntityBuffers, light), light, OverlayTexture.NO_OVERLAY);
                     }
                 } catch (Exception e) {

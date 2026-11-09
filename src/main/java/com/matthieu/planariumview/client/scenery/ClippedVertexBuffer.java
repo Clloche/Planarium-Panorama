@@ -1,6 +1,6 @@
 package com.matthieu.planariumview.client.scenery;
 
-import com.matthieu.planariumview.network.SubLevelTransforms;
+import com.matthieu.planariumview.core.network.SubLevelTransforms;
 import com.mojang.blaze3d.vertex.*;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.world.phys.AABB;

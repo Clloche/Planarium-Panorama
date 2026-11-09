@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.client.scenery;
 
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer.StructureRenderData;
-import com.matthieu.planariumview.network.OutsideViewPayload;
+import com.matthieu.planariumview.core.network.OutsideViewPayload;
 import net.minecraft.resources.ResourceLocation;
 
 /** Donnees partagees du decor ; les caches et la gestion des ressources restent dans leurs classes responsables. */

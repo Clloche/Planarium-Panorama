@@ -1,6 +1,6 @@
 package com.matthieu.planariumview.server.entities;
 
-import com.matthieu.planariumview.network.entities.MobAnimations;
+import com.matthieu.planariumview.core.network.entities.MobAnimations;
 import java.util.ArrayList;
 import java.util.List;
 

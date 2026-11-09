@@ -1,6 +1,6 @@
 package com.matthieu.planariumview.client.scenery.entities;
 
-import com.matthieu.planariumview.network.entities.MobAnimations;
+import com.matthieu.planariumview.core.network.entities.MobAnimations;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import java.util.Comparator;

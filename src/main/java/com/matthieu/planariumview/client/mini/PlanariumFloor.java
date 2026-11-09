@@ -2,8 +2,8 @@ package com.matthieu.planariumview.client.mini;
 
 import com.matthieu.planariumview.client.jar.JarColor;
 import com.matthieu.planariumview.client.jar.WallColors;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.MiniLightPayload;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.MiniLightPayload;
 
 import com.hollingsworth.arsnouveau.client.renderer.world.CulledStatePos;
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;

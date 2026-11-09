@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.client.jar;
 
-import com.matthieu.planariumview.compat.flywheel.FlywheelCompat;
-import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.integration.flywheel.FlywheelCompat;
+import com.matthieu.planariumview.core.config.Config;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;

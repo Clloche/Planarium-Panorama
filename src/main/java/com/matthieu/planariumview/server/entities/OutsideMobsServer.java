@@ -1,11 +1,11 @@
 package com.matthieu.planariumview.server.entities;
 
-import com.matthieu.planariumview.network.entities.OutsideMobsPayload;
-import com.matthieu.planariumview.network.entities.MobAnimations;
-import com.matthieu.planariumview.network.entities.MobEnvironment;
-import com.matthieu.planariumview.network.entities.ViewPrefsPayload;
-import com.matthieu.planariumview.mixin.entities.SynchedEntityDataAccessor;
-import com.matthieu.planariumview.mixin.entities.BoatAccessor;
+import com.matthieu.planariumview.core.network.entities.OutsideMobsPayload;
+import com.matthieu.planariumview.core.network.entities.MobAnimations;
+import com.matthieu.planariumview.core.network.entities.MobEnvironment;
+import com.matthieu.planariumview.core.network.entities.ViewPrefsPayload;
+import com.matthieu.planariumview.mixin.common.entities.SynchedEntityDataAccessor;
+import com.matthieu.planariumview.mixin.common.entities.BoatAccessor;
 
 import com.mojang.logging.LogUtils;
 import io.netty.buffer.ByteBuf;
@@ -203,7 +203,7 @@ public final class OutsideMobsServer {
                      int radius, boolean ready, boolean flying) {
         UUID id = player.getUUID();
         // Le monde ne laisse pas le Planarium faire vivre le dehors : pas de mobs ni de vehicules (ils seraient figes).
-        if (!wants(id) || !com.matthieu.planariumview.config.Config.outsideLive() || !ready || radius < 0 || flying
+        if (!wants(id) || !com.matthieu.planariumview.core.config.Config.outsideLive() || !ready || radius < 0 || flying
                 || !player.connection.hasChannel(OutsideMobsPayload.TYPE)) {
             STATES.remove(id);
             return;

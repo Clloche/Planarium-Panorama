@@ -1,8 +1,8 @@
 package com.matthieu.planariumview.client.scenery;
 
 import com.matthieu.planariumview.DetailShape;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.NeighborPocketsPayload;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.NeighborPocketsPayload;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexBuffer;

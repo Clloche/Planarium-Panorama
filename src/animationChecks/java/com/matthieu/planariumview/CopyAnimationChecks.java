@@ -1,8 +1,8 @@
 package com.matthieu.planariumview;
 
 import com.matthieu.planariumview.client.scenery.entities.*;
-import com.matthieu.planariumview.mixin.entities.IronGolemAnimationAccessor;
-import com.matthieu.planariumview.network.entities.MobAnimations;
+import com.matthieu.planariumview.mixin.client.entities.IronGolemAnimationAccessor;
+import com.matthieu.planariumview.core.network.entities.MobAnimations;
 import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateHolder;

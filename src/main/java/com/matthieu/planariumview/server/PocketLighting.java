@@ -1,7 +1,7 @@
 package com.matthieu.planariumview.server;
 
 import com.matthieu.planariumview.client.jar.JarWalls;
-import com.matthieu.planariumview.network.WallPayload;
+import com.matthieu.planariumview.core.network.WallPayload;
 import com.matthieu.planariumview.server.ServerView.Track;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;

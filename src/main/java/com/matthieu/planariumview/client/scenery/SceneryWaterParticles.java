@@ -1,6 +1,6 @@
 package com.matthieu.planariumview.client.scenery;
 
-import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.core.config.Config;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexConsumer;

@@ -5,8 +5,8 @@ import com.matthieu.planariumview.client.jar.JarLight;
 import com.matthieu.planariumview.client.jar.JarWalls;
 import com.matthieu.planariumview.client.jar.WallColors;
 import com.matthieu.planariumview.client.scenery.LitRenderingWorld;
-import com.matthieu.planariumview.compat.contraption_lights.ColorCompat;
-import com.matthieu.planariumview.config.Config;
+import com.matthieu.planariumview.integration.contraption_lights.ColorCompat;
+import com.matthieu.planariumview.core.config.Config;
 
 import com.hollingsworth.arsnouveau.client.renderer.tile.PlanariumRenderer;
 import com.hollingsworth.arsnouveau.common.block.tile.PlanariumTile;
@@ -105,7 +105,7 @@ public final class MiniOutsideLight {
     private static void rebuild(ResourceKey<Level> key) {
         PlanariumRenderer.StructureRenderData old = PlanariumRenderer.structureRenderData.remove(key);
         if (old != null) {
-            com.matthieu.planariumview.compat.ars_nouveau.ArsRenderData.free(old);
+            com.matthieu.planariumview.integration.ars_nouveau.ArsRenderData.free(old);
         }
     }
 

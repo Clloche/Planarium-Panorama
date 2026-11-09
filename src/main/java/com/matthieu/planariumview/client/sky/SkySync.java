@@ -5,9 +5,9 @@ import com.matthieu.planariumview.client.jar.JarLight;
 import com.matthieu.planariumview.client.jar.WallColors;
 import com.matthieu.planariumview.client.scenery.ClientView;
 import com.matthieu.planariumview.client.sound.OutsideAmbience;
-import com.matthieu.planariumview.compat.serene_seasons.SeasonColors;
-import com.matthieu.planariumview.config.Config;
-import com.matthieu.planariumview.network.SkyPayload;
+import com.matthieu.planariumview.integration.serene_seasons.SeasonColors;
+import com.matthieu.planariumview.core.config.Config;
+import com.matthieu.planariumview.core.network.SkyPayload;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -71,7 +71,7 @@ public final class SkySync {
         }
         net.minecraft.client.renderer.LightTexture lightTexture = mc.gameRenderer.lightTexture();
         if (lightTexture == null
-                || ((com.matthieu.planariumview.mixin.LightTextureAccessor) lightTexture).planariumview$getTexture() != texture) {
+                || ((com.matthieu.planariumview.mixin.client.LightTextureAccessor) lightTexture).planariumview$getTexture() != texture) {
             return;
         }
         afterLightmapUpdate(lightTexture, 0.0F, "envoi");
@@ -211,8 +211,8 @@ public final class SkySync {
             return;
         }
         Minecraft mc = Minecraft.getInstance();
-        com.matthieu.planariumview.mixin.LightTextureAccessor access =
-                (com.matthieu.planariumview.mixin.LightTextureAccessor) lightTexture;
+        com.matthieu.planariumview.mixin.client.LightTextureAccessor access =
+                (com.matthieu.planariumview.mixin.client.LightTextureAccessor) lightTexture;
         ClientLevel level = mc.level;
         // Eclairage "Ciel et decor" : le decor geant a la lightmap normale, l'interieur reste tout eclaire (Ars).
         // Eclairage "Complet" : l'interieur du bocal prend en plus la lumiere de l'endroit du Planarium.
@@ -384,8 +384,8 @@ public final class SkySync {
      * qui garde la vraie lumiere du ciel exterieur. On change seulement de texture, rien n'est recalcule.
      */
     public static void giantLight(boolean on, float partialTick) {
-        com.matthieu.planariumview.mixin.LightTextureAccessor access =
-                (com.matthieu.planariumview.mixin.LightTextureAccessor) Minecraft.getInstance().gameRenderer.lightTexture();
+        com.matthieu.planariumview.mixin.client.LightTextureAccessor access =
+                (com.matthieu.planariumview.mixin.client.LightTextureAccessor) Minecraft.getInstance().gameRenderer.lightTexture();
         if (on) {
             if (giantReady && vanillaLocation == null) {
                 vanillaLocation = access.planariumview$getLocation();
