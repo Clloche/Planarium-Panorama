@@ -31,7 +31,6 @@
   "planariumview.config.enabled.tooltip": "Interrupteur général. OFF : tout est comme dans Ars Nouveau (pas de décor géant, ciel noir, éclairage d'Ars). Tes autres choix sont gardés.",
   "planariumview.config.section.display": "Affichage",
   "planariumview.config.section.integrations": "Intégrations",
-  "planariumview.config.not_installed.tooltip": "%s n'est pas installé.",
   "planariumview.config.weather": "Météo",
   "planariumview.config.weather.tooltip": "Pluie, neige et éclairs du dehors : la pluie et la neige tombent sur le décor avec le son de la pluie, on entend le tonnerre et on voit les éclairs proches.",
   "planariumview.config.clouds": "Nuages",

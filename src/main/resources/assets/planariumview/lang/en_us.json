@@ -31,7 +31,6 @@
   "planariumview.config.enabled.tooltip": "Master switch. OFF: everything is like in Ars Nouveau (no giant scenery, black sky, Ars lighting). Your other choices are kept.",
   "planariumview.config.section.display": "Display",
   "planariumview.config.section.integrations": "Mod integrations",
-  "planariumview.config.not_installed.tooltip": "%s is not installed.",
   "planariumview.config.weather": "Weather",
   "planariumview.config.weather.tooltip": "Outside rain, snow and lightning: rain and snow fall on the scenery with the rain sound, you hear the thunder and see nearby bolts.",
   "planariumview.config.clouds": "Clouds",

@@ -32,7 +32,8 @@ import java.util.function.Supplier;
  * rafraichissement), Affichage, Entites et Integrations ; description a droite, recherche et remise a zero.
  *
  * L'interrupteur general grise les autres options du joueur (leurs valeurs sont gardees).
- * Les options d'integration sont grisees si le mod n'est pas installe, celles du serveur en multijoueur.
+ * Seules les integrations installees sont affichees ; leur onglet est masque si aucune n'est presente.
+ * Les options du serveur sont grisees en multijoueur.
  *
  * Chaque changement est sauvegarde tout de suite (pas de bouton "Sauvegarder", seulement "Termine").
  * Le decor est reconstruit une seule fois, en fermant le menu (Termine ou Echap), voir YaclEscapeMixin.
@@ -207,14 +208,14 @@ public final class ConfigScreen {
                         .formatValue(ConfigScreen::caveFogLabel))
                 .build();
 
-        Option<Boolean> ambience = integration("ambience", "Dynamic Surroundings", dsPresent,
+        Option<Boolean> ambience = integration("ambience",
                 Config.OUTSIDE_AMBIENCE.getDefault(), Config.OUTSIDE_AMBIENCE::get, Config.OUTSIDE_AMBIENCE::set,
                 optionName("scenery_particles"));
-        Option<Boolean> ambientSounds = integration("ambient_sounds", "AmbientSounds", asPresent,
+        Option<Boolean> ambientSounds = integration("ambient_sounds",
                 Config.AMBIENT_SOUNDS.getDefault(), Config.AMBIENT_SOUNDS::get, Config.AMBIENT_SOUNDS::set);
-        Option<Boolean> lunar = integration("lunar_events", "Enhanced Celestials 2", ecPresent,
+        Option<Boolean> lunar = integration("lunar_events",
                 Config.LUNAR_EVENTS.getDefault(), Config.LUNAR_EVENTS::get, Config.LUNAR_EVENTS::set);
-        Option<Boolean> subLevels = integration("sub_levels", "Sable / Create Aeronautics", sablePresent,
+        Option<Boolean> subLevels = integration("sub_levels",
                 Config.SUB_LEVEL_VIEWS.getDefault(), Config.SUB_LEVEL_VIEWS::get, Config.SUB_LEVEL_VIEWS::set);
 
         gated.add(new Gated(lighting, () -> true));
@@ -311,7 +312,7 @@ public final class ConfigScreen {
             autoSave(option);
         }
 
-        YetAnotherConfigLib config = YetAnotherConfigLib.createBuilder()
+        YetAnotherConfigLib.Builder builder = YetAnotherConfigLib.createBuilder()
                 .title(Component.translatable(KEY + "title"))
                 .category(ConfigCategory.createBuilder()
                         .name(Component.translatable(KEY + "section.general"))
@@ -371,17 +372,26 @@ public final class ConfigScreen {
                                 .option(miniatureMobs)
                                 .option(miniatureLiveView)
                                 .build())
-                        .build())
-                .category(ConfigCategory.createBuilder()
-                        .name(Component.translatable(KEY + "section.integrations"))
-                        // Par ordre alphabetique des mods.
-                        .option(ambientSounds)
-                        .option(ambience)
-                        .option(lunar)
-                        .option(subLevels)
-                        .build())
-                .save(ConfigScreen::saveToDisk)
-                .build();
+                        .build());
+        if (asPresent || dsPresent || ecPresent || sablePresent) {
+            ConfigCategory.Builder integrations = ConfigCategory.createBuilder()
+                    .name(Component.translatable(KEY + "section.integrations"));
+            // Par ordre alphabetique des mods, seulement s'ils sont installes.
+            if (asPresent) {
+                integrations.option(ambientSounds);
+            }
+            if (dsPresent) {
+                integrations.option(ambience);
+            }
+            if (ecPresent) {
+                integrations.option(lunar);
+            }
+            if (sablePresent) {
+                integrations.option(subLevels);
+            }
+            builder.category(integrations.build());
+        }
+        YetAnotherConfigLib config = builder.save(ConfigScreen::saveToDisk).build();
         current = config;
         return config.generateScreen(parent);
     }
@@ -509,35 +519,17 @@ public final class ConfigScreen {
                 .build();
     }
 
-    /** Option d'integration : grisee, avec "(non installe)" dans son nom, si le mod n'est pas la. */
-    private static Option<Boolean> integration(String name, String modName, boolean present, boolean defaultValue,
+    /** Option d'integration, affichee seulement si son mod est installe. */
+    private static Option<Boolean> integration(String name, boolean defaultValue,
                                                Supplier<Boolean> getter, Consumer<Boolean> setter, Object... tooltipArgs) {
-        MutableComponent label = Component.translatable(KEY + name);
-        OptionDescription description = describe(name, onOff(defaultValue), tooltipArgs);
-        if (!present) {
-            // Mod absent : nom barre (en plus d'etre grise).
-            label = label.withStyle(ChatFormatting.STRIKETHROUGH);
-            description = OptionDescription.of(Component.translatable(KEY + name + ".tooltip", tooltipArgs), Component.empty(),
-                    Component.translatable(KEY + "not_installed.tooltip", modName).withStyle(ChatFormatting.RED));
-        }
-        if (!present) {
-            // Mod absent : affichee OFF (et l'integration reste OFF, voir Config), sans toucher au reglage enregistre.
-            defaultValue = false;
-            getter = () -> false;
-            setter = value -> {
-            };
-        }
-        boolean installed = present;
         return Option.<Boolean>createBuilder()
-                .name(label)
-                .description(description)
+                .name(Component.translatable(KEY + name))
+                .description(describe(name, onOff(defaultValue), tooltipArgs))
                 .binding(defaultValue, getter, setter)
-                // Mod absent : OFF en gris plutot qu'en rouge.
                 .controller(opt -> BooleanControllerBuilder.create(opt).coloured(false)
-                        .formatValue(v -> installed ? coloredOnOff(v) : greyOff()))
+                        .formatValue(ConfigScreen::coloredOnOff))
                 .build();
     }
-
     /** Explication de l'option + sa valeur par defaut (panneau de droite). */
     private static OptionDescription describe(String name, Component defaultValue, Object... tooltipArgs) {
         return OptionDescription.of(Component.translatable(KEY + name + ".tooltip", tooltipArgs), Component.empty(),
@@ -613,11 +605,6 @@ public final class ConfigScreen {
     /** ON en vert, OFF en rouge, comme les autres options. */
     private static Component coloredOnOff(boolean v) {
         return onOff(v).copy().withStyle(v ? ChatFormatting.GREEN : ChatFormatting.RED);
-    }
-
-    /** OFF en gris : option qui ne peut pas s'appliquer (mod absent, groupe OFF). Meme gris que le texte grise. */
-    private static Component greyOff() {
-        return CommonComponents.OPTION_OFF.copy().withStyle(ChatFormatting.GRAY);
     }
 
     private static Component onOff(boolean v) {
