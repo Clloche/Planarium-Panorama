@@ -32,7 +32,8 @@ import java.util.function.Supplier;
  * rafraichissement), Affichage, Entites et Integrations ; description a droite, recherche et remise a zero.
  *
  * L'interrupteur general grise les autres options du joueur (leurs valeurs sont gardees).
- * Les options d'integration sont grisees si le mod n'est pas installe, celles du serveur en multijoueur.
+ * Seules les integrations installees sont affichees ; leur onglet est masque si aucune n'est presente.
+ * Les options du serveur sont grisees en multijoueur.
  *
  * Chaque changement est sauvegarde tout de suite (pas de bouton "Sauvegarder", seulement "Termine").
  * Le decor est reconstruit une seule fois, en fermant le menu (Termine ou Echap), voir YaclEscapeMixin.
@@ -311,7 +312,7 @@ public final class ConfigScreen {
             autoSave(option);
         }
 
-        YetAnotherConfigLib config = YetAnotherConfigLib.createBuilder()
+        YetAnotherConfigLib.Builder builder = YetAnotherConfigLib.createBuilder()
                 .title(Component.translatable(KEY + "title"))
                 .category(ConfigCategory.createBuilder()
                         .name(Component.translatable(KEY + "section.general"))
@@ -371,17 +372,26 @@ public final class ConfigScreen {
                                 .option(miniatureMobs)
                                 .option(miniatureLiveView)
                                 .build())
-                        .build())
-                .category(ConfigCategory.createBuilder()
-                        .name(Component.translatable(KEY + "section.integrations"))
-                        // Par ordre alphabetique des mods.
-                        .option(ambientSounds)
-                        .option(ambience)
-                        .option(lunar)
-                        .option(subLevels)
-                        .build())
-                .save(ConfigScreen::saveToDisk)
-                .build();
+                        .build());
+        if (asPresent || dsPresent || ecPresent || sablePresent) {
+            ConfigCategory.Builder integrations = ConfigCategory.createBuilder()
+                    .name(Component.translatable(KEY + "section.integrations"));
+            // Par ordre alphabetique des mods, seulement s'ils sont installes.
+            if (asPresent) {
+                integrations.option(ambientSounds);
+            }
+            if (dsPresent) {
+                integrations.option(ambience);
+            }
+            if (ecPresent) {
+                integrations.option(lunar);
+            }
+            if (sablePresent) {
+                integrations.option(subLevels);
+            }
+            builder.category(integrations.build());
+        }
+        YetAnotherConfigLib config = builder.save(ConfigScreen::saveToDisk).build();
         current = config;
         return config.generateScreen(parent);
     }
