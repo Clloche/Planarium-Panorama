@@ -2,6 +2,7 @@ package com.matthieu.planariumview.client.jar;
 
 import com.matthieu.planariumview.client.sky.SkySync;
 import com.matthieu.planariumview.integration.sable.SubLevelCompat;
+import com.matthieu.planariumview.integration.contraption_lights.SubLevelOcclusion;
 import com.matthieu.planariumview.core.config.Config;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -22,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /** Light at the physical position of Sable blocks, rather than their distant storage plot. */
 public final class SubLevelLight {
     private static final AABB INTERIOR = new AABB(-1, 0, -1, 33, 34, 33);
-    private record Frame(SubLevelCompat.Body body, AABB storage, Matrix4d pose) { }
+    private record Frame(SubLevelCompat.Body body, AABB storage, Matrix4d pose, boolean nativeOcclusion) { }
     private record Snapshot(ClientLevel level, List<Frame> frames, byte[] light) { }
     // Published once, read by Sable's mesh workers without accessing live poses or the light engine.
     private static volatile Snapshot snapshot;
@@ -63,7 +64,9 @@ public final class SubLevelLight {
         List<Frame> frames = bodies.stream().map(body -> new Frame(body,
                 new AABB(body.min().getX(), body.min().getY(), body.min().getZ(),
                         body.max().getX() + 1, body.max().getY() + 1, body.max().getZ() + 1).inflate(1),
-                new Matrix4d(body.transform()))).toList();
+                new Matrix4d(body.transform()), SubLevelOcclusion.controls(body.id()))).toList();
+        boolean changedOcclusion = changedLevel || frames.stream().anyMatch(frame -> previous.frames.stream()
+                .noneMatch(old -> old.body.id().equals(frame.body.id()) && old.nativeOcclusion == frame.nativeOcclusion));
         byte[] light = changedLevel ? null : previous.light;
         boolean sample = lastSample == Long.MIN_VALUE || level.getGameTime() - lastSample >= 20;
         boolean changedLight = revision != JarLight.revision();
@@ -81,11 +84,11 @@ public final class SubLevelLight {
                 if (!currentIds.contains(frame.body.id())) remesh(frame.body);
             }
         }
-        if (changedLight || changedColor) remeshed.clear();
+        if (changedLight || changedColor || changedOcclusion) remeshed.clear();
         revision = JarLight.revision();
         colorRevision = JarColor.revision();
         colored = Config.jarColoredLight();
-        if (sample || changedLight || changedColor || changedLevel) {
+        if (sample || changedLight || changedColor || changedOcclusion) {
             colorEpoch++;
             colorSections.clear();
             remeshed.keySet().retainAll(bodies.stream().map(SubLevelCompat.Body::id).toList());
@@ -106,6 +109,8 @@ public final class SubLevelLight {
                 (double) sx * 16 + 16, (double) sy * 16 + 16, (double) sz * 16 + 16);
         for (Frame frame : current.frames) {
             if (!frame.storage.intersects(section)) continue;
+            // Keep native colors (including light arriving through openings), before consulting our projection cache.
+            if (frame.nativeOcclusion) return original;
             long key = net.minecraft.core.SectionPos.asLong(sx, sy, sz);
             int epoch = colorEpoch, revision = JarColor.revision();
             Colors cached = colorSections.get(key);
@@ -140,6 +145,9 @@ public final class SubLevelLight {
                 && JarLight.tableIndex(x, y, z) < 0 && Config.enabled() && Config.realLighting()) {
             for (Frame frame : current.frames) {
                 if (!frame.storage.contains(x + 0.5, y + 0.5, z + 0.5)) continue;
+                // Native lighting already accounts for walls, openings, detours and local emitters.
+                // Both the sampled physical light and JarLight's contribution would bypass those walls.
+                if (frame.nativeOcclusion) return packed;
                 Vector3d world = frame.pose.transformPosition(new Vector3d(x + 0.5, y + 0.5, z + 0.5));
                 BlockPos at = BlockPos.containing(world.x, world.y, world.z);
                 int index = JarLight.tableIndex(at.getX(), at.getY(), at.getZ());

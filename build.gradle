@@ -187,7 +187,19 @@ tasks.register('checkSceneryOcclusion', JavaExec) {
     doFirst { workingDir.mkdirs() }
 }
 
+tasks.register('checkSubLevelOcclusion', JavaExec) {
+    group = 'verification'
+    description = 'Checks optional native wall-light ownership; pass -PcontraptionLightsJar=... to exercise a real JAR.'
+    dependsOn tasks.named('animationChecksClasses')
+    classpath = sourceSets.animationChecks.runtimeClasspath
+    mainClass = 'com.matthieu.planariumview.integration.contraption_lights.SubLevelOcclusionChecks'
+    if (project.hasProperty('contraptionLightsJar')) {
+        args project.property('contraptionLightsJar')
+    }
+}
+
 tasks.named('check') {
+    dependsOn tasks.named('checkSubLevelOcclusion')
     dependsOn tasks.named('checkMixinCompatibility')
     dependsOn tasks.named('checkSubLevels')
     dependsOn tasks.named('checkOutsideMobAnimations')
