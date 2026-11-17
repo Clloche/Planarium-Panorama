@@ -15,7 +15,7 @@ Ars Nouveau addon: inside a Planarium's dimension, see the Planarium's surroundi
 [[dependencies.planariumview]]
 modId="neoforge"
 type="required"
-versionRange="[21.1,)"
+versionRange="[21.1.228,)"
 ordering="NONE"
 side="BOTH"
 
