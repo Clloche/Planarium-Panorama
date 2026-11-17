@@ -6,6 +6,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 public final class Minecraft {
     private static final Minecraft INSTANCE = new Minecraft();
     public ClientLevel level;
+    public net.minecraft.client.renderer.GameRenderer gameRenderer;
     public static Minecraft getInstance() { return INSTANCE; }
     /** Shader fixtures ignore window dimensions; no native window is created. */
     public com.mojang.blaze3d.platform.Window getWindow() { return null; }

@@ -3,6 +3,7 @@ package com.matthieu.planariumview.client.scenery;
 import com.matthieu.planariumview.client.sky.SkySync;
 import com.matthieu.planariumview.client.sound.OutsideAmbience;
 import com.matthieu.planariumview.core.config.Config;
+import com.mojang.blaze3d.shaders.FogShape;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.MeshData;
@@ -25,28 +26,34 @@ final class SceneryFog {
         lastDrawNanos = System.nanoTime();
     }
 
-    /** Moment du dernier dessin du decor geant (voir particleFog). */
+    /** Moment du dernier dessin du decor geant. */
     private static volatile long lastDrawNanos;
 
     /**
      * Particules : quand le decor geant est dessine, elles prennent son brouillard. Avec celui du jeu, une particule du
      * decor un peu loin (fumee d'un feu de camp) prenait la couleur du brouillard alors que le decor autour restait net.
-     * Les particules du bocal sont tout pres : ce brouillard plus lointain ne les touche pas. Faux si rien n'a change.
+     * Les particules du bocal sont tout pres : ce brouillard plus lointain ne les touche pas.
      */
-    static boolean particleFog(boolean hasRenderData) {
+    static void renderParticles(boolean hasRenderData, Runnable draw) {
         if (!hasRenderData || System.nanoTime() - lastDrawNanos > 250_000_000L) {
-            return false;
+            draw.run();
+            return;
         }
-        applySceneryFog();
-        // Sous terre, la meme couleur que le decor (voir SceneryRenderer) : le noir de l'option Sombre, ou le brouillard
-        // du biome. Sans elle, les particules prenaient la couleur du brouillard de vanilla (ParticleEngineTickMixin la
-        // remet ensuite).
-        float[] cave = caveColor(Minecraft.getInstance().level);
-        if (cave != null) {
-            float[] fog = RenderSystem.getShaderFogColor();
-            RenderSystem.setShaderFogColor(cave[0], cave[1], cave[2], fog[3]);
+        float start = RenderSystem.getShaderFogStart();
+        float end = RenderSystem.getShaderFogEnd();
+        FogShape shape = RenderSystem.getShaderFogShape();
+        float[] color = RenderSystem.getShaderFogColor().clone();
+        try {
+            applySceneryFog();
+            float[] cave = caveColor(Minecraft.getInstance().level);
+            if (cave != null) RenderSystem.setShaderFogColor(cave[0], cave[1], cave[2], color[3]);
+            draw.run();
+        } finally {
+            RenderSystem.setShaderFogStart(start);
+            RenderSystem.setShaderFogEnd(end);
+            RenderSystem.setShaderFogShape(shape);
+            RenderSystem.setShaderFogColor(color[0], color[1], color[2], color[3]);
         }
-        return true;
     }
 
     /**

@@ -372,8 +372,6 @@ public final class ServerView {
 
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
-        // Filet de securite si un appel de son a leve une exception avant l'injection RETURN du mixin.
-        PlayerSoundCause.clear();
         MinecraftServer server = event.getServer();
         if (server.getTickCount() % 2 == 0 && com.matthieu.planariumview.integration.sable.SubLevelCompat.available()) {
             try {

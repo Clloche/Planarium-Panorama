@@ -89,7 +89,7 @@ public final class MobAnimationIntegrationChecks {
     private static Field field(Class<?> owner, String name) throws Exception {
         Field field = owner.getDeclaredField(name); field.setAccessible(true); return field;
     }
-    private static <T> T fixture(Class<T> type) throws Exception { return type.cast(UNSAFE.allocateInstance(type)); }
+    public static <T> T fixture(Class<T> type) throws Exception { return type.cast(UNSAFE.allocateInstance(type)); }
     private static Object construct(Class<?> type) throws Exception {
         Constructor<?> constructor = type.getDeclaredConstructor(); constructor.setAccessible(true); return constructor.newInstance();
     }

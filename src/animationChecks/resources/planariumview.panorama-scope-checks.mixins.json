@@ -1,0 +1,8 @@
+{
+  "required": true,
+  "package": "com.matthieu.planariumview.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": ["common.SoundCauseMixin"],
+  "client": ["client.ParticleEngineTickMixin"],
+  "injectors": { "defaultRequire": 1 }
+}

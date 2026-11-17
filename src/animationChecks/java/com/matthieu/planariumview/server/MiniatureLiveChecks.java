@@ -171,7 +171,7 @@ public final class MiniatureLiveChecks {
         System.out.println("PASS: 4 entity + 12 block + 20 full chunks; ticket removal releases all 36");
     }
 
-    private static void load(ModConfigSpec spec) throws Exception {
+    public static void load(ModConfigSpec spec) throws Exception {
         CommentedConfig values = CommentedConfig.inMemory(); spec.correct(values);
         var ctor = Class.forName("net.neoforged.fml.config.LoadedConfig")
                 .getDeclaredConstructor(CommentedConfig.class, java.nio.file.Path.class, ModConfig.class);

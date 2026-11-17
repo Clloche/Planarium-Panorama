@@ -21,6 +21,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.common.NeoForge;
@@ -69,6 +70,8 @@ public final class ClientView {
         container.registerExtensionPoint(net.neoforged.neoforge.client.gui.IConfigScreenFactory.class,
                 (modContainer, parent) -> ConfigScreen.create(parent));
         NeoForge.EVENT_BUS.addListener(ClientView::onRenderStage);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, true, OutsideFluidView::onRenderFog);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, OutsideFluidView::onFogColor);
         NeoForge.EVENT_BUS.addListener(ClientView::onLoggingOut);
         com.matthieu.planariumview.client.mini.entities.MiniEntities.init();
         // Bilan des mixins a la premiere connexion (aussi a un serveur distant, sans ServerStartedEvent).
@@ -446,10 +449,10 @@ public final class ClientView {
     /**
      * Particules : quand le decor geant est dessine, elles prennent son brouillard. Avec celui du jeu, une particule du
      * decor un peu loin (fumee d'un feu de camp) prenait la couleur du brouillard alors que le decor autour restait net.
-     * Les particules du bocal sont tout pres : ce brouillard plus lointain ne les touche pas. Faux si rien n'a change.
+     * Les particules du bocal sont tout pres : ce brouillard plus lointain ne les touche pas.
      */
-    public static boolean particleFog() {
-        return SceneryFog.particleFog(renderData != null);
+    public static void renderParticles(Runnable draw) {
+        SceneryFog.renderParticles(renderData != null, draw);
     }
 
     /**

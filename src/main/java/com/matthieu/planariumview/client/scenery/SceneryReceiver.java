@@ -298,6 +298,7 @@ final class SceneryReceiver {
     }
 
     static void dispose() {
+        OutsideFluidView.clearImmersion();
         SubLevelView.clearOutside();
         FarRing.clear();
         NeighborPockets.clear();

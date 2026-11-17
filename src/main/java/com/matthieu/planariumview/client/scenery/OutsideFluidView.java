@@ -6,9 +6,11 @@ import com.mojang.blaze3d.shaders.FogShape;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.FogRenderer;
 import net.minecraft.client.resources.sounds.AbstractTickableSoundInstance;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.FluidTags;
@@ -16,6 +18,10 @@ import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.level.material.FogType;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.client.event.ViewportEvent;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.function.DoubleFunction;
 
 /** Environmental immersion through the glass; the player and the pocket remain physically dry. */
 public final class OutsideFluidView {
@@ -50,26 +56,47 @@ public final class OutsideFluidView {
     private static final float LEAVE = 0.4F;
 
     private static FogType jarState = FogType.NONE;
+    private static ResourceLocation sampledPocket;
     private static long jarStateTick = Long.MIN_VALUE;
+
+    static void clearImmersion() {
+        sampledPocket = null;
+        jarState = FogType.NONE;
+        jarStateTick = Long.MIN_VALUE;
+        submergedSince = 0L;
+    }
 
     /** Etat du bocal, recalcule au plus une fois par tick. */
     public static FogType jarFluid() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || !Config.enabled() || !SkySync.inKnownJar(mc.level)) {
-            jarState = FogType.NONE;
-            jarStateTick = Long.MIN_VALUE;
+            clearImmersion();
             return FogType.NONE;
         }
-        long tick = mc.level.getGameTime();
+        return sampleJar(mc.level.dimension().location(), mc.level.getGameTime(), OutsideFluidView::fluidAtHeight);
+    }
+
+    private static FogType fluidAtHeight(double y) {
+        FluidState fluid = at(new Vec3(JAR_CENTER, y, JAR_CENTER));
+        if (fluid.is(FluidTags.WATER)) return FogType.WATER;
+        if (fluid.is(FluidTags.LAVA)) return FogType.LAVA;
+        return FogType.NONE;
+    }
+
+    static FogType sampleJar(ResourceLocation pocket, long tick, DoubleFunction<FogType> sample) {
+        if (!pocket.equals(sampledPocket)) {
+            clearImmersion();
+            sampledPocket = pocket;
+        }
         if (tick == jarStateTick) return jarState;
         jarStateTick = tick;
         int water = 0;
         int lava = 0;
         for (int i = 0; i < SAMPLES; i++) {
             double y = JAR_FLOOR + (JAR_CEILING - JAR_FLOOR) * (i + 0.5) / SAMPLES;
-            FluidState fluid = at(new Vec3(JAR_CENTER, y, JAR_CENTER));
-            if (fluid.is(FluidTags.WATER)) water++;
-            else if (fluid.is(FluidTags.LAVA)) lava++;
+            FogType fluid = sample.apply(y);
+            if (fluid == FogType.WATER) water++;
+            else if (fluid == FogType.LAVA) lava++;
         }
         float waterShare = water / (float) SAMPLES;
         float lavaShare = lava / (float) SAMPLES;
@@ -122,9 +149,10 @@ public final class OutsideFluidView {
      * Brouillard du liquide sur le decor, comme FogRenderer en vanilla pour un joueur dans le liquide (debut a -8 blocs,
      * fin a 96 blocs fois l'adaptation a l'eau, plus proche dans les marais), en blocs du monde agrandis par GIANT.
      */
-    public static boolean applyFog(Camera camera) {
+    @Nullable
+    private static FogDistances fogDistances(Camera camera) {
         FogType fluid = visualFog(camera);
-        if (fluid == FogType.NONE) return false;
+        if (fluid == FogType.NONE) return null;
         float start;
         float end;
         if (fluid == FogType.WATER) {
@@ -137,8 +165,34 @@ public final class OutsideFluidView {
             end = 2.0F;
         }
         end = Math.min(end * ClientView.GIANT, (ClientView.edgeRadius() + 0.5F) * ClientView.GIANT);
-        RenderSystem.setShaderFogStart(start * ClientView.GIANT);
-        RenderSystem.setShaderFogEnd(end);
+        return new FogDistances(start * ClientView.GIANT, end);
+    }
+
+    private record FogDistances(float start, float end) {}
+
+    static void onRenderFog(ViewportEvent.RenderFog event) {
+        if (event.getMode() != FogRenderer.FogMode.FOG_TERRAIN) return;
+        FogDistances fog = fogDistances(event.getCamera());
+        if (fog == null) return;
+        event.setNearPlaneDistance(fog.start());
+        event.setFarPlaneDistance(fog.end());
+        event.setFogShape(FogShape.SPHERE);
+        event.setCanceled(true);
+    }
+
+    static void onFogColor(ViewportEvent.ComputeFogColor event) {
+        var level = Minecraft.getInstance().level;
+        if (level == null || visualFog(event.getCamera()) != FogType.WATER || !SkySync.blackWater(level)) return;
+        event.setRed(0.015F);
+        event.setGreen(0.015F);
+        event.setBlue(0.02F);
+    }
+
+    public static boolean applyFog(Camera camera) {
+        FogDistances fog = fogDistances(camera);
+        if (fog == null) return false;
+        RenderSystem.setShaderFogStart(fog.start());
+        RenderSystem.setShaderFogEnd(fog.end());
         RenderSystem.setShaderFogShape(FogShape.SPHERE);
         return true;
     }

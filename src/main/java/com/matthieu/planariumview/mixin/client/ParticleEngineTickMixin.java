@@ -1,13 +1,22 @@
 package com.matthieu.planariumview.mixin.client;
 
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.matthieu.planariumview.client.scenery.ClientView;
 import com.matthieu.planariumview.client.scenery.SceneryParticles;
 
+import net.minecraft.client.Camera;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleEngine;
+import net.minecraft.client.particle.ParticleRenderType;
+import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.culling.Frustum;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+import java.util.function.Predicate;
 
 /**
  * Retient quelle particule bouge, pour que celles creees par une particule du decor le soient aussi (gouttes), et voit
@@ -26,64 +35,11 @@ public abstract class ParticleEngineTickMixin {
         SceneryParticles.endTick(particle);
     }
 
-    @org.spongepowered.asm.mixin.Unique
-    private static float planariumview$fogStart;
-    @org.spongepowered.asm.mixin.Unique
-    private static float planariumview$fogEnd;
-    @org.spongepowered.asm.mixin.Unique
-    private static com.mojang.blaze3d.shaders.FogShape planariumview$fogShape;
-    @org.spongepowered.asm.mixin.Unique
-    private static float[] planariumview$fogColor;
-    /** Appels imbriques (une version de render peut en appeler une autre). */
-    @org.spongepowered.asm.mixin.Unique
-    private static int planariumview$fogDepth;
-
-    /**
-     * Brouillard du decor geant pour les particules (voir ClientView.particleFog). NeoForge dessine les particules par
-     * sa propre version de render (avec le frustum et un filtre de types) : un simple "render" ne visait que la version
-     * vanilla, et les particules du decor gardaient le brouillard du bocal (couleur du brouillard a 3 ou 4 blocs).
-     * Les deux versions sont visees ; la profondeur evite de l'appliquer deux fois quand l'une appelle l'autre.
-     */
-    @Inject(method = {
-            "render(Lnet/minecraft/client/renderer/LightTexture;Lnet/minecraft/client/Camera;F)V",
-            "render(Lnet/minecraft/client/renderer/LightTexture;Lnet/minecraft/client/Camera;FLnet/minecraft/client/renderer/culling/Frustum;Ljava/util/function/Predicate;)V"
-    }, at = @At("HEAD"), require = 0)
-    private void planariumview$sceneryFog(CallbackInfo ci) {
-        if (planariumview$fogDepth++ > 0) {
-            return;
-        }
-        float start = com.mojang.blaze3d.systems.RenderSystem.getShaderFogStart();
-        float end = com.mojang.blaze3d.systems.RenderSystem.getShaderFogEnd();
-        com.mojang.blaze3d.shaders.FogShape shape = com.mojang.blaze3d.systems.RenderSystem.getShaderFogShape();
-        // Copie : RenderSystem renvoie son propre tableau, que particleFog peut changer (couleur de la caverne).
-        float[] color = com.mojang.blaze3d.systems.RenderSystem.getShaderFogColor().clone();
-        if (com.matthieu.planariumview.client.scenery.ClientView.particleFog()) {
-            planariumview$fogStart = start;
-            planariumview$fogEnd = end;
-            planariumview$fogShape = shape;
-            planariumview$fogColor = color;
-        } else {
-            planariumview$fogShape = null;
-        }
-    }
-
-    @Inject(method = {
-            "render(Lnet/minecraft/client/renderer/LightTexture;Lnet/minecraft/client/Camera;F)V",
-            "render(Lnet/minecraft/client/renderer/LightTexture;Lnet/minecraft/client/Camera;FLnet/minecraft/client/renderer/culling/Frustum;Ljava/util/function/Predicate;)V"
-    }, at = @At("RETURN"), require = 0)
-    private void planariumview$restoreFog(CallbackInfo ci) {
-        if (--planariumview$fogDepth > 0) {
-            return;
-        }
-        planariumview$fogDepth = 0;
-        if (planariumview$fogShape != null) {
-            com.mojang.blaze3d.systems.RenderSystem.setShaderFogStart(planariumview$fogStart);
-            com.mojang.blaze3d.systems.RenderSystem.setShaderFogEnd(planariumview$fogEnd);
-            com.mojang.blaze3d.systems.RenderSystem.setShaderFogShape(planariumview$fogShape);
-            float[] color = planariumview$fogColor;
-            com.mojang.blaze3d.systems.RenderSystem.setShaderFogColor(color[0], color[1], color[2], color[3]);
-            planariumview$fogShape = null;
-        }
+    // La surcharge vanilla delegue aussi a ce point d'entree NeoForge.
+    @WrapMethod(method = "render(Lnet/minecraft/client/renderer/LightTexture;Lnet/minecraft/client/Camera;FLnet/minecraft/client/renderer/culling/Frustum;Ljava/util/function/Predicate;)V")
+    private void planariumview$sceneryFog(LightTexture light, Camera camera, float partialTick, Frustum frustum,
+                                          Predicate<ParticleRenderType> filter, Operation<Void> original) {
+        ClientView.renderParticles(() -> original.call(light, camera, partialTick, frustum, filter));
     }
 
     @Inject(method = "add(Lnet/minecraft/client/particle/Particle;)V", at = @At("HEAD"), cancellable = true, require = 0)

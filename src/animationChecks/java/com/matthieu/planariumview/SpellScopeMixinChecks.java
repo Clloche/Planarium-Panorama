@@ -38,7 +38,7 @@ public final class SpellScopeMixinChecks {
         return transformer("planariumview.spell-scope-checks.mixins.json", node -> {});
     }
 
-    static IMixinTransformer transformer(String config, java.util.function.Consumer<ClassNode> prepare) throws Exception {
+    public static IMixinTransformer transformer(String config, java.util.function.Consumer<ClassNode> prepare) throws Exception {
         Method allocate = MobAnimationIntegrationChecks.class.getDeclaredMethod("fixture", Class.class);
         allocate.setAccessible(true);
         Object singleton = allocate.invoke(null, MixinService.class);
