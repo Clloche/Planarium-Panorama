@@ -66,7 +66,7 @@ public final class SubLevelLight {
                         body.max().getX() + 1, body.max().getY() + 1, body.max().getZ() + 1).inflate(1),
                 new Matrix4d(body.transform()), SubLevelOcclusion.controls(body.id()))).toList();
         boolean changedOcclusion = changedLevel || frames.stream().anyMatch(frame -> previous.frames.stream()
-                .noneMatch(old -> old.body.id().equals(frame.body.id()) && old.nativeOcclusion == frame.nativeOcclusion));
+                .anyMatch(old -> old.body.id().equals(frame.body.id()) && old.nativeOcclusion != frame.nativeOcclusion));
         byte[] light = changedLevel ? null : previous.light;
         boolean sample = lastSample == Long.MIN_VALUE || level.getGameTime() - lastSample >= 20;
         boolean changedLight = revision != JarLight.revision();

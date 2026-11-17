@@ -18,7 +18,7 @@ nom du JAR, et mettre ce tableau à jour après chaque test.
 | Ars Sable | 1.2.0 |
 | Create / Flywheel | 6.0.10 / 1.0.6 |
 | Create Aeronautics / Simulated / Offroad | 1.3.2 |
-| Contraption Lights (+ Compat 2.4.0, Fixes 1.5.0) | 1.5.2 |
+| Contraption Lights (+ Compat 2.4.0, Fixes 1.5.0) | 1.5.2, 1.6.0 |
 | Dynamic Surroundings | 0.4.6, 0.4.7 ; 0.4.9 : code vérifié, test en jeu à faire |
 | Enhanced Celestials 2 (Core / Default Lunar Events) | 2.0.3.3 / 2.0.1.3 |
 | Puddles & Floods | 1.1.6 |
@@ -270,6 +270,9 @@ Casse : redirection des couleurs désactivée avec avertissement.
 - Sources portées (`JarWalls.findSources`) : `WrappedBlockLight.lightState` par réflexion, puis repli Moonlight
   `IBlockHolder.getHeldBlock()` (lanternes murales d'Amendments).
 - Le **terrain en vol** utilise volontairement `beginWithoutColor()` : l'absence de couleur y est normale.
+- 1.6.0+ : les vaisseaux Sable dont Contraption Lights calcule les murs (`SubLevelOccluders.of(UUID)`)
+  gardent sa lumière ; notre lumière à la position physique ne sert qu'aux autres vaisseaux et aux versions
+  plus vieilles. Voir `SubLevelOcclusion` et `checkSubLevelOcclusion`.
 
 Tests : torche colorée dans le décor (pas de clignotement blanc), la miniature et près des parois ; lanterne murale
 et lanterne des âmes ; source retirée sans ancienne teinte ; entrée en vol puis retour sans saccade.
