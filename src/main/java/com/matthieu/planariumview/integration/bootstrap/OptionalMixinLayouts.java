@@ -2,7 +2,9 @@ package com.matthieu.planariumview.integration.bootstrap;
 
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 
+import java.util.Arrays;
 import java.util.List;
 
 /** Explicit contracts for fragile optional hooks. No external mod class is loaded or initialized here. */
@@ -22,6 +24,11 @@ public final class OptionalMixinLayouts {
     /** Null means the known prerequisites are satisfied, not that the injection has already succeeded. */
     public static String incompatibility(String mixin, ClassNode target) {
         String name = mixin.substring(mixin.lastIndexOf('.') + 1);
+        switch (name) {
+            case "VisualityBlockAmbientMixin", "VisualityParticleEmitterMixin", "VisualityChargeMixin" -> {
+                return visualityIncompatibility(name, target);
+            }
+        }
         List<Member> required = switch (name) {
             case "YaclOptionListMixin" -> List.of(
                     field("yaclScreen", "Ldev/isxander/yacl3/gui/YACLScreen;"),
@@ -74,5 +81,27 @@ public final class OptionalMixinLayouts {
 
     private static Member method(String name, String descriptor, boolean isStatic) {
         return new Member(false, name, descriptor, isStatic);
+    }
+
+    private static String visualityIncompatibility(String mixin, ClassNode target) {
+        Member entry = switch (mixin) {
+            case "VisualityBlockAmbientMixin" -> method("spawnParticles",
+                    "(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/util/RandomSource;)V", false);
+            case "VisualityParticleEmitterMixin" -> method("spawn", "(Lnet/minecraft/world/level/Level;DDD)V", false);
+            default -> method("spawnChargeParticles", "(Lnet/neoforged/neoforge/event/tick/EntityTickEvent$Post;)V", true);
+        };
+        boolean ambient = mixin.equals("VisualityBlockAmbientMixin");
+        String name = ambient ? "isAreaLoaded" : "addParticle";
+        String descriptor = ambient ? "(Lnet/minecraft/core/BlockPos;I)Z"
+                : "(Lnet/minecraft/core/particles/ParticleOptions;DDDDDD)V";
+        long calls = target.methods.stream()
+                .filter(m -> m.name.equals(entry.name()) && m.desc.equals(entry.descriptor())
+                        && ((m.access & Opcodes.ACC_STATIC) != 0) == entry.isStatic())
+                .flatMap(m -> Arrays.stream(m.instructions.toArray()))
+                .filter(insn -> insn instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKEVIRTUAL
+                        && call.owner.equals("net/minecraft/world/level/Level")
+                        && call.name.equals(name) && call.desc.equals(descriptor))
+                .count();
+        return calls == 1 ? null : "appel unique Level." + name + descriptor + " attendu dans " + entry.name();
     }
 }

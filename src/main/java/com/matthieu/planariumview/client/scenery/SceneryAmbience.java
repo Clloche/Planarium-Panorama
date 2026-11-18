@@ -5,6 +5,7 @@ import com.matthieu.planariumview.client.mini.MiniParticles;
 import com.matthieu.planariumview.client.scenery.entities.OutsideMobs;
 import com.matthieu.planariumview.client.sound.OutsideSoundClient;
 import com.matthieu.planariumview.integration.puddle_flood.PuddlesCompat;
+import com.matthieu.planariumview.integration.visuality.VisualityCompat;
 import com.matthieu.planariumview.core.config.Config;
 import com.matthieu.planariumview.core.network.OutsideViewPayload;
 import net.minecraft.client.Minecraft;
@@ -150,6 +151,9 @@ final class SceneryAmbience {
     static void animateBlock(LitRenderingWorld lit, BlockPos at, BlockState state) {
         if (state.isAir() || AMBIENT_BROKEN.contains(state.getBlock())) {
             return;
+        }
+        if (LitRenderingWorld.capturingSceneryParticles()) {
+            VisualityCompat.animateBlock(lit, at, state, AMBIENT_RANDOM);
         }
         boolean leaves = false;
         try {

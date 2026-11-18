@@ -47,6 +47,7 @@ Planarium Panorama is made to be compatible with as many mods as possible. This 
 | [Distant Horizons](https://modrinth.com/mod/distanthorizons)<br>v3.3.3 | ⚠️ | Doesn't work inside a jar: turned off automatically there (it would draw the void around it), unchanged everywhere else |
 | [Jaden's Nether Expansion](https://www.curseforge.com/minecraft/mc-mods/jadens-nether-expansion)<br>v2.4.1 | ⚠️ | Its custom particles (flames, smoke...) are not shown in the giant scenery and the miniature, instead the vanilla particles are |
 | [Swinging Lanterns](https://modrinth.com/mod/swinging-lanterns)<br>v2.0.4 | ⚠️ | Swinging lanterns are disabled when viewing them through either the miniature or the giant scenery |
+| [Visuality: Reforged](https://www.curseforge.com/minecraft/mc-mods/visuality-reforged/files/8559477)<br>v3.0.0 | ⚠️ | Block ambience, armor sparkles and charge particles in the giant scenery and live miniatures. Rain circles on exposed water in the giant scenery. |
 
 The version indicated is the version it has been tested with.
 

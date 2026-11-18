@@ -43,7 +43,10 @@
     "dynamic_surroundings.DsSoundFxMixin",
     "dynamic_surroundings.DsChunkViewMixin",
     "dynamic_surroundings.DsSoundProcessorMixin",
-    "puddle_flood.PfPlacementMixin"
+    "puddle_flood.PfPlacementMixin",
+    "visuality.VisualityBlockAmbientMixin",
+    "visuality.VisualityParticleEmitterMixin",
+    "visuality.VisualityChargeMixin"
   ],
   "injectors": {
     "defaultRequire": 0

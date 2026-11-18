@@ -115,6 +115,19 @@ public final class MixinCompatibilityChecks {
         ClassNode required = resource(PREFIX + "ars_nouveau.PlanariumTileSubLevelMixin");
         require(required != null && plugin.shouldApplyMixin("fixtures.MissingRequired", PREFIX + "ars_nouveau.PlanariumTileSubLevelMixin"),
                 "Required integration silently skipped");
+
+        String visuality = PREFIX + "visuality.VisualityBlockAmbientMixin";
+        ClassNode ambient = new ClassNode();
+        ambient.name = "fixtures/VisualityAmbient";
+        MethodNode emit = new MethodNode(0, "spawnParticles",
+                "(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/util/RandomSource;)V", null, null);
+        ambient.methods.add(emit);
+        require(OptionalMixinSupport.inspect(visuality, ambient).status() == OptionalMixinSupport.Status.INCOMPATIBLE,
+                "Visuality's ambient hook accepted a missing chunk check");
+        emit.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "net/minecraft/world/level/Level",
+                "isAreaLoaded", "(Lnet/minecraft/core/BlockPos;I)Z", false));
+        require(OptionalMixinSupport.inspect(visuality, ambient).status() == OptionalMixinSupport.Status.SUPPORTED,
+                "Visuality's ambient hook rejected the expected chunk check");
     }
 
     private static void alternatives() {
@@ -207,7 +220,10 @@ public final class MixinCompatibilityChecks {
                 "DsDimensionInfoMixin", "org/orecruncher/dsurround/config/DimensionInfo",
                 "DsChunkViewMixin", "org/orecruncher/dsurround/lib/block/ChunkCachingView",
                 "DsPointLightsMixin", "org/orecruncher/dsurround/effects/particles/PointLights",
-                "PfPlacementMixin", "pigcart/puddleflood/ClientBlockPlacementUtil");
+                "PfPlacementMixin", "pigcart/puddleflood/ClientBlockPlacementUtil",
+                "VisualityBlockAmbientMixin", "plus/dragons/visuality/config/BlockAmbientParticleConfig",
+                "VisualityParticleEmitterMixin", "plus/dragons/visuality/data/ParticleWithVelocity",
+                "VisualityChargeMixin", "plus/dragons/visuality/event/ParticleEventHandler");
         try (var files = Files.list(mods)) {
             for (Path jar : files.filter(p -> p.toString().endsWith(".jar")).toList()) {
                 try (ZipFile zip = new ZipFile(jar.toFile())) {

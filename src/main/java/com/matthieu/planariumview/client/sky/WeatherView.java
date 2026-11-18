@@ -6,6 +6,7 @@ import com.matthieu.planariumview.client.scenery.LitRenderingWorld;
 import com.matthieu.planariumview.client.scenery.SceneryParticles;
 import com.matthieu.planariumview.client.sound.OutsideSoundClient;
 import com.matthieu.planariumview.integration.dynamic_surroundings.DsRipplesCompat;
+import com.matthieu.planariumview.integration.visuality.VisualityCompat;
 import com.matthieu.planariumview.core.config.Config;
 import com.matthieu.planariumview.core.network.OutsideViewPayload;
 
@@ -412,8 +413,8 @@ public final class WeatherView {
             try {
                 var state = world.getBlockState(at);
                 var fluid = world.getFluidState(at);
-                double height = Math.max(state.getCollisionShape(world, at).max(Direction.Axis.Y, rx, rz),
-                        fluid.getHeight(world, at));
+                double fluidHeight = fluid.getHeight(world, at);
+                double height = Math.max(state.getCollisionShape(world, at).max(Direction.Axis.Y, rx, rz), fluidHeight);
                 if (!Double.isFinite(height) || height <= 0.0) continue;
                 double impactY = y + height + 0.001;
                 double giantY = (impactY - radius - ClientView.ARS_OFFSET) * scale - ClientView.Y_SHIFT;
@@ -421,9 +422,16 @@ public final class WeatherView {
                 boolean hot = fluid.is(FluidTags.LAVA) || state.is(Blocks.MAGMA_BLOCK) || CampfireBlock.isLitCampfire(state);
                 ParticleOptions options = hot ? ParticleTypes.SMOKE : ParticleTypes.RAIN;
                 // Un bloc qui recouvre le fluide recoit une eclaboussure, pas un cercle sous sa face pleine.
-                if (!hot && height <= fluid.getHeight(world, at) + 0.0001) {
+                if (!hot && height <= fluidHeight + 0.0001) {
                     ParticleOptions ripple = DsRipplesCompat.ripple(world, at, fluid);
-                    if (ripple != null) options = ripple;
+                    if (ripple != null) {
+                        options = ripple;
+                    } else if (fluid.isSource() && fluid.is(FluidTags.WATER)) {
+                        ParticleOptions circle = VisualityCompat.rainCircle(world, at, random);
+                        if (circle != null) {
+                            ClientView.onSceneryParticle(circle, x + rx, impactY, z + rz, 0.0, 0.0, 0.0);
+                        }
+                    }
                 }
                 ClientView.onSceneryParticle(options, x + rx, impactY, z + rz, 0.0, 0.0, 0.0);
                 spawned++;

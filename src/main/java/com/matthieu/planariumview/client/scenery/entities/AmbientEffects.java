@@ -1,6 +1,7 @@
 package com.matthieu.planariumview.client.scenery.entities;
 
 import com.matthieu.planariumview.client.scenery.ClientView;
+import com.matthieu.planariumview.integration.visuality.VisualityCompat;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.LivingEntity;
@@ -19,6 +20,7 @@ public final class AmbientEffects {
     }
 
     public static void sample(LivingEntity entity, RandomSource random, AquaticEffects.Sink sink) {
+        VisualityCompat.sampleMob(entity, sink);
         // EnderMan.aiStep et Endermite.aiStep : deux particules de portail par tick, qui retombent vers le mob.
         if (entity instanceof EnderMan || entity instanceof Endermite) {
             double yOffset = entity instanceof EnderMan ? -0.25 : 0.0;

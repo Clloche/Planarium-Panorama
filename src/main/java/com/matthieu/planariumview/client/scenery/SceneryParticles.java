@@ -2,6 +2,7 @@ package com.matthieu.planariumview.client.scenery;
 
 import com.matthieu.planariumview.integration.contraption_lights.ColorCompat;
 import com.matthieu.planariumview.integration.ars_nouveau.ArsParticles;
+import com.matthieu.planariumview.integration.visuality.VisualityCompat;
 
 import com.matthieu.planariumview.mixin.client.ParticleAccessor;
 import net.minecraft.client.Minecraft;
@@ -845,6 +846,7 @@ public final class SceneryParticles {
         // se dessinent souvent a leur facon et restent geantes meme rapetissees.
         if (!particle.getClass().getName().startsWith("net.minecraft.")
                 && !particle.getClass().getName().endsWith(".HotAirEmberParticle")
+                && !VisualityCompat.isParticle(particle)
                 && !com.matthieu.planariumview.integration.falling_leaves.FallingLeavesCompat.isLeaf(particle)
                 && !(particle instanceof com.matthieu.planariumview.integration.dynamic_surroundings.SceneryFirefly)) {
             noteForeign(particle);

@@ -210,6 +210,10 @@ public class LitRenderingWorld extends PlanariumRenderingWorld {
         particleSink = sink;
     }
 
+    static boolean capturingSceneryParticles() {
+        return particleSink != null;
+    }
+
     /** Capture imbriquee : restaure la destination de la vue courante, meme si un emetteur echoue. */
     public static void withSceneryParticles(ParticleSink sink, Runnable action) {
         ParticleSink previous = particleSink;
