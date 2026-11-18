@@ -23,7 +23,8 @@ import java.util.List;
  * Particules du decor geant : elles flottent loin du bocal, la ou le monde du bocal est vide et noir. Elles prennent
  * donc la lumiere du bloc du decor d'ou elles viennent (les particules qui brillent, comme les flammes, gardent la leur).
  */
-@Mixin(Particle.class)
+// Run the miniature collision check before Particle Core's real-world fast path.
+@Mixin(value = Particle.class, priority = 1100)
 public abstract class ParticleLightMixin {
 
     /** Conserve Particle.move (arret, vitesses, sol), mais calcule ses collisions dans la miniature. */

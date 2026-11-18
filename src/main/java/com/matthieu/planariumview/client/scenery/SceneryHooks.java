@@ -64,6 +64,10 @@ final class SceneryHooks {
     private static int sceneryFrameRadius = -1;
     private static Object sceneryFrameLevel;
     private static long sceneryFrameEpoch;
+    private static FramedParticle.Frame mobFrame;
+    private static BlockPos mobFrameOrigin;
+    private static int mobFrameRadius;
+    private static Object mobFrameLevel;
 
     /**
      * Bocal sur une structure Sable : le decor suit son inclinaison et ses mouvements (SubLevelView.terrain). Les particules
@@ -98,6 +102,9 @@ final class SceneryHooks {
         sceneryFrameOrigin = null;
         sceneryFrameRadius = -1;
         sceneryFrameLevel = null;
+        mobFrame = null;
+        mobFrameOrigin = null;
+        mobFrameLevel = null;
     }
 
     /**
@@ -157,8 +164,15 @@ final class SceneryHooks {
 
     private static FramedParticle.Frame mobFrame(BlockPos origin, int radius) {
         var level = Minecraft.getInstance().level;
-        return new FramedParticle.Frame(() -> terrainMatrix(origin, radius), () -> Minecraft.getInstance().level == level && currentDim != null && Config.outsideMobs()
-                && Config.sceneryParticles() && !FlightView.active(), GIANT);
+        if (mobFrame == null || radius != mobFrameRadius || !origin.equals(mobFrameOrigin) || level != mobFrameLevel) {
+            mobFrame = new FramedParticle.Frame(cachedTerrain(origin, radius),
+                    () -> Minecraft.getInstance().level == level && currentDim != null && Config.outsideMobs()
+                            && Config.sceneryParticles() && !FlightView.active(), GIANT);
+            mobFrameOrigin = origin;
+            mobFrameRadius = radius;
+            mobFrameLevel = level;
+        }
+        return mobFrame;
     }
 
     /** Explosion du dehors (position par rapport au Planarium) : ses particules, si elle est dans le rayon de vue. */

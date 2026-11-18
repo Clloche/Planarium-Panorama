@@ -3,6 +3,7 @@ package com.matthieu.planariumview.client.scenery;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.matthieu.planariumview.core.config.Config;
 import com.matthieu.planariumview.core.network.SubLevelTransforms;
+import com.matthieu.planariumview.integration.particle_core.ParticleCoreCompat;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.Particle;
@@ -13,12 +14,36 @@ import org.joml.Quaternionf;
 import org.joml.Vector3d;
 import org.joml.Vector3f;
 
+import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 /** Simulate in the captured world's axes; project only the rendered particle into its moving preview. */
 public final class FramedParticle extends Particle {
     static final double OFFSET = 1024;
+    private static RenderPass renderPass;
+
+    private record RenderPass(Camera camera, Map<Frame, Projection> projections) {}
+
+    private record Projection(Matrix4d matrix, LocalCamera camera) {
+        static Projection create(Frame frame, Camera camera) {
+            Matrix4d matrix = frame.matrix();
+            LocalCamera local = new LocalCamera();
+            local.update(camera, matrix);
+            return new Projection(matrix, local);
+        }
+    }
+
+    public static void renderPass(Camera camera, Runnable draw) {
+        RenderPass previous = renderPass;
+        renderPass = new RenderPass(camera, new IdentityHashMap<>());
+        try {
+            draw.run();
+        } finally {
+            renderPass = previous;
+        }
+    }
 
     public record Frame(Supplier<Matrix4d> pose, BooleanSupplier alive, double scale) {
         public Matrix4d matrix() {
@@ -28,7 +53,6 @@ public final class FramedParticle extends Particle {
 
     private final Particle inner;
     private final Frame frame;
-    private final LocalCamera localCamera = new LocalCamera();
     private final boolean ember;
 
     FramedParticle(Particle inner, Frame frame) {
@@ -63,11 +87,19 @@ public final class FramedParticle extends Particle {
 
     @Override public void render(VertexConsumer buffer, Camera camera, float partialTick) {
         if (!frame.alive.getAsBoolean()) return;
-        Matrix4d matrix = frame.matrix();
-        localCamera.update(camera, matrix);
+        RenderPass pass = renderPass;
+        Projection projection = pass != null && pass.camera() == camera
+                ? pass.projections().computeIfAbsent(frame, key -> Projection.create(key, camera))
+                : Projection.create(frame, camera);
         // Aeronautics' ember bypasses Particle.getLightColor and queries the real client level directly.
         Integer light = ember ? SceneryParticles.lightOf(inner) : null;
-        inner.render(new TransformedBuffer(buffer, matrix, light == null ? null : light | 0xF0), localCamera, partialTick);
+        VertexConsumer transformed = new TransformedBuffer(buffer, projection.matrix(), light == null ? null : light | 0xF0);
+        boolean restore = ParticleCoreCompat.billboardCamera(projection.camera());
+        try {
+            inner.render(transformed, projection.camera(), partialTick);
+        } finally {
+            if (restore) ParticleCoreCompat.billboardCamera(camera);
+        }
     }
 
     private static final class LocalCamera extends Camera {
@@ -90,8 +122,9 @@ public final class FramedParticle extends Particle {
     private record TransformedBuffer(VertexConsumer inner, Matrix4d matrix, Integer light) implements VertexConsumer {
         @Override public VertexConsumer addVertex(float x, float y, float z) {
             // Particle vertices are camera-relative: translation has already cancelled out.
-            Vector3d at = matrix.transformDirection(new Vector3d(x, y, z));
-            inner.addVertex((float) at.x, (float) at.y, (float) at.z);
+            inner.addVertex((float) (matrix.m00() * x + matrix.m10() * y + matrix.m20() * z),
+                    (float) (matrix.m01() * x + matrix.m11() * y + matrix.m21() * z),
+                    (float) (matrix.m02() * x + matrix.m12() * y + matrix.m22() * z));
             return this;
         }
         @Override public VertexConsumer setColor(int r, int g, int b, int a) { inner.setColor(r, g, b, a); return this; }

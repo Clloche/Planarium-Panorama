@@ -2,6 +2,7 @@ package com.matthieu.planariumview.client.scenery;
 
 import com.matthieu.planariumview.integration.contraption_lights.ColorCompat;
 import com.matthieu.planariumview.integration.ars_nouveau.ArsParticles;
+import com.matthieu.planariumview.integration.particle_core.ParticleCoreCompat;
 import com.matthieu.planariumview.integration.visuality.VisualityCompat;
 
 import com.matthieu.planariumview.mixin.client.ParticleAccessor;
@@ -489,6 +490,7 @@ public final class SceneryParticles {
 
     private static Particle spawnAtRaw(Space space, ParticleOptions options, double x, double y, double z, double vx, double vy,
                                        double vz, int light) {
+        if (!ParticleCoreCompat.allows(options instanceof Made ? null : options.getType())) return null;
         boolean previousMiniature = creatingMiniature;
         creatingMiniature = space.scale() < 1.0;
         try {

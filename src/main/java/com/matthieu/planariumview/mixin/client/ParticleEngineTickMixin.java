@@ -3,6 +3,7 @@ package com.matthieu.planariumview.mixin.client;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.matthieu.planariumview.client.scenery.ClientView;
+import com.matthieu.planariumview.client.scenery.FramedParticle;
 import com.matthieu.planariumview.client.scenery.SceneryParticles;
 
 import net.minecraft.client.Camera;
@@ -39,7 +40,8 @@ public abstract class ParticleEngineTickMixin {
     @WrapMethod(method = "render(Lnet/minecraft/client/renderer/LightTexture;Lnet/minecraft/client/Camera;FLnet/minecraft/client/renderer/culling/Frustum;Ljava/util/function/Predicate;)V")
     private void planariumview$sceneryFog(LightTexture light, Camera camera, float partialTick, Frustum frustum,
                                           Predicate<ParticleRenderType> filter, Operation<Void> original) {
-        ClientView.renderParticles(() -> original.call(light, camera, partialTick, frustum, filter));
+        FramedParticle.renderPass(camera, () -> ClientView.renderParticles(
+                () -> original.call(light, camera, partialTick, frustum, filter)));
     }
 
     @Inject(method = "add(Lnet/minecraft/client/particle/Particle;)V", at = @At("HEAD"), cancellable = true, require = 0)

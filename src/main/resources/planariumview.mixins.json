@@ -48,6 +48,7 @@
     "client.TrialSpawnerDataAccessor",
     "client.LeavesBlockMixin",
     "client.ParticleEngineTickMixin",
+    "client.ParticleEngineSerialMixin",
     "client.ClientLevelParticleMixin",
     "client.DimensionTypeMixin",
     "client.DynamicTextureMixin",

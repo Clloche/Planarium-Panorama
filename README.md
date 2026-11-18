@@ -39,6 +39,7 @@ Planarium Panorama is made to be compatible with as many mods as possible. This 
 | [Create](https://www.curseforge.com/minecraft/mc-mods/create) / [Flywheel](https://modrinth.com/mod/flywheel)<br>Create v6.0.10 + Flywheel v1.0.6 | ✅ | |
 | [Falling Leaves](https://www.curseforge.com/minecraft/mc-mods/falling-leaves-forge)<br>v2.6.0| ✅ | |
 | [NeoVoxy (JohnSnow)](https://github.com/NHblock-Johnsnow/neo-voxy-multiversion)<br>v0.5.0-alpha.12 | ✅ | The giant scenery can go past the render distance |
+| [Particle Core](https://modrinth.com/mod/particle-core/version/0.3.3%2B1.21%2Bneoforge)<br>v0.3.3 | ⚠️ | Particle exclusions and spawn reductions apply to scenery and miniatures. The client particle engine ticks on the main thread when both mods are installed. |
 | [Puddles & Floods](https://modrinth.com/mod/puddles-floods) | ✅ | |
 | [Serene Seasons](https://modrinth.com/mod/serene-seasons)<br>v10.1.0.3 | ✅ | Grass and leaves in the jar take the season colors of the Planarium's world |
 | [Sodium](https://modrinth.com/mod/sodium)<br>v0.8.13 | ✅ | |

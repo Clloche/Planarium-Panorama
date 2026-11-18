@@ -104,6 +104,43 @@ public final class PanoramaScopeChecks {
                 "all fog settings restored after a failed particle draw");
     }
 
+    private static void particleProjection() {
+        var samples = new java.util.concurrent.atomic.AtomicInteger();
+        var frame = new FramedParticle.Frame(() -> {
+            samples.incrementAndGet();
+            return new org.joml.Matrix4d();
+        }, () -> true, 1);
+        var camera = new net.minecraft.client.Camera();
+        var inner = new net.minecraft.client.particle.Particle(null, 0, 0, 0) {
+            @Override public void render(com.mojang.blaze3d.vertex.VertexConsumer buffer,
+                                         net.minecraft.client.Camera view, float partialTick) {
+                require(view != camera, "framed particle uses its local camera");
+            }
+
+            @Override public net.minecraft.client.particle.ParticleRenderType getRenderType() {
+                return net.minecraft.client.particle.ParticleRenderType.PARTICLE_SHEET_OPAQUE;
+            }
+        };
+        var first = new FramedParticle(inner, frame);
+        var second = new FramedParticle(inner, frame);
+        samples.set(0);
+        FramedParticle.renderPass(camera, () -> {
+            first.render(null, camera, 0);
+            try {
+                FramedParticle.renderPass(camera, () -> {
+                    second.render(null, camera, 0);
+                    throw new IllegalStateException("nested draw failed");
+                });
+            } catch (IllegalStateException expected) {
+                require(expected.getMessage().equals("nested draw failed"), "nested draw failure propagated");
+            }
+            second.render(null, camera, 0);
+            require(samples.get() == 2, "particles share the projection and a nested pass restores it");
+        });
+        FramedParticle.renderPass(camera, () -> first.render(null, camera, 0));
+        require(samples.get() == 3, "new pass reads the current frame pose");
+    }
+
     public static void main(String[] args) throws Exception {
         immersion();
         soundScope();
@@ -113,7 +150,10 @@ public final class PanoramaScopeChecks {
                 "both server sound overloads call the production wrappers");
         require(wrapped(transformer, "net.minecraft.client.particle.ParticleEngine", "render", "planariumview$sceneryFog") == 1,
                 "only the NeoForge particle renderer calls the production wrapper");
+        require(wrapped(transformer, "net.minecraft.client.particle.ParticleEngine", "tick", "planariumview$serialParticleTick") == 1,
+                "serial fallback wraps the particle queue traversal");
         particleFog();
-        System.out.println("PASS: immersion transitions, nested and throwing sounds, production wrappers and particle fog cleanup");
+        particleProjection();
+        System.out.println("PASS: immersion, sound scopes, particle wrappers, fog cleanup and projection caching");
     }
 }
