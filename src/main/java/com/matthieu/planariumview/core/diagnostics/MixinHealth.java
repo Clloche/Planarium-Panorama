@@ -331,6 +331,8 @@ public final class MixinHealth {
 
     /** Dossier de compatibilite du mixin ({@code dynamic_surroundings}...), ou "core". */
     static String groupOf(String mixinClass) {
+        // This compatibility hook targets Minecraft's particle engine and lives in the client mixin package.
+        if (mixinClass.equals("com.matthieu.planariumview.mixin.client.ParticleEngineSerialMixin")) return "particle_core";
         if (!mixinClass.startsWith(COMPAT_PACKAGE)) return CORE;
         String rest = mixinClass.substring(COMPAT_PACKAGE.length());
         int dot = rest.indexOf('.');

@@ -67,6 +67,10 @@ public final class MixinCompatibilityChecks {
         installBytecodeService();
         require(!OptionalMixinSupport.isOptional(PREFIX + "ars_nouveau.PlanariumRendererMixin"), "Ars is required");
         require(!OptionalMixinSupport.isOptional("com.matthieu.planariumview.mixin.client.ParticleLightMixin"), "Core is required");
+        require(MixinHealth.groupOf("com.matthieu.planariumview.mixin.client.ParticleEngineSerialMixin").equals("particle_core"),
+                "The Particle Core hook must be reported under Particle Core even though it targets Minecraft");
+        require(MixinHealth.groupOf(PREFIX + "visuality.VisualityBlockAmbientMixin").equals("visuality"),
+                "Visuality hooks must be grouped under Visuality");
         String mixin = PREFIX + "dynamic_surroundings.DsPointLightsMixin";
         ClassNode good = new ClassNode();
         good.name = "fixtures/GoodLights";

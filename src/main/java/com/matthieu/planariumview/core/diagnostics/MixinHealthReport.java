@@ -32,8 +32,10 @@ public final class MixinHealthReport {
             Map.entry("dynamic_surroundings", new String[]{"Dynamic Surroundings", "dsurround"}),
             Map.entry("enhanced_celestials", new String[]{"Enhanced Celestials", "enhancedcelestials"}),
             Map.entry("flywheel", new String[]{"Flywheel", "flywheel"}),
+            Map.entry("particle_core", new String[]{"Particle Core", "particle_core"}),
             Map.entry("puddle_flood", new String[]{"Puddle Flood", "puddleflood"}),
             Map.entry("travelers_titles", new String[]{"Traveler's Titles", "travelerstitles"}),
+            Map.entry("visuality", new String[]{"Visuality: Reforged", "visuality"}),
             Map.entry("yacl", new String[]{"YACL", "yet_another_config_lib_v3"}));
     private static boolean summarized;
 
@@ -93,6 +95,7 @@ public final class MixinHealthReport {
         }
         String[] mod = MODS.getOrDefault(group, new String[]{group});
         String version = version(mod);
+        if (group.equals("particle_core") && version == null) return;
         StringBuilder line = new StringBuilder("[Planarium Panorama] Mixins ").append(mod[0]);
         if (version != null) line.append(' ').append(version);
         line.append(" : ").append(ok).append('/').append(requirements.size() - notApplicable).append(" verifies");
